@@ -112,6 +112,8 @@ pub enum Message {
     Escape,
     /// Ctrl+F was pressed.
     FocusSearch,
+    /// Ctrl+Q was pressed.
+    Quit,
 }
 
 impl App {
@@ -468,6 +470,7 @@ impl App {
                 }
             }
             Message::FocusSearch => operation::focus(addons::SEARCH),
+            Message::Quit => iced::exit(),
         }
     }
 
@@ -729,17 +732,9 @@ impl App {
         .into()
     }
 
-    /// Keyboard shortcuts: Escape closes dialogs, F5 rescans, Ctrl+F searches.
+    /// Keyboard shortcuts; see [`shortcut`].
     pub fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().filter_map(|event| match event {
-            keyboard::Event::KeyPressed { key, modifiers, .. } => match key.as_ref() {
-                Key::Named(Named::Escape) => Some(Message::Escape),
-                Key::Named(Named::F5) => Some(Message::Refresh),
-                Key::Character("f") if modifiers.command() => Some(Message::FocusSearch),
-                _ => None,
-            },
-            _ => None,
-        })
+        keyboard::listen().filter_map(shortcut)
     }
 
     /// Fetches the published catalog, if there is one to fetch.
@@ -824,6 +819,22 @@ impl App {
         let path = self.config_path.clone();
 
         Task::perform(blocking(move || config.save(&path)), Message::Saved)
+    }
+}
+
+/// What a key press does: Escape closes dialogs, F5 rescans, Ctrl+F
+/// searches and Ctrl+Q quits (Cmd on macOS).
+fn shortcut(event: keyboard::Event) -> Option<Message> {
+    let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
+        return None;
+    };
+
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Escape),
+        Key::Named(Named::F5) => Some(Message::Refresh),
+        Key::Character("f") if modifiers.command() => Some(Message::FocusSearch),
+        Key::Character("q") if modifiers.command() => Some(Message::Quit),
+        _ => None,
     }
 }
 
@@ -914,6 +925,25 @@ mod tests {
         assert_eq!(app.config, Config::default());
         let mut ui = simulator(app.view());
         assert!(ui.find("Add a WoW 3.3.5a client").is_ok());
+    }
+
+    #[test]
+    fn ctrl_q_quits_and_a_plain_q_does_not() {
+        let press = |modifiers| keyboard::Event::KeyPressed {
+            key: Key::Character("q".into()),
+            modified_key: Key::Character("q".into()),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::KeyQ),
+            location: keyboard::Location::Standard,
+            modifiers,
+            text: None,
+            repeat: false,
+        };
+
+        assert!(matches!(
+            shortcut(press(keyboard::Modifiers::COMMAND)),
+            Some(Message::Quit)
+        ));
+        assert!(shortcut(press(keyboard::Modifiers::empty())).is_none());
     }
 
     #[test]
