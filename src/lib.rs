@@ -15,6 +15,7 @@ mod setup;
 mod style;
 #[cfg(test)]
 mod testing;
+mod transfer;
 
 use std::path::PathBuf;
 
@@ -47,11 +48,14 @@ pub struct App {
     /// decides what to do about it.
     recovery: Option<recovery::State>,
     errors: Errors,
+    /// Something that went well and is worth saying, until dismissed.
+    notice: Option<String>,
     /// Addons of the selected client that were installed without the
     /// launcher and have just been recognized as catalog entries.
     recognized: Vec<Adoption>,
     /// Whether the list of recognized addons is open.
     details: bool,
+    transfer: transfer::State,
 }
 
 /// The state of the client folder being shown.
@@ -77,6 +81,8 @@ pub enum Message {
     Recovery(recovery::Message),
     /// An interaction with the addons.
     Addons(addons::Message),
+    /// An export or import.
+    Transfer(transfer::Message),
     /// A client folder was chosen in the picker.
     Select(PathBuf),
     /// The selected client folder was checked.
@@ -102,6 +108,8 @@ pub enum Message {
     Saved(Result<(), String>),
     /// Hide the error banner.
     DismissError,
+    /// Hide the notice banner.
+    DismissNotice,
     /// List the recognized addons.
     ShowRecognized,
     /// Close the list of recognized addons.
@@ -176,8 +184,10 @@ impl App {
             setup: None,
             recovery,
             errors,
+            notice: None,
             recognized: Vec::new(),
             details: false,
+            transfer: transfer::State::default(),
         };
 
         let start = if app.recovery.is_some() {
@@ -460,11 +470,70 @@ impl App {
                 self.details = false;
                 Task::none()
             }
+            Message::DismissNotice => {
+                self.notice = None;
+                Task::none()
+            }
+            Message::Transfer(message) => {
+                let (installation, snapshot) = match &self.selected {
+                    Selected::Open {
+                        installation,
+                        snapshot,
+                    } => (Some(installation), snapshot.as_ref()),
+                    _ => (None, None),
+                };
+                let action = self.transfer.update(
+                    message,
+                    &self.catalog,
+                    installation,
+                    snapshot,
+                    &mut self.errors,
+                );
+                let task = action.task.map(Message::Transfer);
+
+                match action.instruction {
+                    Some(transfer::Instruction::Exported { path, summary }) => {
+                        self.notice = Some(format!(
+                            "Exported {} and {} to {}.",
+                            counted(summary.addons, "addon"),
+                            counted(summary.files, "saved settings file"),
+                            path.display()
+                        ));
+                        task
+                    }
+                    Some(transfer::Instruction::Imported { restored, install }) => {
+                        let restored = counted(restored, "saved settings file");
+                        self.notice = Some(if install.is_empty() {
+                            format!("Restored {restored}.")
+                        } else {
+                            format!(
+                                "Restored {restored}, and installing {}: each card shows its \
+                                 progress.",
+                                counted(install.len(), "addon")
+                            )
+                        });
+
+                        let installs: Vec<Task<Message>> = install
+                            .iter()
+                            .map(|entry| {
+                                self.update(Message::Addons(addons::Message::Install(
+                                    addons::Key::of(entry),
+                                )))
+                            })
+                            .collect();
+
+                        Task::batch([task, self.rescan()].into_iter().chain(installs))
+                    }
+                    None => task,
+                }
+            }
             Message::Escape => {
                 if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
                 } else if self.details {
                     self.update(Message::CloseRecognized)
+                } else if self.transfer.view().is_some() {
+                    self.update(Message::Transfer(transfer::Message::Cancel))
                 } else {
                     self.update(Message::Addons(addons::Message::Cancel))
                 }
@@ -556,6 +625,15 @@ impl App {
         .spacing(10)
         .align_y(Center);
 
+        // Exports and imports work from what was last scanned.
+        let snapshot_ready = matches!(
+            &self.selected,
+            Selected::Open {
+                snapshot: Some(_),
+                ..
+            }
+        );
+
         let client: Element<'_, Message> = match &self.selected {
             Selected::Nothing => text("No client selected.").style(text::secondary).into(),
             Selected::Opening(path) => text(format!("Opening {}…", path.display()))
@@ -591,12 +669,43 @@ impl App {
                     .style(button::text)
                     .on_press(Message::OpenAddOns),
             )
+            .push(style::tip(
+                button("Export…").style(button::text).on_press_maybe(
+                    (snapshot_ready && !self.transfer.busy())
+                        .then_some(Message::Transfer(transfer::Message::Export)),
+                ),
+                "Saves the list of addons and their saved settings to a zip file, to \
+                 import on another computer.",
+            ))
+            .push(style::tip(
+                button("Import…").style(button::text).on_press_maybe(
+                    (snapshot_ready && !self.transfer.busy())
+                        .then_some(Message::Transfer(transfer::Message::Import)),
+                ),
+                "Installs the addons listed in an export and restores their saved \
+                 settings, after showing what it will do.",
+            ))
             .spacing(8)
             .align_y(Center)
             .into(),
         };
 
         let error = self.errors.view(Message::DismissError);
+
+        let notice = self.notice.as_deref().map(|notice| {
+            container(
+                row![
+                    text(notice).width(Fill),
+                    button("Dismiss")
+                        .style(button::text)
+                        .on_press(Message::DismissNotice),
+                ]
+                .spacing(8)
+                .align_y(Center),
+            )
+            .padding([6, 12])
+            .style(style::banner(style::Tone::Success))
+        });
 
         // Adoption only adds a marker file to folders that were already
         // there, so there is nothing to do about it; the banner just says so.
@@ -652,6 +761,7 @@ impl App {
         let content = column![
             column![header, client]
                 .push(error)
+                .push(notice)
                 .push(recognized)
                 .spacing(14),
             container(body).height(Fill),
@@ -664,9 +774,12 @@ impl App {
                 Some(setup.view().map(Message::Setup)),
                 Message::Setup(setup::Message::Cancel),
             ),
+            None if self.details => (Some(self.recognized_view()), Message::CloseRecognized),
             None => (
-                self.details.then(|| self.recognized_view()),
-                Message::CloseRecognized,
+                self.transfer
+                    .view()
+                    .map(|dialog| dialog.map(Message::Transfer)),
+                Message::Transfer(transfer::Message::Cancel),
             ),
         };
 
@@ -838,6 +951,15 @@ fn shortcut(event: keyboard::Event) -> Option<Message> {
     }
 }
 
+/// `count` of `noun`, in the plural when it isn't one: `1 addon`, `3 addons`.
+fn counted(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
 /// Runs filesystem work on a blocking thread, so the UI never waits on disk.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, core::Error> + Send + 'static,
@@ -890,8 +1012,10 @@ mod tests {
             setup: None,
             recovery: None,
             errors: Errors::default(),
+            notice: None,
             recognized: Vec::new(),
             details: false,
+            transfer: transfer::State::default(),
         }
     }
 
@@ -958,6 +1082,88 @@ mod tests {
             Some(Message::OpenRepository)
         ));
         assert_eq!(REPOSITORY, "https://gitlab.com/juxuanu/old_launcher");
+    }
+
+    #[test]
+    fn an_import_restores_the_settings_then_installs_its_addons() {
+        use crate::core::transfer::{Import, Manifest, Plan};
+
+        let (_root, installation) = crate::testing::client(&[]);
+        let mut app = app(&[&installation.root().display().to_string()]);
+        app.catalog = Catalog::parse(
+            br#"{ "version": 2,
+                  "sources": [{ "id": "test", "name": "Test", "homepage": "https://example.com" }],
+                  "entries": [{ "name": "Addon Control Panel",
+                                "downloads": [{ "source": "test", "name": "ACP",
+                                                "url": "https://example.com/ACP.zip",
+                                                "folders": [{ "name": "ACP" }] }] }] }"#,
+        )
+        .unwrap();
+        app.selected = Selected::Open {
+            snapshot: Some(installation.scan().unwrap()),
+            installation,
+        };
+        let import = Import {
+            path: PathBuf::from("/exports/old_launcher-addons.zip"),
+            manifest: Manifest {
+                version: Manifest::VERSION,
+                addons: Vec::new(),
+            },
+            files: Vec::new(),
+        };
+        let plan = Plan {
+            install: app.catalog.entries.clone(),
+            ..Plan::default()
+        };
+
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Install").is_ok());
+        drop(ui);
+
+        for message in [
+            transfer::Message::Read(Ok((import, plan))),
+            transfer::Message::Confirm,
+            transfer::Message::Restored(Ok(1)),
+        ] {
+            let _ = app.update(Message::Transfer(message));
+        }
+
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(
+                "Restored 1 saved settings file, and installing 1 addon: each card shows its \
+                 progress."
+            )
+        );
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Install").is_err(), "the install is under way");
+        assert!(ui.find("Test: 0 KB").is_ok());
+    }
+
+    #[test]
+    fn exports_and_imports_wait_for_the_client_to_be_read() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let snapshot = installation.scan().unwrap();
+        let mut app = app(&[&installation.root().display().to_string()]);
+        app.selected = Selected::Open {
+            snapshot: None,
+            installation: installation.clone(),
+        };
+
+        let mut ui = simulator(app.view());
+        let _ = ui.click("Export…");
+        assert_eq!(ui.into_messages().count(), 0, "still reading the client");
+
+        app.selected = Selected::Open {
+            snapshot: Some(snapshot),
+            installation,
+        };
+        let mut ui = simulator(app.view());
+        let _ = ui.click("Export…").unwrap();
+        assert!(matches!(
+            ui.into_messages().next(),
+            Some(Message::Transfer(transfer::Message::Export))
+        ));
     }
 
     #[test]

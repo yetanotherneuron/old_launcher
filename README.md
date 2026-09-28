@@ -32,6 +32,11 @@ Each is a single file built from the latest `main`; nothing to install.
   Addons installed before the launcher are recognized automatically when
   they match a catalog entry exactly; a banner says so, with the full list
   under Details.
+- **Export** a client's addons and their saved settings to one zip file, and
+  **import** it on another computer: the addons are installed again from the
+  catalog and their settings restored, after a summary of what will be
+  installed, what is already there, what you need to get yourself, and which
+  settings files would be replaced.
 - Manage several clients side by side; only 3.3.5a (`Wow.exe` build 12340)
   is accepted.
 

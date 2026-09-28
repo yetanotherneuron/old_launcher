@@ -78,6 +78,21 @@ pub enum Error {
     /// The config could not be serialized.
     #[error("could not serialize config: {0}")]
     ConfigWrite(#[from] toml::ser::Error),
+
+    /// A zip file without a readable list of addons, so not an export.
+    #[error("{} is not an export of the launcher: {reason}", path.display())]
+    NotAnExport {
+        /// The file.
+        path: PathBuf,
+        /// What is wrong with its list of addons.
+        reason: String,
+    },
+
+    /// An export uses a format version this build does not know.
+    #[error(
+        "the export uses format version {0}, which this version of the launcher does not support"
+    )]
+    ExportVersion(u32),
 }
 
 /// Wraps an [`io::Error`] with the path it happened on.

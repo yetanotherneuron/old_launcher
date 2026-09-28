@@ -118,7 +118,8 @@ pub enum Instruction {
 }
 
 impl Key {
-    fn of(entry: &Entry) -> Self {
+    /// The key of `entry`.
+    pub fn of(entry: &Entry) -> Self {
         let mut folders: Vec<String> = entry
             .folders()
             .iter()

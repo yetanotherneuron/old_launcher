@@ -253,7 +253,7 @@ impl Installation {
 
 /// The entry of `directory` named `name` ignoring case, or `directory/name`
 /// when there is none.
-fn child(directory: &Path, name: &str) -> PathBuf {
+pub(crate) fn child(directory: &Path, name: &str) -> PathBuf {
     let exact = directory.join(name);
 
     if exact.exists() {

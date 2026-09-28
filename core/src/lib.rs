@@ -21,6 +21,7 @@ pub mod saved_variables;
 pub mod search;
 pub mod snapshot;
 pub mod toc;
+pub mod transfer;
 pub mod version;
 
 pub use addon::Addon;
