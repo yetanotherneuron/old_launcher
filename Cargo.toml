@@ -2,6 +2,7 @@
 name = "old_launcher"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]
@@ -30,6 +31,7 @@ members = ["core", "indexer"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
 repository = "https://gitlab.com/juxuanu/old_launcher"
 
 # Nothing outside tests may panic on purpose: errors are returned and shown.
