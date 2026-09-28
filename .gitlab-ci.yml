@@ -128,6 +128,9 @@ linux-arm64:
 
 # Publishes aur/PKGBUILD to the AUR as old-launcher-git whenever it changes
 # on the default branch, with its version set and its .SRCINFO generated.
+# To publish without changing it, run a pipeline for the default branch
+# with AUR_PUBLISH=true: from Build > Pipelines > Run pipeline, or with
+# `git push -o ci.variable=AUR_PUBLISH=true`.
 #
 # It needs the CI/CD variable AUR_SSH_PRIVATE_KEY (type Variable, protected,
 # masked and hidden): the private half of an SSH key added to the AUR
@@ -146,6 +149,7 @@ aur:
     # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
     AUR_HOST_KEY: "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN"
   rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $AUR_PUBLISH == "true"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - aur/PKGBUILD
@@ -160,10 +164,12 @@ aur:
     - git clone "ssh://aur@aur.archlinux.org/$AUR_PACKAGE.git" aur-repository
     - pkgver="r$(git rev-list --count HEAD).$(git rev-parse --short=7 HEAD)"
     - sed "s/^pkgver=.*/pkgver=$pkgver/" aur/PKGBUILD > aur-repository/PKGBUILD
-    # makepkg refuses to run as root, even just to print the metadata.
+    # makepkg refuses to run as root, even just to print the metadata, so
+    # another user reads a copy: git refuses a clone its user doesn't own.
     - useradd --create-home packager
-    - chown -R packager aur-repository
-    - su packager -c "cd aur-repository && makepkg --printsrcinfo > .SRCINFO"
+    - install -d -o packager /tmp/srcinfo
+    - cp aur-repository/PKGBUILD /tmp/srcinfo/
+    - su packager -c "cd /tmp/srcinfo && makepkg --printsrcinfo" > aur-repository/.SRCINFO
     - cd aur-repository
     - git add PKGBUILD .SRCINFO
     - >-
