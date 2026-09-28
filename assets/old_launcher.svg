@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fcefc7"/>
+      <stop offset="0.55" stop-color="#ecd296"/>
+      <stop offset="1" stop-color="#c79c55"/>
+    </linearGradient>
+    <linearGradient id="roll" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7c4d1d"/>
+      <stop offset="0.3" stop-color="#f0d394"/>
+      <stop offset="0.6" stop-color="#d4a861"/>
+      <stop offset="1" stop-color="#6d3f15"/>
+    </linearGradient>
+    <radialGradient id="gold" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#fff3bf"/>
+      <stop offset="0.45" stop-color="#e2ae3f"/>
+      <stop offset="1" stop-color="#83530f"/>
+    </radialGradient>
+    <radialGradient id="wax" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#e5503f"/>
+      <stop offset="0.6" stop-color="#a31c16"/>
+      <stop offset="1" stop-color="#590b09"/>
+    </radialGradient>
+  </defs>
+  <g transform="rotate(-14 128 128)" stroke="#3a220e" stroke-linejoin="round">
+    <!-- The sheet, a little uneven like old parchment. -->
+    <path d="M72 58 H184 C180 88 188 118 184 148 C180 176 188 194 184 212 H72
+             C76 184 68 152 72 122 C76 94 68 78 72 58 Z"
+          fill="url(#paper)" stroke-width="7"/>
+    <!-- Lines of writing. -->
+    <g stroke="#8a5a2a" stroke-width="7" stroke-linecap="round" opacity="0.55">
+      <path d="M94 98 H162"/>
+      <path d="M94 121 H156"/>
+      <path d="M94 144 H164"/>
+      <path d="M94 167 H132"/>
+    </g>
+    <!-- The rollers and their gold knobs. -->
+    <rect x="50" y="40" width="156" height="34" rx="17" fill="url(#roll)" stroke-width="7"/>
+    <rect x="50" y="196" width="156" height="34" rx="17" fill="url(#roll)" stroke-width="7"/>
+    <g fill="url(#gold)" stroke-width="7">
+      <circle cx="45" cy="57" r="15"/>
+      <circle cx="211" cy="57" r="15"/>
+      <circle cx="45" cy="213" r="15"/>
+      <circle cx="211" cy="213" r="15"/>
+    </g>
+    <!-- A wax seal with its ribbons. -->
+    <g fill="#a31c16" stroke-width="5">
+      <path d="M158 190 L150 238 L162 230 L170 242 L172 194 Z"/>
+      <path d="M176 192 L186 236 L192 224 L204 230 L186 188 Z"/>
+    </g>
+    <circle cx="172" cy="180" r="24" fill="url(#wax)" stroke-width="6"/>
+    <path d="M172 164 L176 176 L188 180 L176 184 L172 196 L168 184 L156 180 L168 176 Z"
+          fill="#ffd89a" stroke="none" opacity="0.9"/>
+  </g>
+</svg>

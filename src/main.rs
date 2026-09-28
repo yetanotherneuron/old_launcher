@@ -5,15 +5,25 @@ use iced::{Size, window};
 use old_launcher::App;
 
 pub fn main() -> iced::Result {
+    #[allow(unused_mut)]
+    let mut window = window::Settings {
+        size: Size::new(1100.0, 780.0),
+        min_size: Some(App::MIN_SIZE),
+        ..window::Settings::default()
+    };
+
+    // The Wayland app id and X11 window class, which desktops match against
+    // `assets/old_launcher.desktop` to show the launcher's name and icon.
+    #[cfg(target_os = "linux")]
+    {
+        window.platform_specific.application_id = "old_launcher".to_owned();
+    }
+
     iced::application(App::new, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)
-        .window(window::Settings {
-            size: Size::new(1100.0, 780.0),
-            min_size: Some(App::MIN_SIZE),
-            ..window::Settings::default()
-        })
+        .window(window)
         .centered()
         .run()
 }

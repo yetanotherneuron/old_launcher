@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Old Launcher
+GenericName=Addon Manager
+Comment=Install and manage addons for World of Warcraft 3.3.5a
+Exec=old_launcher
+Icon=old_launcher
+Terminal=false
+Categories=Game;
+Keywords=wow;warcraft;wotlk;3.3.5a;addons;
+StartupNotify=true
+StartupWMClass=old_launcher
