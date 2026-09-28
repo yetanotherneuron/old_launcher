@@ -4,8 +4,9 @@ An addon manager for World of Warcraft 3.3.5a clients, built with
 [iced](https://github.com/iced-rs/iced).
 
 **[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
-· **[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
-· [Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
+**[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
+
+[Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
 · [Arch Linux (AUR)](https://aur.archlinux.org/packages/old-launcher-git)
 
 Each is a single file built from the latest `main`; nothing to install.

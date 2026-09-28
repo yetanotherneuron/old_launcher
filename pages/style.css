@@ -67,8 +67,15 @@ p:has(> strong > a) {
   font-size: 1.15rem;
 }
 
-p:has(> strong > a) a {
+p:has(> strong > a) a,
+p:has(> strong > a) + p a {
   white-space: nowrap;
+}
+
+/* The other downloads, in a row of their own under the buttons. */
+p:has(> strong > a) + p {
+  text-align: center;
+  margin-top: -0.25rem;
 }
 
 p:has(> strong > a) strong a {
