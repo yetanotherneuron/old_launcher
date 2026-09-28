@@ -197,6 +197,9 @@ pages:
       --include-before-body pages/header.html
       --output public/index.html
     - cp pages/style.css assets/old_launcher.svg public/
+    # The README's screenshots, at the same relative path.
+    - mkdir -p public/assets
+    - cp -r assets/screenshots public/assets/
   artifacts:
     paths:
       - public

@@ -1,11 +1,12 @@
 # Old Launcher
 
 An addon manager for World of Warcraft 3.3.5a clients, built with
-[iced](https://github.com/iced-rs/iced) (tracking `master`).
+[iced](https://github.com/iced-rs/iced).
 
 **[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
 · **[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
 · [Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
+· [Arch Linux (AUR)](https://aur.archlinux.org/packages/old-launcher-git)
 
 Each is a single file built from the latest `main`; nothing to install.
 
@@ -21,43 +22,21 @@ Each is a single file built from the latest `main`; nothing to install.
 
 ## What it does
 
-- **One list** of every addon: the launcher's catalog of 3.3.5a addons,
-  gathered from several sources, together with whatever else is in the
-  client's `Interface/AddOns`. Search it, and filter it next to the search
-  field by status (installed, not installed, needs attention, leftover data,
-  each with its count), by source (or installed manually), and sort by name
-  or most recently updated.
-- **Install** or reinstall with one click (zip, 7z and rar archives). An
-  addon several sources offer installs from the most recently updated one,
-  falling back to the others if it fails. Each source's pill links to the
-  addon's page there.
-- **Manage** installed addons from their cards: uninstall (the trash icon),
-  clean their SavedVariables, repair folders the client cannot load
-  (`Foo-master/Foo/Foo.toc`), and delete data left behind by removed addons.
-  Addons installed before the launcher are recognized automatically when
-  they match a catalog entry exactly; a banner says so, with the full list
-  under Details.
-- **Export** a client's addons and their saved settings to one zip file, and
-  **import** it on another computer: the addons are installed again from the
-  catalog and their settings restored, after a summary of what will be
-  installed, what is already there, what you need to get yourself, and which
-  settings files would be replaced.
-- Manage several clients side by side; only 3.3.5a (`Wow.exe` build 12340)
-  is accepted.
+![Every addon in one list, with the search box and the filters above it](assets/screenshots/addons.png)
+
+- **One list** of every addon, catalog and installed, to search and filter.
+- **Install** or reinstall with one click, from the freshest source.
+- **Manage** addons: uninstall, clean saved settings, repair broken folders.
+- **Recognizes** the addons you installed before the launcher.
+- **Export** addons and settings to a zip; **import** it on another computer.
+- **Several clients** side by side (3.3.5a only).
+
+![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
+
+![Importing addons and saved settings exported on another computer](assets/screenshots/import.png)
 
 Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> rescan,
 <kbd>Esc</kbd> close dialogs, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
-
-## Building from source
-
-```sh
-cargo run --release
-```
-
-For packaging, `assets/old_launcher.desktop` and `assets/old_launcher.svg`
-are the desktop entry and its icon, named after the binary. `aur/PKGBUILD`
-is the AUR package; CI publishes it to the AUR whenever it changes on
-`main`.
 
 ## The catalog
 

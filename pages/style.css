@@ -67,6 +67,10 @@ p:has(> strong > a) {
   font-size: 1.15rem;
 }
 
+p:has(> strong > a) a {
+  white-space: nowrap;
+}
+
 p:has(> strong > a) strong a {
   display: inline-block;
   margin: 0.25rem 0.2rem;
@@ -77,8 +81,19 @@ p:has(> strong > a) strong a {
   text-decoration: none;
 }
 
+/* More specific than a:hover, which would turn the text gold on gold. */
 p:has(> strong > a) strong a:hover {
   background: var(--gold-bright);
+  color: var(--background);
+}
+
+/* The screenshots: full width, framed like the launcher's cards. */
+p > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 code,
