@@ -33,6 +33,27 @@ use crate::errors::Errors;
 /// Where the launcher's code lives, as `Cargo.toml` says.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
+/// The launcher's icon, rendered from `assets/old_launcher.svg`.
+const ICON: &[u8] = include_bytes!("../assets/old_launcher.png");
+
+/// The window's icon, for the title bar, taskbar and window switcher on
+/// Windows and X11. Wayland desktops take it from the desktop entry.
+pub fn icon() -> Option<iced::window::Icon> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(ICON));
+    decoder.set_transformations(png::Transformations::EXPAND);
+
+    let mut reader = decoder.read_info().ok()?;
+    let mut pixels = vec![0; reader.output_buffer_size()?];
+    let frame = reader.next_frame(&mut pixels).ok()?;
+
+    if (frame.color_type, frame.bit_depth) != (png::ColorType::Rgba, png::BitDepth::Eight) {
+        return None;
+    }
+    pixels.truncate(frame.line_size * frame.height as usize);
+
+    iced::window::icon::from_rgba(pixels, frame.width, frame.height).ok()
+}
+
 /// The launcher.
 pub struct App {
     config_path: PathBuf,
@@ -1049,6 +1070,11 @@ mod tests {
         assert_eq!(app.config, Config::default());
         let mut ui = simulator(app.view());
         assert!(ui.find("Add a WoW 3.3.5a client").is_ok());
+    }
+
+    #[test]
+    fn the_window_icon_decodes() {
+        assert!(icon().is_some());
     }
 
     #[test]

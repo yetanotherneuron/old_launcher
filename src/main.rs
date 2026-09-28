@@ -9,6 +9,7 @@ pub fn main() -> iced::Result {
     let mut window = window::Settings {
         size: Size::new(1100.0, 780.0),
         min_size: Some(App::MIN_SIZE),
+        icon: old_launcher::icon(),
         ..window::Settings::default()
     };
 
