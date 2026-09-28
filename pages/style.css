@@ -135,3 +135,13 @@ pre code {
 li + li {
   margin-top: 0.35rem;
 }
+
+/* Back to the repository, under everything. */
+footer.source {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+}

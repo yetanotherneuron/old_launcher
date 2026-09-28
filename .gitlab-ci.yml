@@ -178,7 +178,8 @@ aur:
     - git push origin HEAD:master
 
 # The project page on GitLab Pages: the README, styled like the launcher,
-# with its icon. The address shows under Deploy > Pages.
+# with its icon and a footer back to the repository. The address shows under
+# Deploy > Pages.
 pages:
   stage: release
   image:
@@ -188,13 +189,16 @@ pages:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - mkdir -p public
+    # The stylesheet's address changes with every commit, so a browser that
+    # cached the previous one doesn't style the new page with it.
     - >-
       pandoc README.md --standalone --from gfm --to html5
       --metadata pagetitle="Old Launcher"
       --syntax-highlighting=none
-      --css style.css
+      --css "style.css?v=$CI_COMMIT_SHORT_SHA"
       --include-in-header pages/head.html
       --include-before-body pages/header.html
+      --include-after-body pages/footer.html
       --output public/index.html
     - cp pages/style.css assets/old_launcher.svg public/
     # The README's screenshots, at the same relative path.
