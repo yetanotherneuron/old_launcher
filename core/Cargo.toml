@@ -16,5 +16,6 @@ tempfile = { workspace = true }
 zip = { workspace = true }
 sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
+shlex = { workspace = true }
 
 [dev-dependencies]

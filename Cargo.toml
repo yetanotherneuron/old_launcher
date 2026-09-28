@@ -54,7 +54,7 @@ old_launcher_core = { path = "core" }
 
 iced = { version = "0.15.0-dev", features = ["tokio", "sipper", "svg"] }
 iced_test = "0.15.0-dev"
-tokio = { version = "1", features = ["fs", "rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["fs", "rt-multi-thread", "macros", "sync", "process"] }
 # rustls on `ring`: no cmake/NASM toolchain needed on any platform.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy", "stream"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
@@ -76,6 +76,8 @@ clap = { version = "4", features = ["derive"] }
 zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma"] }
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
 rars = "0.9"
+# Reads and quotes the shell words of a client's launch settings.
+shlex = "2"
 
 # Release binaries are what people download: as fast and small as the
 # compiler makes them, at the cost of slower release builds. Panics still

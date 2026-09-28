@@ -36,6 +36,14 @@ impl<I, M> Action<I, M> {
             task,
         }
     }
+
+    /// An instruction for the parent, and a task for the runtime.
+    pub fn new(instruction: I, task: Task<M>) -> Self {
+        Self {
+            instruction: Some(instruction),
+            task,
+        }
+    }
 }
 
 impl<I, M> From<Task<M>> for Action<I, M> {

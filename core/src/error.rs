@@ -93,6 +93,15 @@ pub enum Error {
         "the export uses format version {0}, which this version of the launcher does not support"
     )]
     ExportVersion(u32),
+
+    /// A client's launch settings can't be run.
+    #[error("invalid {setting}: {problem}")]
+    Launch {
+        /// Which setting: `environment variables`, `command`, …
+        setting: &'static str,
+        /// What is wrong with it, as a sentence.
+        problem: String,
+    },
 }
 
 /// Wraps an [`io::Error`] with the path it happened on.

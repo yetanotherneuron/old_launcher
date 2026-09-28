@@ -5,8 +5,14 @@ use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
 use iced::{Border, Color, Element, Fit, Font, Theme, border, color, font};
 
-/// A trash can, drawn in black: [`delete_button`] tints it.
-const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
+/// A trash can, drawn in black like every icon: the buttons tint them.
+pub const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
+
+/// A plus sign, for adding.
+pub const PLUS: &[u8] = include_bytes!("../assets/plus.svg");
+
+/// A pen, for editing.
+pub const PEN: &[u8] = include_bytes!("../assets/pen.svg");
 
 /// The default font in bold, for titles.
 pub const BOLD: Font = Font {
@@ -202,6 +208,46 @@ pub fn delete_button<'a, Message: Clone + 'a>(
     tooltip(
         button,
         container(text(label).size(12))
+            .padding([4, 8])
+            .style(container::rounded_box),
+        tooltip::Position::Bottom,
+    )
+    .into()
+}
+
+/// A square button `size` wide showing `icon` (one of the icons above) in
+/// the color of its text, styled by `style` and explained by `hint` on hover.
+/// It sends `on_press`, and is disabled without one. Its icon has the widget
+/// `id`, since there is no text to find it by.
+pub fn icon_button<'a, Message: Clone + 'a>(
+    id: &'static str,
+    icon: &'static [u8],
+    size: f32,
+    style: fn(&Theme, button::Status) -> button::Style,
+    hint: &'a str,
+    on_press: Option<Message>,
+) -> Element<'a, Message> {
+    let status = if on_press.is_some() {
+        button::Status::Active
+    } else {
+        button::Status::Disabled
+    };
+
+    let icon = svg(svg::Handle::from_memory(icon))
+        .width(size / 2.0)
+        .height(size / 2.0)
+        .style(move |theme: &Theme, _status| svg::Style {
+            color: Some(style(theme, status).text_color),
+        });
+
+    tooltip(
+        button(center(icon).id(id))
+            .width(size)
+            .height(size)
+            .padding(0)
+            .style(style)
+            .on_press_maybe(on_press),
+        container(text(hint).size(12))
             .padding([4, 8])
             .style(container::rounded_box),
         tooltip::Position::Bottom,

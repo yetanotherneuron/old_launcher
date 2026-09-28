@@ -691,16 +691,5 @@ fn install(
     })
 }
 
-/// A byte count for people: `850 KB`, `12.4 MB`.
-fn size(bytes: u64) -> String {
-    const MB: f64 = 1024.0 * 1024.0;
-
-    if bytes as f64 >= MB {
-        format!("{:.1} MB", bytes as f64 / MB)
-    } else {
-        format!("{} KB", bytes.div_ceil(1024))
-    }
-}
-
 #[cfg(test)]
 mod tests;

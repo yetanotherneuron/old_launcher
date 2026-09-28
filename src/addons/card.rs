@@ -5,11 +5,12 @@ use iced::widget::{button, column, container, progress_bar, row, text, tooltip};
 use iced::{Center, Element, Fill, Fit};
 
 use super::confirm::{self, Confirm};
-use super::{Key, Message, Stage, State, size};
+use super::{Key, Message, Stage, State};
 use crate::catalog::Catalog;
 use crate::core::library::{Item, Library};
 use crate::core::toc;
 use crate::core::{Addon, Snapshot, Toc};
+use crate::size;
 use crate::style::{self, Tone};
 
 impl State {

@@ -15,8 +15,30 @@ use crate::{Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Version, a
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Installation {
     root: PathBuf,
+    executable: PathBuf,
     version: Version,
     locale: Option<String>,
+}
+
+/// What a client folder holds, for people; see [`Details::read`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Details {
+    /// Every file in the folder, in bytes.
+    pub size: u64,
+    /// The languages the client has data for (`enUS`, `esES`, …), sorted.
+    pub locales: Vec<String>,
+    /// Which server the client connects to, when it has a `realmlist.wtf`.
+    pub realmlist: Option<Realmlist>,
+}
+
+/// The `realmlist.wtf` of the language a client plays in, which says which
+/// server it connects to; see [`Realmlist::of`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Realmlist {
+    /// The file.
+    pub path: PathBuf,
+    /// The server the file sets, if it sets one.
+    pub server: Option<String>,
 }
 
 impl Installation {
@@ -40,26 +62,18 @@ impl Installation {
         }
 
         let bytes = fs::read(&executable).map_err(io_at(&executable))?;
-        let version = Version::from_executable(&bytes).ok_or(Error::UnknownVersion(executable))?;
+        let version = Version::from_executable(&bytes)
+            .ok_or_else(|| Error::UnknownVersion(executable.clone()))?;
 
         if !version.is_wotlk() {
             return Err(Error::UnsupportedVersion(version));
         }
 
-        let locale = fs::read_dir(child(&root, "Data")).ok().and_then(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                .find(|name| {
-                    let bytes = name.as_bytes();
-                    bytes.len() == 4
-                        && bytes[..2].iter().all(u8::is_ascii_lowercase)
-                        && bytes[2..].iter().all(u8::is_ascii_uppercase)
-                })
-        });
+        let locale = locale(&root);
 
         Ok(Self {
             root,
+            executable,
             version,
             locale,
         })
@@ -70,12 +84,18 @@ impl Installation {
         &self.root
     }
 
+    /// `Wow.exe`, as it is spelled on disk.
+    pub fn executable(&self) -> &Path {
+        &self.executable
+    }
+
     /// The client version read from `Wow.exe`.
     pub fn version(&self) -> Version {
         self.version
     }
 
-    /// The client language (`enUS`, `esES`, …), from its `Data` folder.
+    /// The language the client plays in (`enUS`, `esES`, …): the one
+    /// `WTF/Config.wtf` sets, or else the first it has data for.
     pub fn locale(&self) -> Option<&str> {
         self.locale.as_deref()
     }
@@ -251,6 +271,122 @@ impl Installation {
     }
 }
 
+impl Details {
+    /// Reads the client folder at `root`. Every file in it is measured, which
+    /// takes a moment on a whole client; what can't be read counts as empty.
+    pub fn read(root: &Path) -> Result<Self, Error> {
+        Ok(Self {
+            size: size(root)?,
+            locales: locales(root),
+            realmlist: Realmlist::of(root),
+        })
+    }
+}
+
+impl Realmlist {
+    /// The realmlist of the client at `root`, in the folder of the language
+    /// it plays in; `None` when there is no such file.
+    ///
+    /// The client runs the file line by line, so when several lines set the
+    /// realmlist, the last one wins; the other lines (`set patchlist`, …)
+    /// are about something else.
+    pub fn of(root: &Path) -> Option<Self> {
+        let locale = locale(root)?;
+        let path = child(&child(&child(root, "Data"), &locale), "realmlist.wtf");
+
+        path.is_file().then(|| Self {
+            server: setting(&path, "realmlist"),
+            path,
+        })
+    }
+}
+
+/// The language the client at `root` plays in: the one `WTF/Config.wtf`
+/// sets when the client has data for it, or else the first it has data for.
+fn locale(root: &Path) -> Option<String> {
+    let locales = locales(root);
+    let set = setting(&child(&child(root, "WTF"), "Config.wtf"), "locale");
+
+    set.filter(|set| locales.contains(set))
+        .or_else(|| locales.into_iter().next())
+}
+
+/// The languages the client at `root` has data for: the `Data` folders
+/// named like `enUS`, sorted.
+fn locales(root: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(child(root, "Data")) else {
+        return Vec::new();
+    };
+
+    let mut locales: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| {
+            let bytes = name.as_bytes();
+            bytes.len() == 4
+                && bytes[..2].iter().all(u8::is_ascii_lowercase)
+                && bytes[2..].iter().all(u8::is_ascii_uppercase)
+        })
+        .collect();
+    locales.sort();
+
+    locales
+}
+
+/// What the `.wtf` file at `path` sets `name` to, the way the client reads
+/// it: every `set <name> <value>` line in turn (any case, the value maybe
+/// quoted), so the last one wins.
+fn setting(path: &Path, name: &str) -> Option<String> {
+    let bytes = fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+
+    text.trim_start_matches('\u{feff}')
+        .lines()
+        .rev()
+        .find_map(|line| {
+            let mut words = line.split_whitespace();
+            let set = words.next()?.eq_ignore_ascii_case("set");
+            let key = words.next()?.eq_ignore_ascii_case(name);
+            let value = words.collect::<Vec<_>>().join(" ");
+            let value = value.trim_matches('"');
+
+            (set && key && !value.is_empty()).then(|| value.to_owned())
+        })
+}
+
+/// The bytes in every file under `root`, symlinks not followed. Folders
+/// that can't be read inside it count as empty.
+fn size(root: &Path) -> Result<u64, Error> {
+    let mut size = 0;
+    let mut pending = vec![root.to_path_buf()];
+    let mut first = true;
+
+    while let Some(folder) = pending.pop() {
+        let entries = match fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) if first => return Err(io_at(&folder)(error)),
+            Err(_) => continue,
+        };
+        first = false;
+
+        for entry in entries.filter_map(Result::ok) {
+            // Doesn't follow symlinks, so a link to a folder isn't walked.
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+
+            if metadata.is_dir() {
+                pending.push(entry.path());
+            } else {
+                size += metadata.len();
+            }
+        }
+    }
+
+    Ok(size)
+}
+
 /// The entry of `directory` named `name` ignoring case, or `directory/name`
 /// when there is none.
 pub(crate) fn child(directory: &Path, name: &str) -> PathBuf {
@@ -354,6 +490,90 @@ mod tests {
 
         assert_eq!(installation.version(), WOTLK);
         assert_eq!(installation.locale(), Some("esES"));
+    }
+
+    #[test]
+    fn details_tell_the_size_languages_and_server() {
+        let (root, installation) = client();
+        fs::create_dir_all(root.path().join("Data/enUS")).unwrap();
+        fs::write(root.path().join("Data/enUS/realmlist.wtf"), "x").unwrap();
+        fs::write(
+            root.path().join("Data/esES/realmlist.wtf"),
+            "\u{feff}set patchlist localhost\r\nSET realmList \"logon.example.com\"\r\n",
+        )
+        .unwrap();
+
+        let details = Details::read(installation.root()).unwrap();
+
+        assert_eq!(details.locales, ["enUS", "esES"]);
+        let size = [
+            "Wow.exe",
+            "Data/enUS/realmlist.wtf",
+            "Data/esES/realmlist.wtf",
+        ]
+        .iter()
+        .map(|file| fs::metadata(root.path().join(file)).unwrap().len())
+        .sum::<u64>();
+        assert_eq!(details.size, size);
+        // Nothing says which language, so the first: its file sets none.
+        assert_eq!(
+            details.realmlist,
+            Some(Realmlist {
+                path: installation.root().join("Data/enUS/realmlist.wtf"),
+                server: None,
+            })
+        );
+    }
+
+    #[test]
+    fn the_language_played_in_has_the_realmlist_that_counts() {
+        let (root, _) = client();
+        fs::create_dir_all(root.path().join("Data/enUS")).unwrap();
+        fs::write(
+            root.path().join("Data/esES/realmlist.wtf"),
+            "\u{feff}set realmlist old.example.com\r\nset patchlist localhost\r\n\
+             SET realmList \"logon.example.com\"\r\nset realmlistbn \"\"\r\n\
+             #set realmlist commented.example.com\r\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(
+            root.path().join("WTF/Config.wtf"),
+            "SET locale \"deDE\"\nSET gxResolution \"1920x1080\"\nSET locale \"esES\"\n",
+        )
+        .unwrap();
+
+        let installation = Installation::open(root.path()).unwrap();
+
+        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(
+            Realmlist::of(installation.root()),
+            Some(Realmlist {
+                path: installation.root().join("Data/esES/realmlist.wtf"),
+                server: Some("logon.example.com".into()),
+            }),
+            "the last line setting it"
+        );
+
+        // A language the client has no data for doesn't count, and that
+        // one's folder has no realmlist.wtf.
+        fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"deDE\"\n").unwrap();
+        assert_eq!(
+            Installation::open(root.path()).unwrap().locale(),
+            Some("enUS")
+        );
+        assert_eq!(Realmlist::of(installation.root()), None);
+    }
+
+    #[test]
+    fn details_of_a_missing_folder_are_an_error() {
+        let (root, installation) = client();
+        drop(root);
+
+        assert!(matches!(
+            Details::read(installation.root()),
+            Err(Error::Io { .. })
+        ));
     }
 
     #[test]

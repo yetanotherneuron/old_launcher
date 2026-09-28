@@ -1,14 +1,16 @@
-//! Old Launcher: an addon manager for WoW 3.3.5a clients.
+//! Old Launcher: starts WoW 3.3.5a clients and manages their addons.
 //!
 //! The app is a thin shell over [`core`]: it remembers which client folders
-//! the user added, lists the launcher's catalog of addons alongside the
-//! client's, and runs every filesystem change on a blocking thread.
+//! the user added and how each one starts, lists the launcher's catalog of
+//! addons alongside the client's, and runs every filesystem change on a
+//! blocking thread.
 
 pub use old_launcher_core as core;
 
 mod action;
 mod addons;
 mod catalog;
+mod clients;
 mod errors;
 mod recovery;
 mod setup;
@@ -17,14 +19,14 @@ mod style;
 mod testing;
 mod transfer;
 
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
-    button, center, column, container, operation, pick_list, row, scrollable, space, stack, text,
-    tooltip,
+    button, center, column, container, operation, row, scrollable, space, text, tooltip,
 };
-use iced::{Center, Element, Fill, Fit, Font, Function, Subscription, Task, Theme, padding};
+use iced::{Center, Element, Fill, Fit, Function, Subscription, Task, Theme, padding};
 
 use crate::catalog::Catalog;
 use crate::core::{Adoption, Config, Installation, Snapshot};
@@ -77,6 +79,10 @@ pub struct App {
     /// Whether the list of recognized addons is open.
     details: bool,
     transfer: transfer::State,
+    /// The clients dialog, while open.
+    clients: Option<clients::State>,
+    /// The clients whose game was started and hasn't exited yet.
+    running: BTreeSet<PathBuf>,
 }
 
 /// The state of the client folder being shown.
@@ -93,6 +99,17 @@ enum Selected {
     },
 }
 
+impl Selected {
+    /// The client folder, whether or not it opened.
+    fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Nothing => None,
+            Self::Opening(path) | Self::Failed(path) => Some(path),
+            Self::Open { installation, .. } => Some(installation.root()),
+        }
+    }
+}
+
 /// Everything that can happen in the launcher.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -104,8 +121,15 @@ pub enum Message {
     Addons(addons::Message),
     /// An export or import.
     Transfer(transfer::Message),
-    /// A client folder was chosen in the picker.
-    Select(PathBuf),
+    /// An interaction with the clients dialog.
+    Clients(clients::Message),
+    /// Open the clients dialog.
+    ManageClients,
+    /// Start the game.
+    Play,
+    /// The game started from this client folder exited, with this exit code
+    /// if it had one, or failed to start.
+    Exited(PathBuf, Result<Option<i32>, String>),
     /// The selected client folder was checked.
     Opened(PathBuf, Result<Installation, String>),
     /// A client folder was scanned.
@@ -115,10 +139,6 @@ pub enum Message {
     /// Addons installed without the launcher were recognized as these
     /// catalog entries.
     Adopted(Result<Vec<Adoption>, String>),
-    /// Show the add-client form.
-    AddClient,
-    /// Forget the selected client folder (its files are left alone).
-    RemoveClient,
     /// Open `Interface/AddOns` in the file manager.
     OpenAddOns,
     /// Scan the selected client again.
@@ -209,6 +229,8 @@ impl App {
             recognized: Vec::new(),
             details: false,
             transfer: transfer::State::default(),
+            clients: None,
+            running: BTreeSet::new(),
         };
 
         let start = if app.recovery.is_some() {
@@ -268,6 +290,11 @@ impl App {
                         if !self.config.installations.contains(&root) {
                             self.config.installations.push(root.clone());
                         }
+                        // Added from the clients dialog, which shows it next.
+                        let read = self.clients.as_mut().map_or_else(Task::none, |clients| {
+                            clients.read(&root).map(Message::Clients)
+                        });
+
                         self.config.selected = Some(root);
                         self.selected = Selected::Open {
                             installation,
@@ -276,7 +303,7 @@ impl App {
                         self.setup = None;
                         self.recognized.clear();
 
-                        Task::batch([task, self.rescan(), self.save()])
+                        Task::batch([task, read, self.rescan(), self.save()])
                     }
                     Some(setup::Instruction::Cancelled) => {
                         self.setup = None;
@@ -333,9 +360,120 @@ impl App {
                     None => task,
                 }
             }
-            Message::Select(path) => {
-                self.config.selected = Some(path.clone());
-                Task::batch([self.open(path), self.save()])
+            Message::Clients(message) => {
+                let Some(clients) = &mut self.clients else {
+                    return Task::none();
+                };
+                let current = self.selected.path().map(Path::to_path_buf);
+                let action = clients.update(
+                    message,
+                    &mut self.config,
+                    current.as_deref(),
+                    &mut self.errors,
+                );
+                let task = action.task.map(Message::Clients);
+
+                match action.instruction {
+                    Some(clients::Instruction::Select(path)) => {
+                        self.config.selected = Some(path.clone());
+                        Task::batch([task, self.open(path), self.save()])
+                    }
+                    Some(clients::Instruction::Add) => {
+                        self.setup = Some(setup::State::new(true));
+                        Task::batch([task, operation::focus(setup::PATH)])
+                    }
+                    Some(clients::Instruction::Remove) => {
+                        let Some(removed) = current else {
+                            return task;
+                        };
+                        self.config.remove(&removed);
+                        self.selected = Selected::Nothing;
+
+                        let open = match self.config.selected.clone() {
+                            Some(path) => {
+                                let read =
+                                    self.clients.as_mut().map_or_else(Task::none, |clients| {
+                                        clients.read(&path).map(Message::Clients)
+                                    });
+                                Task::batch([read, self.open(path)])
+                            }
+                            // Nothing left to manage: the first-run form.
+                            None => {
+                                self.clients = None;
+                                self.setup = Some(setup::State::new(false));
+                                operation::focus(setup::PATH)
+                            }
+                        };
+
+                        Task::batch([task, open, self.save()])
+                    }
+                    Some(clients::Instruction::Close { edited }) => {
+                        self.clients = None;
+
+                        if edited {
+                            Task::batch([task, self.save()])
+                        } else {
+                            task
+                        }
+                    }
+                    None => task,
+                }
+            }
+            Message::ManageClients => {
+                let mut clients = clients::State::default();
+                let read = self
+                    .selected
+                    .path()
+                    .map_or_else(Task::none, |path| clients.read(path).map(Message::Clients));
+                self.clients = Some(clients);
+
+                read
+            }
+            Message::Play => {
+                let Selected::Open { installation, .. } = &self.selected else {
+                    return Task::none();
+                };
+                let root = installation.root().to_path_buf();
+
+                if self.running.contains(&root) {
+                    return Task::none();
+                }
+
+                match core::launch::command(installation, &self.config.launch(&root)) {
+                    Ok(command) => {
+                        self.running.insert(root.clone());
+                        Task::perform(play(command), Message::Exited.with(root))
+                    }
+                    Err(error) => {
+                        self.errors
+                            .report(format!("Could not start World of Warcraft: {error}"));
+                        Task::none()
+                    }
+                }
+            }
+            Message::Exited(root, result) => {
+                self.running.remove(&root);
+
+                match result {
+                    Ok(None | Some(0)) => {}
+                    // What `sh` says when it can't find or run the command.
+                    Ok(Some(127)) if !cfg!(windows) => self.errors.report(
+                        "Could not start World of Warcraft: the command to start it was not \
+                         found. Check it under Manage clients.",
+                    ),
+                    Ok(Some(126)) if !cfg!(windows) => self.errors.report(
+                        "Could not start World of Warcraft: the command to start it can't be \
+                         run. Check it under Manage clients.",
+                    ),
+                    Ok(Some(code)) => self
+                        .errors
+                        .report(format!("World of Warcraft exited with status {code}.")),
+                    Err(error) => self
+                        .errors
+                        .report(format!("Could not start World of Warcraft: {error}")),
+                }
+
+                Task::none()
             }
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
@@ -413,31 +551,6 @@ impl App {
                 self.errors
                     .report(format!("Could not mark recognized addons: {error}"));
                 Task::none()
-            }
-            Message::AddClient => {
-                self.setup = Some(setup::State::new(true));
-                operation::focus(setup::PATH)
-            }
-            Message::RemoveClient => {
-                let removed = match &self.selected {
-                    Selected::Opening(path) | Selected::Failed(path) => path.clone(),
-                    Selected::Open { installation, .. } => installation.root().to_path_buf(),
-                    Selected::Nothing => return Task::none(),
-                };
-
-                self.config.installations.retain(|path| *path != removed);
-                self.config.selected = self.config.installations.first().cloned();
-                self.selected = Selected::Nothing;
-
-                let open = match self.config.selected.clone() {
-                    Some(path) => self.open(path),
-                    None => {
-                        self.setup = Some(setup::State::new(false));
-                        Task::none()
-                    }
-                };
-
-                Task::batch([open, self.save()])
             }
             Message::OpenAddOns => {
                 let Selected::Open { installation, .. } = &self.selected else {
@@ -551,6 +664,8 @@ impl App {
             Message::Escape => {
                 if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
+                } else if self.clients.is_some() {
+                    self.update(Message::Clients(clients::Message::Close))
                 } else if self.details {
                     self.update(Message::CloseRecognized)
                 } else if self.transfer.view().is_some() {
@@ -581,11 +696,10 @@ impl App {
             return center(setup.view().map(Message::Setup)).padding(20).into();
         }
 
-        let current = match &self.selected {
-            Selected::Opening(path) | Selected::Failed(path) => Some(path.clone()),
-            Selected::Open { installation, .. } => Some(installation.root().to_path_buf()),
-            Selected::Nothing => None,
-        };
+        let running = self
+            .selected
+            .path()
+            .is_some_and(|path| self.running.contains(path));
 
         let title = button(text("Old Launcher").size(24).font(style::BOLD))
             .padding(0)
@@ -615,33 +729,16 @@ impl App {
                 tooltip::Position::Bottom,
             ),
             space::horizontal(),
-            // The built-in arrow is drawn over the end of an ellipsized label,
-            // so the label keeps clear of the right edge and the same arrow
-            // glyph is layered on top instead.
-            stack![
-                pick_list(
-                    current.clone(),
-                    self.config.installations.as_slice(),
-                    |path: &PathBuf| path.display().to_string(),
-                )
-                .placeholder("Select a client")
-                .on_select(Message::Select)
-                .ellipsis(text::Ellipsis::Middle)
-                .handle(pick_list::Handle::None)
-                .padding(padding::all(5).left(10).right(32))
-                .width(Fill),
-                container(text('\u{e800}').font(Font::new("Iced-Icons")))
-                    .align_right(Fill)
-                    .center_y(Fill)
-                    .padding(padding::right(10)),
-            ]
-            .width(Fill.max(460)),
-            button("Add client…")
+            button("Manage clients…")
                 .style(button::secondary)
-                .on_press(Message::AddClient),
-            button("Remove")
-                .style(button::text)
-                .on_press_maybe(current.map(|_| Message::RemoveClient)),
+                .on_press(Message::ManageClients),
+            button(text(if running { "Running" } else { "Play" }).font(style::BOLD))
+                .padding([6, 26])
+                .style(button::primary)
+                .on_press_maybe(
+                    (matches!(self.selected, Selected::Open { .. }) && !running)
+                        .then_some(Message::Play)
+                ),
         ]
         .spacing(10)
         .align_y(Center);
@@ -790,13 +887,24 @@ impl App {
         .spacing(14)
         .padding(20);
 
-        let (dialog, on_blur) = match &self.setup {
-            Some(setup) => (
+        let (dialog, on_blur) = match (&self.setup, &self.clients) {
+            // Added from the clients dialog, which comes back afterwards.
+            (Some(setup), _) => (
                 Some(setup.view().map(Message::Setup)),
                 Message::Setup(setup::Message::Cancel),
             ),
-            None if self.details => (Some(self.recognized_view()), Message::CloseRecognized),
-            None => (
+            (None, Some(clients)) => (
+                Some(
+                    clients
+                        .view(&self.config, self.selected.path(), installation)
+                        .map(Message::Clients),
+                ),
+                Message::Clients(clients::Message::Close),
+            ),
+            (None, None) if self.details => {
+                (Some(self.recognized_view()), Message::CloseRecognized)
+            }
+            (None, None) => (
                 self.transfer
                     .view()
                     .map(|dialog| dialog.map(Message::Transfer)),
@@ -866,9 +974,17 @@ impl App {
         .into()
     }
 
-    /// Keyboard shortcuts; see [`shortcut`].
+    /// Keyboard shortcuts (see [`shortcut`]), and what the clients dialog
+    /// listens to while open.
     pub fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().filter_map(shortcut)
+        Subscription::batch([
+            keyboard::listen().filter_map(shortcut),
+            self.clients
+                .as_ref()
+                .map_or_else(Subscription::none, |clients| {
+                    clients.subscription().map(Message::Clients)
+                }),
+        ])
     }
 
     /// Fetches the published catalog, if there is one to fetch.
@@ -981,6 +1097,31 @@ fn counted(count: usize, noun: &str) -> String {
     }
 }
 
+/// A byte count for people: `850 KB`, `12.4 MB`, `17.3 GB`.
+fn size(bytes: u64) -> String {
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * MB;
+
+    if bytes as f64 >= GB {
+        format!("{:.1} GB", bytes as f64 / GB)
+    } else if bytes as f64 >= MB {
+        format!("{:.1} MB", bytes as f64 / MB)
+    } else {
+        format!("{} KB", bytes.div_ceil(1024))
+    }
+}
+
+/// Starts the game with `command` and waits for it to exit: its exit code,
+/// if it has one. The game keeps running if the launcher quits first.
+async fn play(command: std::process::Command) -> Result<Option<i32>, String> {
+    let status = tokio::process::Command::from(command)
+        .status()
+        .await
+        .map_err(|error| describe(&error))?;
+
+    Ok(status.code())
+}
+
 /// Runs filesystem work on a blocking thread, so the UI never waits on disk.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, core::Error> + Send + 'static,
@@ -1024,6 +1165,7 @@ mod tests {
             config: Config {
                 selected: installations.first().cloned(),
                 installations,
+                ..Config::default()
             },
             client: Ok(reqwest::Client::new()),
             catalog: Catalog::default(),
@@ -1037,6 +1179,8 @@ mod tests {
             recognized: Vec::new(),
             details: false,
             transfer: transfer::State::default(),
+            clients: None,
+            running: BTreeSet::new(),
         }
     }
 
@@ -1061,7 +1205,7 @@ mod tests {
 
         let mut ui = simulator(app.view());
         assert!(ui.find("The settings file can't be read").is_ok());
-        assert!(ui.find("Add client…").is_err(), "nothing else is shown");
+        assert!(ui.find("Manage clients…").is_err(), "nothing else is shown");
         drop(ui);
 
         // Overwriting starts afresh: no clients, so the add-client form.
@@ -1214,14 +1358,198 @@ mod tests {
     }
 
     #[test]
-    fn the_client_picker_lists_client_paths() {
+    fn clients_are_managed_in_a_dialog() {
         let mut app = app(&["/games/wotlk", "/games/warmane"]);
         app.selected = Selected::Opening("/games/wotlk".into());
 
         let mut ui = simulator(app.view());
-        let _ = ui.click("/games/wotlk").unwrap();
+        assert!(
+            ui.find("/games/warmane").is_err(),
+            "no picker in the header"
+        );
+        let _ = ui.click("Manage clients…").unwrap();
+        for message in ui.into_messages() {
+            let _ = app.update(message);
+        }
 
-        assert!(ui.find("/games/warmane").is_ok());
+        let mut ui = simulator(app.view());
+        let _ = ui.click("/games/wotlk").unwrap();
+        assert!(ui.find("/games/warmane").is_ok(), "every client is listed");
+        assert!(ui.find(iced_test::selector::id(clients::ADD)).is_ok());
+        drop(ui);
+
+        let _ = app.update(Message::Escape);
+        assert!(app.clients.is_none(), "Escape closes it");
+    }
+
+    #[test]
+    fn adding_a_client_from_the_dialog_comes_back_to_it() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let mut app = app(&["/games/wotlk"]);
+        app.selected = Selected::Failed("/games/wotlk".into());
+        let _ = app.update(Message::ManageClients);
+
+        let _ = app.update(Message::Clients(clients::Message::Add));
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Add a WoW 3.3.5a client").is_ok());
+        drop(ui);
+
+        let _ = app.update(Message::Setup(setup::Message::Checked(Ok(
+            installation.clone()
+        ))));
+
+        assert!(app.setup.is_none());
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Clients").is_ok(), "the dialog again");
+        assert!(
+            ui.find(installation.root().display().to_string().as_str())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn removing_the_last_client_asks_for_another() {
+        let mut app = app(&["/games/wotlk"]);
+        app.selected = Selected::Failed("/games/wotlk".into());
+        app.config
+            .launch
+            .insert("/games/wotlk".into(), crate::core::Launch::default());
+        let _ = app.update(Message::ManageClients);
+
+        let _ = app.update(Message::Clients(clients::Message::Remove));
+
+        assert!(app.config.installations.is_empty());
+        assert!(app.config.launch.is_empty());
+        assert!(app.clients.is_none());
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Add a WoW 3.3.5a client").is_ok());
+        assert!(ui.find("Cancel").is_err(), "there is nothing to go back to");
+    }
+
+    #[test]
+    fn a_long_client_path_is_shortened_to_fit() {
+        let (root, _) = crate::testing::client(&[]);
+        let long = root
+            .path()
+            .join("World of Warcraft ".repeat(5).trim_end())
+            .join("3.3.5a ".repeat(12).trim_end());
+        std::fs::create_dir_all(&long).unwrap();
+        std::fs::copy(root.path().join("Wow.exe"), long.join("Wow.exe")).unwrap();
+        let installation = Installation::open(&long).unwrap();
+        let mut app = app(&[&long.display().to_string()]);
+        app.selected = Selected::Open {
+            snapshot: Some(installation.scan().unwrap()),
+            installation,
+        };
+
+        let mut ui = iced_test::simulator::Simulator::with_size(
+            iced::Settings::default(),
+            App::MIN_SIZE,
+            app.view(),
+        );
+
+        for button in ["Play", "Manage clients…", "Import…"] {
+            let bounds = ui.find(button).unwrap().bounds();
+            assert!(
+                bounds.x + bounds.width <= App::MIN_SIZE.width,
+                "{button} ends inside the window: {bounds:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn play_starts_the_client_once_and_says_why_it_stopped() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = app(&[&root.display().to_string()]);
+        app.selected = Selected::Open {
+            snapshot: Some(installation.scan().unwrap()),
+            installation,
+        };
+
+        let mut ui = simulator(app.view());
+        let _ = ui.click("Play").unwrap();
+        for message in ui.into_messages() {
+            let _ = app.update(message);
+        }
+
+        assert!(app.running.contains(&root));
+        let mut ui = simulator(app.view());
+        let _ = ui.click("Running").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "it is already running");
+
+        let _ = app.update(Message::Exited(root.clone(), Ok(Some(0))));
+        assert!(app.running.is_empty());
+        assert!(app.errors.messages().is_empty(), "a normal exit");
+
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Exited(root.clone(), Ok(Some(3))));
+        assert_eq!(
+            app.errors.messages(),
+            ["World of Warcraft exited with status 3."]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn playing_waits_for_the_game_and_tells_how_it_ended() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let shell = |line: &str| {
+            let mut command = std::process::Command::new("sh");
+            command.arg("-c").arg(line);
+            command
+        };
+
+        assert_eq!(runtime.block_on(play(shell("exit 0"))), Ok(Some(0)));
+        assert_eq!(runtime.block_on(play(shell("exit 3"))), Ok(Some(3)));
+        assert_eq!(
+            runtime.block_on(play(shell("kill -9 $$"))),
+            Ok(None),
+            "killed, so no exit code"
+        );
+        assert!(
+            runtime
+                .block_on(play(std::process::Command::new(
+                    "/nonexistent/old_launcher_game"
+                )))
+                .is_err()
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_command_that_cant_start_the_game_is_pointed_at() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = app(&[&root.display().to_string()]);
+        app.selected = Selected::Open {
+            snapshot: None,
+            installation,
+        };
+
+        app.config.set_launch(
+            &root,
+            crate::core::Launch {
+                env: "umu-run".into(),
+                command: String::new(),
+            },
+        );
+        let _ = app.update(Message::Play);
+        assert!(app.running.is_empty(), "nothing was started");
+
+        app.config.set_launch(&root, crate::core::Launch::default());
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Exited(root, Ok(Some(127))));
+
+        assert_eq!(
+            app.errors.messages(),
+            [
+                "Could not start World of Warcraft: invalid environment variables: umu-run is \
+                 not a NAME=value pair.",
+                "Could not start World of Warcraft: the command to start it was not found. \
+                 Check it under Manage clients.",
+            ]
+        );
     }
 
     #[test]

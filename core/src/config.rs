@@ -1,13 +1,15 @@
-//! The launcher's own settings file: which client folders it manages.
+//! The launcher's own settings file: which client folders it manages, and
+//! how each one starts.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::Error;
 use crate::error::io_at;
+use crate::{Error, Launch};
 
 /// The saved settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +20,10 @@ pub struct Config {
     /// The client folder last selected.
     #[serde(default)]
     pub selected: Option<PathBuf>,
+    /// How clients start outside Windows, by client folder. Clients missing
+    /// here start with the defaults.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub launch: BTreeMap<PathBuf, Launch>,
 }
 
 impl Config {
@@ -53,6 +59,31 @@ impl Config {
 
         fs::write(&partial, toml::to_string_pretty(self)?).map_err(io_at(&partial))?;
         fs::rename(&partial, path).map_err(io_at(path))
+    }
+
+    /// How the client at `root` starts.
+    pub fn launch(&self, root: &Path) -> Launch {
+        self.launch.get(root).cloned().unwrap_or_default()
+    }
+
+    /// Sets how the client at `root` starts; default settings are not kept.
+    pub fn set_launch(&mut self, root: &Path, launch: Launch) {
+        if launch.is_default() {
+            self.launch.remove(root);
+        } else {
+            self.launch.insert(root.to_path_buf(), launch);
+        }
+    }
+
+    /// Forgets the client at `root`, and selects the first one left if it
+    /// was the selected one. Its folder is left alone.
+    pub fn remove(&mut self, root: &Path) {
+        self.installations.retain(|path| path != root);
+        self.launch.remove(root);
+
+        if self.selected.as_deref() == Some(root) {
+            self.selected = self.installations.first().cloned();
+        }
     }
 }
 
@@ -159,14 +190,63 @@ mod tests {
     fn a_saved_config_loads_back_identically() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("nested/config.toml");
-        let config = Config {
-            installations: vec!["/games/wotlk".into(), "/games/warmane".into()],
-            selected: Some("/games/warmane".into()),
+        let mut config = Config {
+            installations: vec!["/games/wotlk".into(), "/games/war mane".into()],
+            selected: Some("/games/war mane".into()),
+            launch: BTreeMap::new(),
         };
+        config.set_launch(
+            Path::new("/games/war mane"),
+            Launch {
+                env: "WINEPREFIX=\"$HOME/wine prefix\"".into(),
+                command: "umu-run %command%".into(),
+            },
+        );
 
         config.save(&path).unwrap();
 
         assert_eq!(Config::load(&path).unwrap(), config);
+        assert_eq!(config.launch(Path::new("/games/wotlk")), Launch::default());
+    }
+
+    #[test]
+    fn configs_without_launch_settings_still_load() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "installations = [\"/games/wotlk\"]\n").unwrap();
+
+        let config = Config::load(&path).unwrap();
+
+        assert_eq!(config.installations, [PathBuf::from("/games/wotlk")]);
+        assert!(config.launch.is_empty());
+        config.save(&path).unwrap();
+        assert!(
+            !fs::read_to_string(&path).unwrap().contains("launch"),
+            "nothing to write"
+        );
+    }
+
+    #[test]
+    fn forgetting_a_client_forgets_how_it_starts() {
+        let mut config = Config {
+            installations: vec!["/games/wotlk".into(), "/games/warmane".into()],
+            selected: Some("/games/wotlk".into()),
+            launch: BTreeMap::new(),
+        };
+        let custom = Launch {
+            env: String::new(),
+            command: "lutris lutris:rungameid/3".into(),
+        };
+        config.set_launch(Path::new("/games/wotlk"), custom.clone());
+        config.set_launch(Path::new("/games/warmane"), custom);
+        config.set_launch(Path::new("/games/warmane"), Launch::default());
+        assert_eq!(config.launch.len(), 1, "default settings are not kept");
+
+        config.remove(Path::new("/games/wotlk"));
+
+        assert_eq!(config.installations, [PathBuf::from("/games/warmane")]);
+        assert_eq!(config.selected, Some(PathBuf::from("/games/warmane")));
+        assert!(config.launch.is_empty());
     }
 
     #[test]
