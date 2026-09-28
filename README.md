@@ -1,7 +1,7 @@
 # Old Launcher
 
-An addon manager for World of Warcraft 3.3.5a clients, built with
-[iced](https://github.com/iced-rs/iced).
+A launcher and addon manager for World of Warcraft 3.3.5a clients, built
+with [iced](https://github.com/iced-rs/iced).
 
 **[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
 **[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
@@ -25,6 +25,7 @@ Each is a single file built from the latest `main`; nothing to install.
 
 ![Every addon in one list, with the search box and the filters above it](assets/screenshots/addons.png)
 
+- **Play**: on Linux through Wine, Proton or any runner, set up per client.
 - **One list** of every addon, catalog and installed, to search and filter.
 - **Install** or reinstall with one click, from the freshest source.
 - **Manage** addons: uninstall, clean saved settings, repair broken folders.
@@ -33,6 +34,8 @@ Each is a single file built from the latest `main`; nothing to install.
 - **Several clients** side by side (3.3.5a only).
 
 ![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
+
+![A client's details, and how it starts on Linux: Proton through umu-launcher](assets/screenshots/clients.png)
 
 ![Importing addons and saved settings exported on another computer](assets/screenshots/import.png)
 
@@ -117,7 +120,14 @@ not descend into it, since deeper `.toc` files belong to embedded libraries.
 So only `Name/Name.toc` layouts ever reach `Interface/AddOns`, whatever the
 archive looks like.
 
-The only file outside the clients is the list of client folders:
+**Play** starts `Wow.exe` from the client folder on Windows. Elsewhere it
+runs the client's command with `sh`, the way Steam runs launch options: the
+environment variables are set and exported first, and `%command%` becomes
+the quoted path to `Wow.exe` (`wine %command%` when there is no command).
+`~` and `$HOME` expand as in a terminal.
+
+The only file outside the clients lists the client folders and how each one
+starts:
 `~/.config/old_launcher/config.toml` (the platform config directory
 elsewhere), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
 launcher does nothing else until you choose: it shows why, where the file
@@ -128,13 +138,13 @@ edit it (then read it again), quit, or overwrite it with new settings.
 
 - `core/`: data and filesystem logic, no GUI and no network (TOC parsing,
   client detection, archive extraction, install/uninstall/repair/clean,
-  the catalog schema, adoption, and the `library` the list is filtered
-  from). Unit-tested against temporary directories.
+  the catalog schema, adoption, launch commands, and the `library` the list
+  is filtered from). Unit-tested against temporary directories.
 - `indexer/`: the CLI that builds `index/wotlk.json` from the upstream
   sources.
 - `src/`: the iced app. `lib.rs` is the shell, with one TEA cell per screen
-  (`setup`, and `addons` with its cards and confirmation dialogs). Screens
-  are tested with `iced_test::simulator`.
+  (`setup`, `clients`, and `addons` with its cards and confirmation
+  dialogs). Screens are tested with `iced_test::simulator`.
 
 Nothing outside tests may panic on purpose: the workspace denies `unwrap`,
 `expect`, `panic!`, `unreachable!`, `todo!` and `unimplemented!` through
