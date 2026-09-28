@@ -225,7 +225,7 @@ impl Confirm {
 }
 
 /// Names as a sentence: `A`, `A and B`, `A, B and C`.
-fn names(names: &[String]) -> String {
+pub fn names(names: &[String]) -> String {
     match names {
         [] => String::new(),
         [one] => one.clone(),

@@ -3,7 +3,7 @@
 
 use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
-use iced::{Border, Color, Element, Font, Theme, border, color, font};
+use iced::{Border, Color, Element, Fit, Font, Theme, border, color, font};
 
 /// A trash can, drawn in black: [`delete_button`] tints it.
 const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
@@ -55,6 +55,22 @@ pub fn card(theme: &Theme) -> container::Style {
         },
         ..container::Style::default()
     }
+}
+
+/// `content`, explained by `hint` in a box below it on hover.
+pub fn tip<'a, Message: 'a>(
+    content: impl Into<Element<'a, Message>>,
+    hint: impl text::IntoFragment<'a>,
+) -> Element<'a, Message> {
+    tooltip(
+        content,
+        container(text(hint).size(13))
+            .padding([6, 10])
+            .width(Fit.max(360))
+            .style(container::rounded_box),
+        tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 /// A full-width notice tinted with `tone`, whose text takes the tone's color.

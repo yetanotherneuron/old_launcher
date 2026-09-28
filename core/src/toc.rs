@@ -87,6 +87,45 @@ impl Toc {
     }
 }
 
+/// The game version an addon declaring `interface` was made for, as players
+/// call it ("Cataclysm", "WotLK 3.2", "Wrath Classic"), or `None` for 3.3.5a
+/// itself.
+///
+/// Interface numbers are the patch as digits: 30300 is 3.3.0, 110002 is
+/// 11.0.2. The Classic re-releases reuse their expansion's major version
+/// with a later minor one (1.13 on, 2.5, 3.4, 4.4, 5.5).
+pub fn made_for(interface: u32) -> Option<String> {
+    if interface == Toc::WOTLK_INTERFACE {
+        return None;
+    }
+
+    let major = interface / 10_000;
+    let minor = interface % 10_000 / 100;
+
+    Some(match (major, minor) {
+        (1, 13..=15) => "WoW Classic".to_owned(),
+        (1, _) => "Vanilla".to_owned(),
+        (2, 5) => "Burning Crusade Classic".to_owned(),
+        (2, _) => "The Burning Crusade".to_owned(),
+        (3, 0..=2) => format!("WotLK 3.{minor}"),
+        (3, 4) => "Wrath Classic".to_owned(),
+        (3, _) => "another WotLK patch".to_owned(),
+        (4, 4) => "Cataclysm Classic".to_owned(),
+        (4, _) => "Cataclysm".to_owned(),
+        (5, 5) => "Mists of Pandaria Classic".to_owned(),
+        (5, _) => "Mists of Pandaria".to_owned(),
+        (6, _) => "Warlords of Draenor".to_owned(),
+        (7, _) => "Legion".to_owned(),
+        (8, _) => "Battle for Azeroth".to_owned(),
+        (9, _) => "Shadowlands".to_owned(),
+        (10, _) => "Dragonflight".to_owned(),
+        (11, _) => "The War Within".to_owned(),
+        (12, _) => "Midnight".to_owned(),
+        (0, _) => "an unknown game version".to_owned(),
+        _ => "a newer game version".to_owned(),
+    })
+}
+
 /// Removes the client's UI escape sequences (colors, textures, hyperlinks)
 /// from a string, leaving the plain text.
 pub fn strip_escapes(text: &str) -> String {
@@ -197,6 +236,30 @@ mod tests {
     #[test]
     fn retail_interfaces_target_another_client() {
         assert!(Toc::parse(b"## Interface: 110002\n").targets_other_client());
+    }
+
+    #[test]
+    fn interfaces_name_the_game_version_they_were_made_for() {
+        let named = |interface| made_for(interface).unwrap_or_default();
+
+        assert_eq!(made_for(30300), None, "3.3.5a itself");
+        assert_eq!(named(11200), "Vanilla");
+        assert_eq!(named(11507), "WoW Classic");
+        assert_eq!(named(20100), "The Burning Crusade");
+        assert_eq!(named(20504), "Burning Crusade Classic");
+        assert_eq!(named(30200), "WotLK 3.2");
+        assert_eq!(named(30000), "WotLK 3.0");
+        assert_eq!(named(30403), "Wrath Classic");
+        assert_eq!(named(33000), "another WotLK patch", "a typo in the .toc");
+        assert_eq!(named(40100), "Cataclysm");
+        assert_eq!(named(41000), "Cataclysm", "a typo, not the Classic 4.4");
+        assert_eq!(named(40400), "Cataclysm Classic");
+        assert_eq!(named(50500), "Mists of Pandaria Classic");
+        assert_eq!(named(100207), "Dragonflight");
+        assert_eq!(named(110002), "The War Within");
+        assert_eq!(named(120001), "Midnight");
+        assert_eq!(named(130000), "a newer game version");
+        assert_eq!(named(300), "an unknown game version");
     }
 
     #[test]

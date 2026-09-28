@@ -8,6 +8,7 @@ use super::confirm::{self, Confirm};
 use super::{Key, Message, Stage, State, size};
 use crate::catalog::Catalog;
 use crate::core::library::{Item, Library};
+use crate::core::toc;
 use crate::core::{Addon, Snapshot, Toc};
 use crate::style::{self, Tone};
 
@@ -72,35 +73,50 @@ impl State {
             (_, None) => {}
         }
 
-        // What is on disk, when installed; what the catalog says otherwise.
-        // Backports often keep another client's number, so this is a hint.
+        // The interfaces of what is on disk, when installed; of what the
+        // catalog says otherwise.
         let mut interfaces: Vec<u32> = match (group, entry) {
             (Some(group), _) => group
                 .addons
                 .iter()
-                .filter_map(|addon| addon.toc.as_ref())
-                .filter(|toc| toc.targets_other_client())
-                .filter_map(|toc| toc.interface)
+                .filter_map(|addon| addon.toc.as_ref()?.interface)
                 .collect(),
             (None, Some(entry)) => entry
                 .folders()
                 .iter()
                 .filter_map(|folder| folder.interface)
-                .filter(|interface| *interface != Toc::WOTLK_INTERFACE)
                 .collect(),
             (None, None) => Vec::new(),
         };
         interfaces.sort_unstable();
         interfaces.dedup();
 
-        badges =
-            badges
-                .extend(broken.iter().map(|addon| {
-                    style::badge(format!("No {}.toc: not loaded", addon.name), Tone::Danger)
-                }))
-                .extend(interfaces.into_iter().map(|interface| {
-                    style::badge(format!("Interface {interface}"), Tone::Warning)
-                }));
+        // One badge per game version other than 3.3.5a, however many folders
+        // say so. Backports often keep another client's number, so the
+        // badge only warns.
+        let mut versions: Vec<(String, Vec<u32>)> = Vec::new();
+
+        for interface in interfaces {
+            let Some(version) = toc::made_for(interface) else {
+                continue;
+            };
+
+            match versions.iter_mut().find(|(named, _)| *named == version) {
+                Some((_, numbers)) => numbers.push(interface),
+                None => versions.push((version, vec![interface])),
+            }
+        }
+
+        badges = badges
+            .extend(broken.iter().map(|addon| {
+                style::badge(format!("No {}.toc: not loaded", addon.name), Tone::Danger)
+            }))
+            .extend(versions.into_iter().map(|(version, numbers)| {
+                style::tip(
+                    style::badge(format!("Made for {version}"), Tone::Warning),
+                    made_for_hint(&numbers),
+                )
+            }));
 
         if toc.is_some_and(|toc| toc.load_on_demand) {
             badges = badges.push(style::badge("Load on demand", Tone::Success));
@@ -211,14 +227,7 @@ impl State {
             );
 
             row![
-                tooltip(
-                    clean,
-                    container(text(summary).size(13))
-                        .padding([6, 10])
-                        .width(Fit.max(360))
-                        .style(container::rounded_box),
-                    tooltip::Position::Bottom,
-                ),
+                style::tip(clean, summary),
                 container(uninstall).id(uninstall_id(&title)),
             ]
             .spacing(6)
@@ -401,6 +410,25 @@ fn folder_list<'a>(folders: &[String]) -> Element<'a, Message> {
         tooltip::Position::Bottom,
     )
     .into()
+}
+
+/// What a "Made for …" badge means, for folders declaring the interface
+/// `numbers`.
+fn made_for_hint(numbers: &[u32]) -> String {
+    let declared = match numbers {
+        [one] => format!("Its .toc declares interface {one}"),
+        many => format!(
+            "Its .toc files declare interfaces {}",
+            confirm::names(&many.iter().map(u32::to_string).collect::<Vec<_>>())
+        ),
+    };
+
+    format!(
+        "{declared}; 3.3.5a's is {}. The game lists it as out of date and only \
+         loads it with \u{201c}Load out of date AddOns\u{201d} ticked on the character \
+         selection screen. Even then, it might not work, or only in part.",
+        Toc::WOTLK_INTERFACE
+    )
 }
 
 /// The id of the uninstall button of the addon listed as `title`.

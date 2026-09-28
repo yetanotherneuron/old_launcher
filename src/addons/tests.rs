@@ -141,8 +141,34 @@ fn cards_show_every_source_the_date_folders_and_foreign_interfaces() {
         "the preferred download's date"
     );
     assert!(ui.find("Folders: Skada, SkadaStorage").is_ok());
-    assert!(ui.find("Interface 40000").is_ok());
+    assert!(ui.find("Made for Cataclysm").is_ok());
     assert!(ui.find("Reload").is_err(), "nothing to reload from");
+}
+
+#[test]
+fn addons_made_for_other_versions_explain_the_risk_on_hover() {
+    let catalog = catalog();
+    let state = State::new();
+
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    assert!(
+        ui.find("Made for WotLK 3.3").is_err() && ui.find("Made for ").is_err(),
+        "ACP declares 3.3.5a's own interface"
+    );
+    let badge = ui.find("Made for Cataclysm").unwrap().bounds().center();
+    ui.point_at(badge);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: badge,
+    })]);
+
+    assert!(
+        ui.find(
+            "Its .toc declares interface 40000; 3.3.5a's is 30300. The game lists it as out of \
+             date and only loads it with \u{201c}Load out of date AddOns\u{201d} ticked on the \
+             character selection screen. Even then, it might not work, or only in part."
+        )
+        .is_ok()
+    );
 }
 
 #[test]
