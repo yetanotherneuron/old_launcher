@@ -67,6 +67,14 @@ zip = { version = "8", default-features = false, features = ["deflate-flate2-zli
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
 rars = "0.9"
 
+# Release binaries are what people download: as fast and small as the
+# compiler makes them, at the cost of slower release builds. Panics still
+# unwind, so a panic in a background task becomes an error banner.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
 # iced 0.15 is unreleased — track the dev branch. Every iced crate in the tree
 # must come from the same git source.
 [patch.crates-io]

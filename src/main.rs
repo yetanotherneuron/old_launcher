@@ -1,3 +1,6 @@
+// A release build on Windows is a GUI app: no console window beside it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use iced::{Size, window};
 use old_launcher::App;
 

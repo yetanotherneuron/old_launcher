@@ -1,8 +1,14 @@
-# Lints and tests every push, and every merge request.
+# Lints and tests every push, and every merge request. Pushes to the default
+# branch that pass also build the downloadable binaries, which the README
+# links to.
 #
 # The first run builds everything from scratch (iced and wgpu take a while);
 # later runs reuse each job's cached cargo registry, git checkouts and target
 # directory.
+
+stages:
+  - check
+  - release
 
 default:
   # Pinned, so new clippy lints arrive with a deliberate bump rather than
@@ -17,6 +23,7 @@ variables:
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "false"
   CARGO_TERM_COLOR: always
+  DEBIAN_FRONTEND: noninteractive
 
 # One pipeline per change: a merge request's, or else the branch's.
 workflow:
@@ -38,6 +45,7 @@ workflow:
 
 clippy:
   extends: .cargo
+  stage: check
   before_script:
     - rustup component add clippy
   script:
@@ -46,6 +54,74 @@ clippy:
 
 test:
   extends: .cargo
+  stage: check
+  variables:
+    # mold links the big debug test binaries far faster than the default ld.
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq mold
   script:
     # The simulator tests render in software: runners have no GPU.
     - cargo test --workspace --locked
+
+# The binaries people download. Each job's latest successful artifact on the
+# default branch is kept however old it gets (GitLab's "keep artifacts from
+# most recent successful jobs"), which is what the README's links point at:
+# https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/<file>?job=<job>
+.release:
+  extends: .cargo
+  stage: release
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  artifacts:
+    expire_in: 30 days
+
+windows:
+  extends: .release
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq gcc-mingw-w64-x86-64
+    - rustup target add x86_64-pc-windows-gnu
+  script:
+    # Only system DLLs: runs from wherever it is saved.
+    - cargo build --release --locked --target x86_64-pc-windows-gnu
+    - cp target/x86_64-pc-windows-gnu/release/old_launcher.exe .
+  artifacts:
+    paths:
+      - old_launcher.exe
+
+# Linked against glibc 2.28, so the binaries run on any distribution since
+# 2018 (Debian 10, Ubuntu 20.04, Fedora 29, RHEL 8). Not static musl: the app
+# loads the system's X11/Wayland and graphics libraries at run time, which a
+# static binary can't do. zig does the linking, to that glibc version and
+# for either architecture.
+.linux:
+  extends: .release
+  variables:
+    ZIG_VERSION: "0.16.0"
+    ZIGBUILD_VERSION: "0.23.4"
+  before_script:
+    - mkdir -p /opt/zig /opt/zigbuild
+    - curl -sSfL "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz"
+      | tar -xJ -C /opt/zig --strip-components=1
+    - curl -sSfL "https://github.com/rust-cross/cargo-zigbuild/releases/download/v$ZIGBUILD_VERSION/cargo-zigbuild-x86_64-unknown-linux-gnu.tar.xz"
+      | tar -xJ -C /opt/zigbuild --strip-components=1
+    - export PATH="/opt/zig:/opt/zigbuild:$PATH"
+    - rustup target add "$TARGET"
+  script:
+    - cargo zigbuild --release --locked --target "$TARGET.2.28"
+    - cp "target/$TARGET/release/old_launcher" "$BINARY"
+  artifacts:
+    paths:
+      - $BINARY
+
+linux-x86_64:
+  extends: .linux
+  variables:
+    TARGET: x86_64-unknown-linux-gnu
+    BINARY: old_launcher-linux-x86_64
+
+linux-arm64:
+  extends: .linux
+  variables:
+    TARGET: aarch64-unknown-linux-gnu
+    BINARY: old_launcher-linux-arm64

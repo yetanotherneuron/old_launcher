@@ -3,6 +3,19 @@
 An addon manager for World of Warcraft 3.3.5a clients, built with
 [iced](https://github.com/iced-rs/iced) (tracking `master`).
 
+**[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
+· **[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
+· [Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
+
+Each is a single file built from the latest `main`; nothing to install.
+
+- **Linux** (64-bit, any distribution from 2018 on): make the file
+  executable, then run it: `chmod +x old_launcher-linux-x86_64` (or
+  `old_launcher-linux-arm64`).
+- **Windows** (64-bit, Windows 10 or newer): run `old_launcher.exe`. It isn't
+  signed, so Windows may warn about an unknown publisher: choose *More info*,
+  then *Run anyway*.
+
 - **One list** of every addon: the launcher's catalog of 3.3.5a addons,
   gathered from several sources, together with whatever else is in the
   client's `Interface/AddOns`. Search it, and filter it next to the search
@@ -27,7 +40,7 @@ cargo run --release
 ```
 
 Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> rescan,
-<kbd>Esc</kbd> close dialogs.
+<kbd>Esc</kbd> close dialogs, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
 
 ## The catalog
 
