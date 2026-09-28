@@ -571,14 +571,34 @@ fn clean_data_explains_whose_settings_it_deletes_on_hover() {
         position: button,
     })]);
 
+    // Counts only: the confirmation lists the files one by one.
     assert!(
         ui.find(
-            "Saved settings in 4 files:\n\
-             • 2 files shared by the whole account\n\
-             • 2 files for Arthas (Icecrown), Jaina (Icecrown)\n\
-             Includes the .bak backups the game keeps."
+            "Saved settings in 4 files: 2 shared by the whole account, and 2 for 2 characters."
         )
         .is_ok()
+    );
+}
+
+#[test]
+fn the_data_summary_stays_one_sentence_however_many_characters() {
+    let files: Vec<PathBuf> = (0..40)
+        .map(|index| {
+            PathBuf::from(format!(
+                "/wow/WTF/Account/ME/Icecrown/Hero{index}/SavedVariables/Skada.lua"
+            ))
+        })
+        .collect();
+
+    assert_eq!(
+        confirm::data_summary(&files),
+        "Saved settings in 40 files, for 40 characters."
+    );
+    assert_eq!(
+        confirm::data_summary(&[PathBuf::from(
+            "/wow/WTF/Account/ME/SavedVariables/Skada.lua"
+        )]),
+        "Saved settings in 1 file, shared by the whole account."
     );
 }
 

@@ -9,7 +9,7 @@ use iced::{Element, Fill, Fit};
 use super::Message;
 use crate::core::saved_variables::Scope;
 use crate::core::{Error, Installation};
-use crate::style;
+use crate::{counted, style};
 
 /// A deletion waiting for the user's confirmation.
 #[derive(Debug, Clone)]
@@ -233,14 +233,9 @@ pub fn names(names: &[String]) -> String {
     }
 }
 
-/// What "Clean data" would delete, in words: how many files, and whose
-/// settings they hold.
+/// What "Clean data" would delete, in one sentence: how many files, and
+/// whose settings they hold. The confirmation lists the files themselves.
 pub fn data_summary(files: &[PathBuf]) -> String {
-    let count = |files: usize| match files {
-        1 => "1 file".to_owned(),
-        files => format!("{files} files"),
-    };
-
     if files.is_empty() {
         return "No saved settings found.".to_owned();
     }
@@ -254,33 +249,24 @@ pub fn data_summary(files: &[PathBuf]) -> String {
             Some(Scope::Account(_)) => account += 1,
             Some(Scope::Character { realm, name }) => {
                 character_files += 1;
-                let _ = characters.insert(format!("{name} ({realm})"));
+                let _ = characters.insert((realm, name));
             }
             None => {}
         }
     }
 
-    let mut lines = vec![format!("Saved settings in {}:", count(files.len()))];
+    let total = counted(files.len(), "file");
+    let characters = counted(characters.len(), "character");
 
-    if account > 0 {
-        lines.push(format!("• {} shared by the whole account", count(account)));
+    match (account, character_files) {
+        (0, 0) => format!("Saved settings in {total}."),
+        (_, 0) => format!("Saved settings in {total}, shared by the whole account."),
+        (0, _) => format!("Saved settings in {total}, for {characters}."),
+        (account, character_files) => format!(
+            "Saved settings in {total}: {account} shared by the whole account, and \
+             {character_files} for {characters}."
+        ),
     }
-    if character_files > 0 {
-        let characters: Vec<String> = characters.into_iter().collect();
-        lines.push(format!(
-            "• {} for {}",
-            count(character_files),
-            characters.join(", ")
-        ));
-    }
-    if files
-        .iter()
-        .any(|file| file.extension().is_some_and(|extension| extension == "bak"))
-    {
-        lines.push("Includes the .bak backups the game keeps.".to_owned());
-    }
-
-    lines.join("\n")
 }
 
 #[cfg(test)]
