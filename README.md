@@ -15,6 +15,11 @@ Each is a single file built from the latest `main`; nothing to install.
 - **Windows** (64-bit, Windows 10 or newer): run `old_launcher.exe`. It isn't
   signed, so Windows may warn about an unknown publisher: choose *More info*,
   then *Run anyway*.
+- **Arch Linux**: install
+  [`old-launcher-git`](https://aur.archlinux.org/packages/old-launcher-git)
+  from the AUR, which adds it to your applications menu.
+
+## What it does
 
 - **One list** of every addon: the launcher's catalog of 3.3.5a addons,
   gathered from several sources, together with whatever else is in the
@@ -40,12 +45,19 @@ Each is a single file built from the latest `main`; nothing to install.
 - Manage several clients side by side; only 3.3.5a (`Wow.exe` build 12340)
   is accepted.
 
+Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> rescan,
+<kbd>Esc</kbd> close dialogs, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
+
+## Building from source
+
 ```sh
 cargo run --release
 ```
 
-Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> rescan,
-<kbd>Esc</kbd> close dialogs, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
+For packaging, `assets/old_launcher.desktop` and `assets/old_launcher.svg`
+are the desktop entry and its icon, named after the binary. `aur/PKGBUILD`
+is the AUR package; CI publishes it to the AUR whenever it changes on
+`main`.
 
 ## The catalog
 

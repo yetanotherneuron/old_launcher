@@ -125,3 +125,72 @@ linux-arm64:
   variables:
     TARGET: aarch64-unknown-linux-gnu
     BINARY: old_launcher-linux-arm64
+
+# Publishes aur/PKGBUILD to the AUR as old-launcher-git whenever it changes
+# on the default branch, with its version set and its .SRCINFO generated.
+#
+# It needs the CI/CD variable AUR_SSH_PRIVATE_KEY (type Variable, protected,
+# masked and hidden): the private half of an SSH key added to the AUR
+# account that maintains the package, base64-encoded onto one line
+# (`base64 -w0 <key>`), since GitLab only masks single-line values.
+aur:
+  stage: release
+  image: archlinux:base-devel
+  # Never stopped halfway through a push to the AUR.
+  interruptible: false
+  variables:
+    # The version counts every commit, so the whole history is needed.
+    GIT_DEPTH: 0
+    AUR_PACKAGE: old-launcher-git
+    # aur.archlinux.org's Ed25519 host key, as the AUR publishes it:
+    # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
+    AUR_HOST_KEY: "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - aur/PKGBUILD
+  before_script:
+    - pacman -Syu --noconfirm --needed git openssh
+    - install -dm700 ~/.ssh
+    - printf '%s' "$AUR_SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/aur
+    - chmod 600 ~/.ssh/aur
+    - echo "$AUR_HOST_KEY" > ~/.ssh/known_hosts
+    - printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur\n  IdentitiesOnly yes\n' > ~/.ssh/config
+  script:
+    - git clone "ssh://aur@aur.archlinux.org/$AUR_PACKAGE.git" aur-repository
+    - pkgver="r$(git rev-list --count HEAD).$(git rev-parse --short=7 HEAD)"
+    - sed "s/^pkgver=.*/pkgver=$pkgver/" aur/PKGBUILD > aur-repository/PKGBUILD
+    # makepkg refuses to run as root, even just to print the metadata.
+    - useradd --create-home packager
+    - chown -R packager aur-repository
+    - su packager -c "cd aur-repository && makepkg --printsrcinfo > .SRCINFO"
+    - cd aur-repository
+    - git add PKGBUILD .SRCINFO
+    - >-
+      if git diff --cached --quiet; then echo "The AUR already has this PKGBUILD."; exit 0; fi
+    - git -c user.name="$GITLAB_USER_NAME" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update to $pkgver"
+    - git push origin HEAD:master
+
+# The project page on GitLab Pages: the README, styled like the launcher,
+# with its icon. The address shows under Deploy > Pages.
+pages:
+  stage: release
+  image:
+    name: pandoc/core:3.11
+    entrypoint: [""]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - mkdir -p public
+    - >-
+      pandoc README.md --standalone --from gfm --to html5
+      --metadata pagetitle="Old Launcher"
+      --syntax-highlighting=none
+      --css style.css
+      --include-in-header pages/head.html
+      --include-before-body pages/header.html
+      --output public/index.html
+    - cp pages/style.css assets/old_launcher.svg public/
+  artifacts:
+    paths:
+      - public

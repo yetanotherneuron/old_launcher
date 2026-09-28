@@ -1,0 +1,115 @@
+/* The project page: the README in the launcher's own colors. */
+
+:root {
+  --background: #16141a;
+  --raised: #201d26;
+  --line: #34303d;
+  --text: #e9e3d3;
+  --muted: #a9a293;
+  --gold: #d4a64a;
+  --gold-bright: #f0c86a;
+}
+
+html {
+  background: var(--background);
+  color: var(--text);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Fira Sans", sans-serif;
+}
+
+body {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+header.logo {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+header.logo img {
+  width: 8rem;
+  height: 8rem;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--gold);
+  line-height: 1.25;
+}
+
+h1 {
+  text-align: center;
+  font-size: 2.4rem;
+  margin: 0.5rem 0 1.5rem;
+}
+
+h2 {
+  margin-top: 2.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--line);
+}
+
+a {
+  color: var(--gold);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: var(--gold-bright);
+}
+
+/* The download links, the first thing the page offers. */
+p:has(> strong > a) {
+  text-align: center;
+  font-size: 1.15rem;
+}
+
+p:has(> strong > a) strong a {
+  display: inline-block;
+  margin: 0.25rem 0.2rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 6px;
+  background: var(--gold);
+  color: var(--background);
+  text-decoration: none;
+}
+
+p:has(> strong > a) strong a:hover {
+  background: var(--gold-bright);
+}
+
+code,
+kbd,
+pre {
+  font-family: ui-monospace, "Cascadia Code", "Fira Mono", Menlo, monospace;
+  font-size: 0.88em;
+}
+
+code,
+kbd {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+pre {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+li + li {
+  margin-top: 0.35rem;
+}
