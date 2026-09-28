@@ -1,0 +1,51 @@
+# Lints and tests every push, and every merge request.
+#
+# The first run builds everything from scratch (iced and wgpu take a while);
+# later runs reuse each job's cached cargo registry, git checkouts and target
+# directory.
+
+default:
+  # Pinned, so new clippy lints arrive with a deliberate bump rather than
+  # failing an unrelated push. Keep it in step with the toolchain you develop
+  # with.
+  image: rust:1.98.1
+  interruptible: true
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  # Smaller, faster builds: nothing here is ever debugged.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "false"
+  CARGO_TERM_COLOR: always
+
+# One pipeline per change: a merge request's, or else the branch's.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+.cargo:
+  cache:
+    # Per job: clippy and the tests build different artifacts.
+    key: $CI_JOB_NAME
+    paths:
+      - .cargo/registry/index/
+      - .cargo/registry/cache/
+      - .cargo/git/db/
+      - target/
+
+clippy:
+  extends: .cargo
+  before_script:
+    - rustup component add clippy
+  script:
+    # Also enforces the workspace's no-panic lints (Cargo.toml).
+    - cargo clippy --workspace --all-targets --locked -- -D warnings
+
+test:
+  extends: .cargo
+  script:
+    # The simulator tests render in software: runners have no GPU.
+    - cargo test --workspace --locked
