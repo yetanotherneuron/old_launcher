@@ -1,0 +1,19 @@
+[package]
+name = "old_launcher_core"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tempfile = { workspace = true }
+zip = { workspace = true }
+sevenz-rust2 = { workspace = true }
+rars = { workspace = true }
+
+[dev-dependencies]

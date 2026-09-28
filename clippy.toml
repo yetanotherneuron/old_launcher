@@ -1,0 +1,4 @@
+# Tests fail by panicking; the workspace lints only forbid it elsewhere.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

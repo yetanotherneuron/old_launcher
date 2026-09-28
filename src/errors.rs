@@ -1,0 +1,55 @@
+//! Problems the launcher ran into and got past, shown in one banner until
+//! dismissed.
+
+use iced::widget::{button, column, container, row, text};
+use iced::{Center, Element, Fill};
+
+use crate::style::{self, Tone};
+
+/// The problems waiting to be seen, oldest first.
+#[derive(Debug, Default)]
+pub struct Errors(Vec<String>);
+
+impl Errors {
+    /// Adds `error` to the banner, unless it already says so.
+    pub fn report(&mut self, error: impl Into<String>) {
+        let error = error.into();
+
+        if !self.0.contains(&error) {
+            self.0.push(error);
+        }
+    }
+
+    /// Empties the banner.
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    /// The problems, oldest first.
+    #[cfg(test)]
+    pub fn messages(&self) -> &[String] {
+        &self.0
+    }
+
+    /// The banner, when there is anything to show; `dismiss` clears it.
+    pub fn view<'a, Message: Clone + 'a>(
+        &'a self,
+        dismiss: Message,
+    ) -> Option<Element<'a, Message>> {
+        (!self.0.is_empty()).then(|| {
+            container(
+                row![
+                    column(self.0.iter().map(|error| text(error).into()))
+                        .spacing(4)
+                        .width(Fill),
+                    button("Dismiss").style(button::text).on_press(dismiss),
+                ]
+                .spacing(8)
+                .align_y(Center),
+            )
+            .padding([6, 12])
+            .style(style::banner(Tone::Danger))
+            .into()
+        })
+    }
+}

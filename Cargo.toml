@@ -1,0 +1,74 @@
+[package]
+name = "old_launcher"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+old_launcher_core = { workspace = true }
+iced = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+rfd = { workspace = true }
+dirs = { workspace = true }
+open = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+iced_test = { workspace = true }
+tempfile = { workspace = true }
+zip = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util"] }
+
+[workspace]
+resolver = "3"
+members = ["core", "indexer"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+repository = "https://gitlab.com/juxuanu/old_launcher"
+
+# Nothing outside tests may panic on purpose: errors are returned and shown.
+# Tests may (clippy.toml), since a failed assertion is how they fail.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.dependencies]
+# short directory `core/`, prefixed package (bare `core` collides with std)
+old_launcher_core = { path = "core" }
+
+iced = { version = "0.15.0-dev", features = ["tokio", "sipper", "svg"] }
+iced_test = "0.15.0-dev"
+tokio = { version = "1", features = ["fs", "rt-multi-thread", "macros", "sync"] }
+# rustls on `ring`: no cmake/NASM toolchain needed on any platform.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "charset", "system-proxy", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rfd = "0.17"
+dirs = "7"
+open = "5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+thiserror = "2"
+tempfile = "3"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+# Archive formats, all pure Rust (no C/C++ toolchain).
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma"] }
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
+rars = "0.9"
+
+# iced 0.15 is unreleased — track the dev branch. Every iced crate in the tree
+# must come from the same git source.
+[patch.crates-io]
+iced = { git = "https://github.com/iced-rs/iced", branch = "master" }
+iced_test = { git = "https://github.com/iced-rs/iced", branch = "master" }
