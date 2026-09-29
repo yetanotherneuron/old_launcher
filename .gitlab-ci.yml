@@ -17,7 +17,7 @@ default:
   # with.
   image: rust:1.98.1
   interruptible: true
-  # The project's own runner; only the Windows tests are left to GitLab's.
+  # The project's own runner.
   tags:
     - linux
 
@@ -97,39 +97,23 @@ test:
   script:
     - cargo test --workspace --locked
 
-# The tests on Windows itself, on GitLab's shared Windows runners, which
-# have Visual Studio's build tools. They take a while, and the releases
-# wait for them: the launcher is meant to run on Windows.
+# The Windows build, linted and tested. Wine runs the tests: not Windows,
+# but its paths, files and the code written for it, without a Windows
+# machine.
 test-windows:
-  extends: .ordered
+  extends: [.cargo, .push]
   stage: check
-  tags:
-    - saas-windows-medium-amd64
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:
-    CARGO_HOME: $CI_PROJECT_DIR\.cargo
-    # Server Core has no opengl32.dll, which wgpu's OpenGL backend links:
-    # load it on first use instead, and the software-rendered tests never do.
-    CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: "-C link-arg=/DELAYLOAD:opengl32.dll -C link-arg=delayimp.lib"
-  cache:
-    key: $CI_JOB_NAME
-    when: always
-    paths:
-      - .cargo\registry\index\
-      - .cargo\registry\cache\
-      - .cargo\git\db\
-      - target\
+    CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER: wine
+    WINEPREFIX: /tmp/wine
+    WINEDEBUG: "-all"
   before_script:
-    - Invoke-WebRequest -Uri https://win.rustup.rs -OutFile rustup-init.exe
-    - .\rustup-init.exe -y --profile minimal --default-toolchain 1.98.1
-    # rustup installs cargo into CARGO_HOME, not the user's profile.
-    - $env:Path += ";$env:CARGO_HOME\bin"
+    - apt-get update -qq && apt-get install -y -qq gcc-mingw-w64-x86-64 wine wine64
+    - rustup target add x86_64-pc-windows-gnu
+    - rustup component add clippy
   script:
-    # Every failure at once: a run here takes a while to come by.
-    - cargo test --workspace --locked --no-fail-fast
+    - cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
+    - cargo test --workspace --locked --target x86_64-pc-windows-gnu --no-fail-fast
 
 # The binaries people download. Each job's latest successful artifact on the
 # default branch is kept however old it gets (GitLab's "keep artifacts from
@@ -150,10 +134,7 @@ windows:
   before_script:
     - apt-get update -qq && apt-get install -y -qq gcc-mingw-w64-x86-64
     - rustup target add x86_64-pc-windows-gnu
-    - rustup component add clippy
   script:
-    # What only compiles for Windows is linted here, tests included.
-    - cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
     # Only system DLLs: runs from wherever it is saved.
     - cargo build --release --locked --target x86_64-pc-windows-gnu
     - cp target/x86_64-pc-windows-gnu/release/old_launcher.exe .

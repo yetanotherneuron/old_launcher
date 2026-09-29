@@ -526,7 +526,17 @@ mod tests {
                 .join("wtf/Account/ME/Icecrown/Arthas/SavedVariables/Omen.lua")
                 .exists()
         );
-        assert!(!root.path().join("WTF").exists(), "no second WTF folder");
+        let wtf_folders = fs::read_dir(root.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("WTF")
+            })
+            .count();
+        assert_eq!(wtf_folders, 1, "no second WTF folder");
     }
 
     #[test]

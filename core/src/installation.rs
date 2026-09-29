@@ -659,12 +659,18 @@ mod tests {
 
         let installation = Installation::open(root.path()).unwrap();
 
-        let root = fs::canonicalize(root.path()).unwrap();
+        // Canonicalized on both sides: a folder is reachable under any
+        // spelling where the file system ignores case, and the launcher
+        // need not pick the one on disk there.
+        let existing = |relative: &str| dunce::canonicalize(root.path().join(relative)).unwrap();
         assert_eq!(
-            installation.addons_directory(),
-            root.join("Interface/Addons")
+            dunce::canonicalize(installation.addons_directory()).unwrap(),
+            existing("Interface/Addons")
         );
-        assert_eq!(installation.wtf_directory(), root.join("wtf"));
+        assert_eq!(
+            dunce::canonicalize(installation.wtf_directory()).unwrap(),
+            existing("wtf")
+        );
     }
 
     #[test]
@@ -699,7 +705,18 @@ mod tests {
         let in_use = addons.join(format!("{STAGING_PREFIX}in-use"));
         fs::create_dir(&abandoned).unwrap();
         fs::create_dir(&in_use).unwrap();
-        fs::File::open(&abandoned)
+
+        // Windows opens a folder only with FILE_FLAG_BACKUP_SEMANTICS, and
+        // sets its times only through FILE_WRITE_ATTRIBUTES access.
+        let mut options = fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x0200_0000).access_mode(0x100);
+        }
+        options
+            .open(&abandoned)
             .unwrap()
             .set_modified(std::time::SystemTime::now() - 2 * STAGING_AGE)
             .unwrap();
