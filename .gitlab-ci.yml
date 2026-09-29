@@ -32,16 +32,28 @@ variables:
   OLD_LAUNCHER_INDEX_URL: https://old-launcher-0d3217.gitlab.io/wotlk.json
 
 # One pipeline per change: a merge request's, or else the branch's. A
-# schedule runs only the `index` job.
+# schedule runs only the `index` job. Pipelines of the default branch all
+# run to the end, however quickly commits land on it; a branch's superseded
+# pipeline is cancelled.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      auto_cancel:
+        on_new_commit: none
     - if: $CI_COMMIT_BRANCH
 
+# Every job waits for its namesake in an older pipeline to finish, so what
+# a later commit publishes is never overtaken by an earlier one. Each
+# resource group's process mode is set to oldest_first through the API.
+.ordered:
+  resource_group: $CI_JOB_NAME
+
 .cargo:
+  extends: .ordered
   cache:
     # Per job: clippy and the tests build different artifacts.
     key: $CI_JOB_NAME
@@ -85,6 +97,7 @@ test:
 # stop: the Windows build below is lint-checked and cross-compiled either
 # way.
 test-windows:
+  extends: .ordered
   stage: check
   tags:
     - saas-windows-medium-amd64
@@ -189,6 +202,7 @@ linux-arm64:
 # account that maintains the package, base64-encoded onto one line
 # (`base64 -w0 <key>`), since GitLab only masks single-line values.
 aur:
+  extends: .ordered
   stage: release
   image: archlinux:base-devel
   # Never stopped halfway through a push to the AUR.
@@ -233,6 +247,7 @@ aur:
 # with its icon, its version and a footer back to the repository, plus the
 # catalog the binaries refresh from. The address shows under Deploy > Pages.
 pages:
+  extends: .ordered
   stage: release
   image:
     name: pandoc/core:3.11
