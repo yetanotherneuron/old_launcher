@@ -3,6 +3,7 @@
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use crate::error::io_at;
 use crate::{Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Version, archive, layout};
@@ -45,10 +46,12 @@ impl Installation {
     /// Opens the client at `root`, checking that it is a 3.3.5a client.
     ///
     /// The path is canonicalized, so the same client reached through different
-    /// spellings (`..`, trailing slashes) is recognized as the same.
+    /// spellings (`..`, trailing slashes) is recognized as the same. On
+    /// Windows that is done without the `\\?\` prefix `std` adds, which its
+    /// shell can't open and nobody wants to read.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, Error> {
         let root = root.into();
-        let root = match fs::canonicalize(&root) {
+        let root = match dunce::canonicalize(&root) {
             Ok(root) => root,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 return Err(Error::NotAClient(root));
@@ -110,10 +113,15 @@ impl Installation {
         child(&self.root, "WTF")
     }
 
-    /// Reads the installed addons and their data files.
+    /// Reads the installed addons and their data files. Staging folders an
+    /// interrupted install left behind are removed first (see
+    /// [`sweep_staging`]).
     pub fn scan(&self) -> Result<Snapshot, Error> {
+        let addons = self.addons_directory();
+        sweep_staging(&addons);
+
         Ok(Snapshot {
-            addons: Addon::scan(&self.addons_directory())?,
+            addons: Addon::scan(&addons)?,
             saved_variables: SavedVariables::scan(&self.wtf_directory()),
         })
     }
@@ -387,6 +395,41 @@ fn size(root: &Path) -> Result<u64, Error> {
     Ok(size)
 }
 
+/// The prefix of the staging folders installs and repairs extract into,
+/// inside `Interface/AddOns`.
+const STAGING_PREFIX: &str = ".old_launcher-";
+
+/// How long a staging folder gets to be in use before it counts as left
+/// behind by an install that never finished (the launcher was closed
+/// halfway through, say).
+const STAGING_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// Deletes the staging folders in `addons` that an interrupted install left
+/// behind: those untouched for [`STAGING_AGE`], so one in use is left alone.
+/// What can't be read or removed is left for next time.
+fn sweep_staging(addons: &Path) {
+    let Ok(entries) = fs::read_dir(addons) else {
+        return;
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        let stale = entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(STAGING_PREFIX)
+            && entry.file_type().is_ok_and(|kind| kind.is_dir())
+            && entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .and_then(|modified| modified.elapsed().map_err(io::Error::other))
+                .is_ok_and(|age| age >= STAGING_AGE);
+
+        if stale {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 /// The entry of `directory` named `name` ignoring case, or `directory/name`
 /// when there is none.
 pub(crate) fn child(directory: &Path, name: &str) -> PathBuf {
@@ -446,14 +489,7 @@ fn remove_folder(path: &Path) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::archive::zip_of;
-    use crate::version::fake_executable;
-
-    const WOTLK: Version = Version {
-        major: 3,
-        minor: 3,
-        patch: 5,
-        build: 12340,
-    };
+    use crate::testing::{WOTLK, fake_executable};
 
     fn client() -> (tempfile::TempDir, Installation) {
         let root = tempfile::tempdir().unwrap();
@@ -653,6 +689,26 @@ mod tests {
                 .iter()
                 .all(|addon| addon.marker == Some(marker("Skada")))
         );
+    }
+
+    #[test]
+    fn scanning_sweeps_staging_folders_left_behind_but_not_ones_in_use() {
+        let (_root, installation) = client();
+        let addons = installation.addons_directory();
+        let abandoned = addons.join(format!("{STAGING_PREFIX}abandoned"));
+        let in_use = addons.join(format!("{STAGING_PREFIX}in-use"));
+        fs::create_dir(&abandoned).unwrap();
+        fs::create_dir(&in_use).unwrap();
+        fs::File::open(&abandoned)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - 2 * STAGING_AGE)
+            .unwrap();
+
+        let snapshot = installation.scan().unwrap();
+
+        assert!(!abandoned.exists());
+        assert!(in_use.exists());
+        assert!(snapshot.addons.is_empty(), "staging folders are not addons");
     }
 
     #[test]

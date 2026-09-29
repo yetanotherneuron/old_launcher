@@ -118,6 +118,7 @@ impl State {
                 };
                 let installation = installation.clone();
                 let snapshot = snapshot.clone();
+                log::info!("Exporting to {}", path.display());
 
                 Action::task(Task::perform(
                     blocking({
@@ -131,7 +132,14 @@ impl State {
                 self.stage = Stage::Idle;
 
                 match result {
-                    Ok(summary) => Action::instruction(Instruction::Exported { path, summary }),
+                    Ok(summary) => {
+                        log::info!(
+                            "Exported {} addons and {} saved settings files",
+                            summary.addons,
+                            summary.files
+                        );
+                        Action::instruction(Instruction::Exported { path, summary })
+                    }
                     Err(error) => {
                         errors.report(format!("Could not export to {}: {error}", path.display()));
                         Action::none()
@@ -166,6 +174,7 @@ impl State {
                 let catalog = catalog.clone();
                 let installation = installation.clone();
                 let snapshot = snapshot.clone();
+                log::info!("Reading the export at {}", path.display());
 
                 Action::task(Task::perform(
                     blocking(move || {
@@ -178,6 +187,17 @@ impl State {
                 ))
             }
             Message::Read(Ok((import, plan))) => {
+                log::info!(
+                    "The export lists {} addons: {} to install, {} present, {} not in the \
+                     catalog, {} installed by hand; {} saved settings files, {} replacing",
+                    import.manifest.addons.len(),
+                    plan.install.len(),
+                    plan.present.len(),
+                    plan.unavailable.len(),
+                    plan.manual.len(),
+                    import.files.len(),
+                    plan.replaced.len()
+                );
                 self.stage = Stage::Reviewing { import, plan };
                 Action::none()
             }
@@ -195,6 +215,11 @@ impl State {
                     return Action::none();
                 };
                 let installation = installation.clone();
+                log::info!(
+                    "Restoring {} saved settings files from {}",
+                    import.files.len(),
+                    import.path.display()
+                );
 
                 self.stage = Stage::Restoring {
                     install: plan.install,
@@ -218,6 +243,10 @@ impl State {
 
                 match result {
                     Ok(restored) => {
+                        log::info!(
+                            "Restored {restored} saved settings files; {} addons to install",
+                            install.len()
+                        );
                         Action::instruction(Instruction::Imported { restored, install })
                     }
                     Err(error) => {

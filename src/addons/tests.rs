@@ -488,7 +488,10 @@ fn failures_go_to_the_banner_saying_what_failed() {
         &mut errors,
     );
     let finished = state.update(
-        Message::Finished(key.clone(), Err("Test Source: 404 Not Found".into())),
+        Message::Finished(
+            key.clone(),
+            Err(Failure::Failed("Test Source: 404 Not Found".into())),
+        ),
         &catalog,
         Ok(&client),
         Some(&installation),
@@ -496,6 +499,40 @@ fn failures_go_to_the_banner_saying_what_failed() {
         &mut errors,
     );
     assert!(matches!(finished.instruction, Some(Instruction::Changed)));
+
+    // Stopping a download is asked for; the job stays until it says it
+    // stopped, and nothing is reported then.
+    let _ = state.update(
+        Message::Install(key.clone()),
+        &catalog,
+        Ok(&client),
+        Some(&installation),
+        None,
+        &mut errors,
+    );
+    let _ = state.update(
+        Message::Stop(key.clone()),
+        &catalog,
+        Ok(&client),
+        Some(&installation),
+        None,
+        &mut errors,
+    );
+    assert!(
+        state.jobs[&key]
+            .cancel
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && matches!(state.jobs[&key].stage, Stage::Cancelling)
+    );
+    let stopped = state.update(
+        Message::Finished(key.clone(), Err(Failure::Cancelled)),
+        &catalog,
+        Ok(&client),
+        Some(&installation),
+        None,
+        &mut errors,
+    );
+    assert!(stopped.instruction.is_none() && !state.jobs.contains_key(&key));
 
     // Without an HTTP client, installing says why nothing downloads.
     let _ = state.update(
@@ -917,9 +954,15 @@ async fn failing_downloads_fall_back_to_the_next_source() {
     ];
     let working = downloads[1].1.marker();
 
-    let folders = install(client(), downloads, installation.clone(), Vec::new())
-        .await
-        .unwrap();
+    let folders = install(
+        client(),
+        downloads,
+        installation.clone(),
+        Vec::new(),
+        Arc::default(),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(folders, ["ACP"]);
     let snapshot = installation.scan().unwrap();
@@ -939,18 +982,51 @@ async fn when_every_source_fails_each_reason_is_given() {
         download("Page", format!("{server}/html.zip")),
     ];
 
-    let error = install(client(), downloads, installation.clone(), Vec::new())
-        .await
-        .unwrap_err();
+    let error = install(
+        client(),
+        downloads,
+        installation.clone(),
+        Vec::new(),
+        Arc::default(),
+    )
+    .await
+    .unwrap_err();
 
+    let Failure::Failed(reasons) = &error else {
+        panic!("{error}");
+    };
     assert!(
-        error.contains("Missing: ") && error.contains("404"),
+        reasons.contains("Missing: ") && reasons.contains("404"),
         "{error}"
     );
     assert!(
-        error.contains("Page: unrecognized archive format"),
+        reasons.contains("Page: unrecognized archive format"),
         "{error}"
     );
+    assert!(installation.scan().unwrap().addons.is_empty());
+}
+
+#[tokio::test]
+async fn a_stopped_download_installs_nothing_and_tries_no_other_source() {
+    let server = serve(vec![("/acp.zip", Some(acp_zip()))]).await;
+    let (_root, installation) = testing::client(&[]);
+    let downloads = vec![
+        download("First", format!("{server}/acp.zip")),
+        download("Second", format!("{server}/acp.zip")),
+    ];
+    let cancel = Arc::new(AtomicBool::new(true));
+
+    let error = install(
+        client(),
+        downloads,
+        installation.clone(),
+        Vec::new(),
+        cancel,
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error, Failure::Cancelled);
     assert!(installation.scan().unwrap().addons.is_empty());
 }
 
@@ -1004,6 +1080,7 @@ async fn catalog_entries_install_into_a_real_client() {
             vec![(source.to_owned(), download.clone())],
             installation.clone(),
             Vec::new(),
+            Arc::default(),
         )
         .await
         .unwrap_or_else(|error| panic!("{name}: {error}"));

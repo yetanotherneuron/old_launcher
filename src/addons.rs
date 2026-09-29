@@ -8,9 +8,11 @@ pub use confirm::Confirm;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use iced::futures::StreamExt;
-use iced::task::{self, Straw, sipper};
+use iced::task::{Straw, sipper};
 use iced::widget::operation::{self, Animation, RelativeOffset};
 use iced::widget::{
     button, center, column, container, pick_list, row, scrollable, space, text, text_input,
@@ -48,12 +50,18 @@ pub struct State {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Key(Vec<String>);
 
+/// Archives bigger than this are not downloaded: no addon comes close, and
+/// a server claiming more must not have the launcher set aside the memory.
+const LARGEST_ARCHIVE: u64 = 512 * 1024 * 1024;
+
 /// An installation in progress.
 struct Job {
     /// The name of the entry being installed, to report a failure with.
     name: String,
     stage: Stage,
-    _handle: task::Handle,
+    /// Set to stop the download. Once extracting, the job runs to its end
+    /// either way: folders are already moving.
+    cancel: Arc<AtomicBool>,
 }
 
 /// How far an installation has come.
@@ -70,6 +78,26 @@ pub enum Stage {
     },
     /// Extracting and moving folders into place.
     Installing,
+    /// Asked to stop, and about to.
+    Cancelling,
+}
+
+/// Why an installation didn't happen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// The user stopped it while downloading.
+    Cancelled,
+    /// Every download failed, or the install did; this says how.
+    Failed(String),
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => f.write_str("stopped"),
+            Self::Failed(why) => f.write_str(why),
+        }
+    }
 }
 
 /// Interactions with the addons screen.
@@ -94,7 +122,7 @@ pub enum Message {
     /// An installation advanced.
     Progressed(Key, Stage),
     /// An installation ended, with the folders it installed.
-    Finished(Key, Result<Vec<String>, String>),
+    Finished(Key, Result<Vec<String>, Failure>),
     /// Ask before deleting something.
     Ask(Confirm),
     /// Choose whether uninstalling deletes the saved settings too.
@@ -178,7 +206,10 @@ impl State {
                 self.filter = Filter::default();
                 Action::task(to_top())
             }
-            Message::Reload => Action::instruction(Instruction::Reload),
+            Message::Reload => {
+                log::info!("Reloading the catalog on request");
+                Action::instruction(Instruction::Reload)
+            }
             Message::Install(key) => {
                 let Some(installation) = installation else {
                     return Action::none();
@@ -222,13 +253,25 @@ impl State {
                     .first()
                     .map(|(source, _)| source.clone())
                     .unwrap_or_default();
+                let cancel = Arc::new(AtomicBool::new(false));
 
-                let (task, handle) = Task::sip(
-                    install(client.clone(), downloads, installation.clone(), replacing),
+                log::info!(
+                    "Installing {} into {}",
+                    entry.name,
+                    installation.root().display()
+                );
+
+                let task = Task::sip(
+                    install(
+                        client.clone(),
+                        downloads,
+                        installation.clone(),
+                        replacing,
+                        Arc::clone(&cancel),
+                    ),
                     Message::Progressed.with(key.clone()),
                     Message::Finished.with(key.clone()),
-                )
-                .abortable();
+                );
 
                 let _ = self.jobs.insert(
                     key,
@@ -239,27 +282,29 @@ impl State {
                             received: 0,
                             total: None,
                         },
-                        _handle: handle.abort_on_drop(),
+                        cancel,
                     },
                 );
 
                 Action::task(task)
             }
             Message::Stop(key) => {
-                // Only downloads stop cleanly; once installing, folders are
-                // already moving and the job must finish.
-                if let Some(Job {
-                    stage: Stage::Downloading { .. },
-                    ..
-                }) = self.jobs.get(&key)
+                // Only downloads stop; once installing, folders are already
+                // moving and the job runs to its end. The job stays until it
+                // says it stopped, so nothing is ever left unaccounted for.
+                if let Some(job) = self.jobs.get_mut(&key)
+                    && matches!(job.stage, Stage::Downloading { .. })
                 {
-                    let _ = self.jobs.remove(&key);
+                    job.cancel.store(true, Ordering::Relaxed);
+                    job.stage = Stage::Cancelling;
                 }
 
                 Action::none()
             }
             Message::Progressed(key, progress) => {
-                if let Some(job) = self.jobs.get_mut(&key) {
+                if let Some(job) = self.jobs.get_mut(&key)
+                    && !matches!(job.stage, Stage::Cancelling)
+                {
                     job.stage = progress;
                 }
 
@@ -267,10 +312,17 @@ impl State {
             }
             Message::Finished(key, result) => {
                 let job = self.jobs.remove(&key);
+                let name = job.map_or_else(|| "an addon".to_owned(), |job| job.name);
 
-                if let Err(error) = result {
-                    let name = job.map_or_else(|| "an addon".to_owned(), |job| job.name);
-                    errors.report(format!("Could not install {name}: {error}"));
+                match result {
+                    Ok(folders) => log::info!("Installed {name}: {}", folders.join(", ")),
+                    Err(Failure::Cancelled) => {
+                        log::info!("Stopped downloading {name}");
+                        return Action::none();
+                    }
+                    Err(Failure::Failed(error)) => {
+                        errors.report(format!("Could not install {name}: {error}"));
+                    }
                 }
 
                 // Even a failed install may have removed the previous version.
@@ -300,6 +352,7 @@ impl State {
                 let installation = installation.clone();
                 let failure = confirm.failure();
 
+                log::info!("{}", confirm.describe());
                 self.working = true;
 
                 Action::task(Task::perform(
@@ -312,8 +365,9 @@ impl State {
             Message::Done(result) => {
                 self.working = false;
 
-                if let Err(error) = result {
-                    errors.report(error);
+                match result {
+                    Ok(()) => log::info!("Done"),
+                    Err(error) => errors.report(error),
                 }
 
                 Action::instruction(Instruction::Changed)
@@ -345,28 +399,17 @@ impl State {
             .map(Snapshot::orphaned_data)
             .unwrap_or_default()
             .into_iter()
-            .filter(|(name, _)| query.matches([name.as_str()]))
+            .filter(|(name, _)| query.matches(&[name.as_str()]))
             .collect();
 
         // Each status says how many addons it would show, given the search
         // and the source picked, so the one picked counts what is listed.
-        let counts: Vec<(Status, usize)> = Status::ALL
-            .into_iter()
-            .map(|status| {
-                let count = match status {
-                    Status::LeftoverData => leftovers.len(),
-                    status => library.count(
-                        &query,
-                        &Filter {
-                            status,
-                            ..self.filter.clone()
-                        },
-                    ),
-                };
-
-                (status, count)
-            })
-            .collect();
+        let mut counts = library.counts(&query, &self.filter);
+        for (status, count) in &mut counts {
+            if *status == Status::LeftoverData {
+                *count = leftovers.len();
+            }
+        }
 
         let status = pick_list(Some(self.filter.status), Status::ALL, move |status| {
             let count = counts
@@ -376,6 +419,7 @@ impl State {
             let label = match status {
                 Status::All => "All addons",
                 Status::Installed => "Installed",
+                Status::Updatable => "Updates available",
                 Status::NotInstalled => "Not installed",
                 Status::Attention => "Needs attention",
                 Status::LeftoverData => "Leftover data",
@@ -479,6 +523,7 @@ impl State {
                         _ if filtered => "No addon matches.",
                         Status::All => "The catalog is empty.",
                         Status::Installed => "No addons installed yet.",
+                        Status::Updatable => "Every installed addon is at the catalog's version.",
                         Status::NotInstalled => "Every addon in the catalog is installed.",
                         Status::Attention => "Every installed addon loads fine.",
                         Status::LeftoverData => "No leftover data.",
@@ -624,13 +669,15 @@ fn to_top() -> Task<Message> {
 
 /// Installs into `installation` from the first of `downloads` (source name,
 /// download) that works, falling back to the next when one fails to download
-/// or install, and reports progress.
+/// or install, and reports progress. Setting `cancel` stops it while it is
+/// still downloading.
 fn install(
     client: reqwest::Client,
     downloads: Vec<(String, Download)>,
     installation: Installation,
     replacing: Vec<String>,
-) -> impl Straw<Vec<String>, Stage, String> {
+    cancel: Arc<AtomicBool>,
+) -> impl Straw<Vec<String>, Stage, Failure> {
     sipper(async move |mut progress| {
         let mut failures = Vec::new();
 
@@ -641,9 +688,16 @@ fn install(
                     .send()
                     .await
                     .and_then(reqwest::Response::error_for_status)
-                    .map_err(|error| describe(&error))?;
+                    .map_err(|error| Failure::Failed(describe(&error)))?;
 
                 let total = response.content_length();
+                if let Some(total) = total.filter(|total| *total > LARGEST_ARCHIVE) {
+                    return Err(Failure::Failed(format!(
+                        "the archive is {}, more than the launcher downloads",
+                        crate::size(total)
+                    )));
+                }
+
                 let mut archive = Vec::with_capacity(total.unwrap_or_default() as usize);
                 let mut reported = 0;
                 let mut chunks = response.bytes_stream();
@@ -657,7 +711,19 @@ fn install(
                     .await;
 
                 while let Some(chunk) = chunks.next().await {
-                    archive.extend_from_slice(&chunk.map_err(|error| describe(&error))?);
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(Failure::Cancelled);
+                    }
+
+                    archive.extend_from_slice(
+                        &chunk.map_err(|error| Failure::Failed(describe(&error)))?,
+                    );
+                    if archive.len() as u64 > LARGEST_ARCHIVE {
+                        return Err(Failure::Failed(format!(
+                            "the archive is more than {}, which the launcher doesn't download",
+                            crate::size(LARGEST_ARCHIVE)
+                        )));
+                    }
 
                     // Reporting every chunk would redraw the UI thousands of times.
                     if archive.len() - reported >= 64 * 1024 {
@@ -672,22 +738,29 @@ fn install(
                     }
                 }
 
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(Failure::Cancelled);
+                }
+
                 progress.send(Stage::Installing).await;
 
                 let installation = installation.clone();
                 let replacing = replacing.clone();
                 let marker = download.marker();
 
-                blocking(move || installation.install(&archive, &marker, &replacing)).await
+                blocking(move || installation.install(&archive, &marker, &replacing))
+                    .await
+                    .map_err(Failure::Failed)
             };
 
             match attempt.await {
                 Ok(folders) => return Ok(folders),
-                Err(error) => failures.push(format!("{source}: {error}")),
+                Err(Failure::Cancelled) => return Err(Failure::Cancelled),
+                Err(Failure::Failed(error)) => failures.push(format!("{source}: {error}")),
             }
         }
 
-        Err(failures.join("; "))
+        Err(Failure::Failed(failures.join("; ")))
     })
 }
 

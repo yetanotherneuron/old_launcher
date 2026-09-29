@@ -32,6 +32,7 @@ impl State {
         let title = library.name(item).to_owned();
         let key = entry.map(Key::of);
         let job = key.as_ref().and_then(|key| self.jobs.get(key));
+        let update = library.update_available(item);
 
         let main = group.and_then(|group| group.addons.first().copied());
         let toc = main.and_then(|addon| addon.toc.as_ref());
@@ -53,7 +54,16 @@ impl State {
             .align_y(Center);
 
         match (entry, group) {
-            (Some(_), Some(_)) => badges = badges.push(style::badge("Installed", Tone::Success)),
+            (Some(_), Some(_)) => {
+                badges = badges.push(style::badge("Installed", Tone::Success));
+
+                if update {
+                    badges = badges.push(style::tip(
+                        style::badge("Update available", Tone::Warning),
+                        "The catalog has another version than the one installed.",
+                    ));
+                }
+            }
             (None, Some(group)) => match group.marker {
                 // Installed by the launcher from an entry the catalog dropped
                 // since.
@@ -155,12 +165,13 @@ impl State {
                     .into()
                 }
                 Some(Stage::Installing) => text("Installing…").style(text::secondary).into(),
-                None => button(if group.is_some() {
-                    "Reinstall"
-                } else {
-                    "Install"
+                Some(Stage::Cancelling) => text("Cancelling…").style(text::secondary).into(),
+                None => button(match (group.is_some(), update) {
+                    (true, true) => "Update",
+                    (true, false) => "Reinstall",
+                    (false, _) => "Install",
                 })
-                .style(if group.is_some() {
+                .style(if group.is_some() && !update {
                     button::secondary
                 } else {
                     button::primary
@@ -360,7 +371,7 @@ impl State {
             .style(text::secondary)
         });
 
-        let missing: Vec<&str> = match (group, snapshot) {
+        let mut missing: Vec<&str> = match (group, snapshot) {
             (Some(group), Some(snapshot)) => group
                 .addons
                 .iter()
@@ -368,10 +379,43 @@ impl State {
                 .collect(),
             _ => Vec::new(),
         };
+        missing.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+
+        // Each missing dependency the catalog has can be installed from
+        // right here.
         let missing = (!missing.is_empty()).then(|| {
-            text(format!("Missing dependencies: {}", missing.join(", ")))
-                .size(13)
-                .style(text::warning)
+            row![text("Missing dependencies:").size(13).style(text::warning)]
+                .extend(missing.into_iter().map(|dependency| {
+                    let provider = catalog.entries.iter().find(|entry| {
+                        entry
+                            .folders()
+                            .iter()
+                            .any(|folder| folder.name.eq_ignore_ascii_case(dependency))
+                    });
+
+                    match provider {
+                        Some(provider) => {
+                            let key = Key::of(provider);
+                            let installing = self.jobs.contains_key(&key);
+
+                            button(text(format!("Install {dependency}")).size(12))
+                                .style(button::secondary)
+                                .padding([2, 8])
+                                .on_press_maybe(
+                                    (can_install && !installing).then_some(Message::Install(key)),
+                                )
+                                .into()
+                        }
+                        None => style::tip(
+                            text(dependency).size(13).style(text::warning),
+                            "Not in the catalog: install it yourself.",
+                        ),
+                    }
+                }))
+                .spacing(8)
+                .align_y(Center)
+                .wrap()
+                .vertical_spacing(6)
         });
 
         container(

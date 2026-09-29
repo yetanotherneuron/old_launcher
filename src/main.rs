@@ -5,6 +5,13 @@ use iced::{Size, window};
 use old_launcher::App;
 
 pub fn main() -> iced::Result {
+    // The launcher says what it does on stderr; its dependencies only when
+    // something is wrong, unless `RUST_LOG` asks for more.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn,old_launcher=info"),
+    )
+    .init();
+
     #[allow(unused_mut)]
     let mut window = window::Settings {
         size: Size::new(1100.0, 780.0),

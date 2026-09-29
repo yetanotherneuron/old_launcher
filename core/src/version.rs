@@ -63,28 +63,10 @@ impl Version {
     }
 }
 
-/// Builds a fake executable whose version resource says `version`.
-#[cfg(test)]
-pub(crate) fn fake_executable(version: Version) -> Vec<u8> {
-    let mut bytes = b"MZ\x90\x00 not really a PE file ".to_vec();
-    bytes.extend(0xFEEF_04BDu32.to_le_bytes());
-    bytes.extend(0x0001_0000u32.to_le_bytes());
-    bytes.extend((u32::from(version.major) << 16 | u32::from(version.minor)).to_le_bytes());
-    bytes.extend((u32::from(version.patch) << 16 | u32::from(version.build)).to_le_bytes());
-    bytes.extend([0; 32]);
-    bytes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const WOTLK: Version = Version {
-        major: 3,
-        minor: 3,
-        patch: 5,
-        build: 12340,
-    };
+    use crate::testing::{WOTLK, fake_executable};
 
     #[test]
     fn reads_the_fixed_file_info_of_an_executable() {
