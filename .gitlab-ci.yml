@@ -24,6 +24,8 @@ variables:
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "false"
   CARGO_TERM_COLOR: always
+  # The simulator tests render in software: runners have no GPU.
+  ICED_TEST_BACKEND: tiny-skia
   DEBIAN_FRONTEND: noninteractive
   # Where the project page is, and the catalog it publishes: what the
   # binaries refresh their catalog from, and where the launcher sends
@@ -88,7 +90,6 @@ test:
   before_script:
     - apt-get update -qq && apt-get install -y -qq mold
   script:
-    # The simulator tests render in software: runners have no GPU.
     - cargo test --workspace --locked
 
 # The tests on Windows itself, on GitLab's shared Windows runners, which
@@ -108,6 +109,9 @@ test-windows:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:
     CARGO_HOME: $CI_PROJECT_DIR\.cargo
+    # Server Core has no opengl32.dll, which wgpu's OpenGL backend links:
+    # load it on first use instead, and the software-rendered tests never do.
+    CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: "-C link-arg=/DELAYLOAD:opengl32.dll -C link-arg=delayimp.lib"
   cache:
     key: $CI_JOB_NAME
     paths:
