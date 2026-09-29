@@ -95,16 +95,13 @@ test:
     - cargo test --workspace --locked
 
 # The tests on Windows itself, on GitLab's shared Windows runners, which
-# have Visual Studio's build tools. They take a while and are not what the
-# releases wait for, so a failure here is a warning to look into, not a
-# stop: the Windows build below is lint-checked and cross-compiled either
-# way.
+# have Visual Studio's build tools. They take a while, and the releases
+# wait for them: the launcher is meant to run on Windows.
 test-windows:
   extends: .ordered
   stage: check
   tags:
     - saas-windows-medium-amd64
-  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
