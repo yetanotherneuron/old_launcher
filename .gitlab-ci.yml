@@ -305,6 +305,10 @@ index:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
+    # On top of the default branch as it is now, not as it was when the
+    # pipeline was scheduled.
+    - git fetch origin "$CI_DEFAULT_BRANCH"
+    - git checkout -q FETCH_HEAD
     - cargo run --release --locked --package indexer
     - git add index/wotlk.json
     - >-
