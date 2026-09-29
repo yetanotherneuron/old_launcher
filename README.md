@@ -28,6 +28,7 @@ Each is a single file built from the latest `main`; nothing to install.
 - **Play**: on Linux through Wine, Proton or any runner, set up per client.
 - **One list** of every addon, catalog and installed, to search and filter.
 - **Install** or reinstall with one click, from the freshest source.
+- **Update** addons the catalog has a newer version of, and the launcher itself.
 - **Manage** addons: uninstall, clean saved settings, repair broken folders.
 - **Recognizes** the addons you installed before the launcher.
 - **Export** addons and settings to a zip; **import** it on another computer.
@@ -81,10 +82,11 @@ so for those it is the last commit touching the addon's folder.
 
 The app embeds the copy of `index/wotlk.json` it was built with, so the
 catalog shows instantly and offline. It then fetches the published catalog,
-if there is one:
+which the project page serves and a weekly CI schedule regenerates:
 
 - `OLD_LAUNCHER_INDEX_URL=https://… cargo build --release` sets where the
-  published catalog lives. Without it, the embedded copy is all there is.
+  published catalog lives; the CI builds and the AUR package set it. Without
+  it, the embedded copy is all there is.
 - `OLD_LAUNCHER_INDEX=<url or path>` at run time points the app at any other
   catalog, such as a local `index/wotlk.json` while working on the indexer.
 
@@ -161,4 +163,9 @@ cargo test --workspace
 # (entries whose folders the client already has are skipped):
 OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
     cargo test --lib addons -- --ignored
+# Renders the README's screenshots from a demo client:
+SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
+    cargo test --lib screenshots -- --ignored
 ```
+
+`RUST_LOG=old_launcher=info` makes the launcher say what it does on stderr.

@@ -1,6 +1,7 @@
 # Lints and tests every push, and every merge request. Pushes to the default
 # branch that pass also build the downloadable binaries, which the README
-# links to.
+# links to, publish the project page and keep the AUR package up to date.
+# A scheduled pipeline regenerates the catalog instead.
 #
 # The first run builds everything from scratch (iced and wgpu take a while);
 # later runs reuse each job's cached cargo registry, git checkouts and target
@@ -24,11 +25,18 @@ variables:
   CARGO_PROFILE_DEV_DEBUG: "false"
   CARGO_TERM_COLOR: always
   DEBIAN_FRONTEND: noninteractive
+  # Where the project page is, and the catalog it publishes: what the
+  # binaries refresh their catalog from, and where the launcher sends
+  # people for a newer version.
+  PAGE_URL: https://old-launcher-0d3217.gitlab.io
+  OLD_LAUNCHER_INDEX_URL: https://old-launcher-0d3217.gitlab.io/wotlk.json
 
-# One pipeline per change: a merge request's, or else the branch's.
+# One pipeline per change: a merge request's, or else the branch's. A
+# schedule runs only the `index` job.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_COMMIT_BRANCH
@@ -43,8 +51,15 @@ workflow:
       - .cargo/git/db/
       - target/
 
+# Every job but `index`: not on a schedule.
+.push:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+
 clippy:
-  extends: .cargo
+  extends: [.cargo, .push]
   stage: check
   before_script:
     - rustup component add clippy
@@ -53,7 +68,7 @@ clippy:
     - cargo clippy --workspace --all-targets --locked -- -D warnings
 
 test:
-  extends: .cargo
+  extends: [.cargo, .push]
   stage: check
   variables:
     # mold links the big debug test binaries far faster than the default ld.
@@ -64,6 +79,36 @@ test:
     # The simulator tests render in software: runners have no GPU.
     - cargo test --workspace --locked
 
+# The tests on Windows itself, on GitLab's shared Windows runners, which
+# have Visual Studio's build tools. They take a while and are not what the
+# releases wait for, so a failure here is a warning to look into, not a
+# stop: the Windows build below is lint-checked and cross-compiled either
+# way.
+test-windows:
+  stage: check
+  tags:
+    - saas-windows-medium-amd64
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR\.cargo
+  cache:
+    key: $CI_JOB_NAME
+    paths:
+      - .cargo\registry\index\
+      - .cargo\registry\cache\
+      - .cargo\git\db\
+      - target\
+  before_script:
+    - Invoke-WebRequest -Uri https://win.rustup.rs -OutFile rustup-init.exe
+    - .\rustup-init.exe -y --profile minimal --default-toolchain 1.98.1
+    - $env:Path += ";$env:USERPROFILE\.cargo\bin"
+  script:
+    - cargo test --workspace --locked
+
 # The binaries people download. Each job's latest successful artifact on the
 # default branch is kept however old it gets (GitLab's "keep artifacts from
 # most recent successful jobs"), which is what the README's links point at:
@@ -72,6 +117,8 @@ test:
   extends: .cargo
   stage: release
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   artifacts:
     expire_in: 30 days
@@ -81,7 +128,10 @@ windows:
   before_script:
     - apt-get update -qq && apt-get install -y -qq gcc-mingw-w64-x86-64
     - rustup target add x86_64-pc-windows-gnu
+    - rustup component add clippy
   script:
+    # What only compiles for Windows is linted here, tests included.
+    - cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
     # Only system DLLs: runs from wherever it is saved.
     - cargo build --release --locked --target x86_64-pc-windows-gnu
     - cp target/x86_64-pc-windows-gnu/release/old_launcher.exe .
@@ -150,6 +200,8 @@ aur:
     # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
     AUR_HOST_KEY: "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN"
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
     - pacman -Syu --noconfirm --needed git openssh
@@ -177,17 +229,23 @@ aur:
     - git push origin HEAD:master
 
 # The project page on GitLab Pages: the README, styled like the launcher,
-# with its icon and a footer back to the repository. The address shows under
-# Deploy > Pages.
+# with its icon, its version and a footer back to the repository, plus the
+# catalog the binaries refresh from. The address shows under Deploy > Pages.
 pages:
   stage: release
   image:
     name: pandoc/core:3.11
     entrypoint: [""]
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - mkdir -p public
+    # The version is the workspace's, the first `version = "…"` in the
+    # manifest; the page's footer says it.
+    - version=$(awk -F'"' '/^version = "/ { print $2; exit }' Cargo.toml)
+    - sed "s/@VERSION@/$version/" pages/footer.html > footer.html
     # The stylesheet's address changes with every commit, so a browser that
     # cached the previous one doesn't style the new page with it.
     - >-
@@ -197,12 +255,36 @@ pages:
       --css "style.css?v=$CI_COMMIT_SHORT_SHA"
       --include-in-header pages/head.html
       --include-before-body pages/header.html
-      --include-after-body pages/footer.html
+      --include-after-body footer.html
       --output public/index.html
-    - cp pages/style.css assets/old_launcher.svg public/
+    - cp pages/style.css assets/old_launcher.svg index/wotlk.json public/
     # The README's screenshots, at the same relative path.
     - mkdir -p public/assets
     - cp -r assets/screenshots public/assets/
   artifacts:
     paths:
       - public
+
+# Regenerates the catalog from the upstream sources and commits it when it
+# changed, which then goes through a normal pipeline: the binaries embed it
+# and the page publishes it. Run from a pipeline schedule (Build > Pipeline
+# schedules, say weekly, on the default branch).
+#
+# It needs two CI/CD variables: CI_PUSH_TOKEN, a project access token with
+# the `write_repository` scope (Settings > Access tokens; the Developer role
+# is enough when the default branch allows developers to push), and
+# GITHUB_TOKEN, any GitHub token, which only raises GitHub's API limits
+# above what an anonymous run of the indexer gets.
+index:
+  extends: .cargo
+  stage: check
+  interruptible: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - cargo run --release --locked --package indexer
+    - git add index/wotlk.json
+    - >-
+      if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
+    - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog"
+    - git push "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
