@@ -17,6 +17,9 @@ default:
   # with.
   image: rust:1.98.1
   interruptible: true
+  # The project's own runner; only the Windows tests are left to GitLab's.
+  tags:
+    - linux
 
 variables:
   CARGO_HOME: $CI_PROJECT_DIR/.cargo
