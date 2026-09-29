@@ -105,7 +105,8 @@ test-windows:
   before_script:
     - Invoke-WebRequest -Uri https://win.rustup.rs -OutFile rustup-init.exe
     - .\rustup-init.exe -y --profile minimal --default-toolchain 1.98.1
-    - $env:Path += ";$env:USERPROFILE\.cargo\bin"
+    # rustup installs cargo into CARGO_HOME, not the user's profile.
+    - $env:Path += ";$env:CARGO_HOME\bin"
   script:
     - cargo test --workspace --locked
 
