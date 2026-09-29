@@ -21,6 +21,8 @@ pub mod marker;
 pub mod saved_variables;
 pub mod search;
 pub mod snapshot;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod toc;
 pub mod transfer;
 pub mod version;

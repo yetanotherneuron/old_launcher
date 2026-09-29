@@ -384,18 +384,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn the_command_runs_in_the_client_folder() {
-        use crate::version::{Version, fake_executable};
+        use crate::testing::{WOTLK, fake_executable};
 
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("World of Warcraft 3.3.5a");
         std::fs::create_dir(&root).unwrap();
-        let wotlk = Version {
-            major: 3,
-            minor: 3,
-            patch: 5,
-            build: 12340,
-        };
-        std::fs::write(root.join("Wow.exe"), fake_executable(wotlk)).unwrap();
+        std::fs::write(root.join("Wow.exe"), fake_executable(WOTLK)).unwrap();
         let installation = Installation::open(&root).unwrap();
 
         let status = command(
@@ -413,7 +407,7 @@ mod tests {
         assert!(status.success());
         assert_eq!(
             std::fs::read(root.join("copy.exe")).unwrap(),
-            fake_executable(wotlk)
+            fake_executable(WOTLK)
         );
         assert_eq!(
             std::fs::read_to_string(root.join("env.txt")).unwrap(),

@@ -11,9 +11,11 @@ use crate::style::{self, Tone};
 pub struct Errors(Vec<String>);
 
 impl Errors {
-    /// Adds `error` to the banner, unless it already says so.
+    /// Adds `error` to the banner, unless it already says so. It goes to the
+    /// log too, for whoever reads it.
     pub fn report(&mut self, error: impl Into<String>) {
         let error = error.into();
+        log::warn!("{error}");
 
         if !self.0.contains(&error) {
             self.0.push(error);

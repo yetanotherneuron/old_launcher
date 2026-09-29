@@ -5,6 +5,10 @@ use iced::{Size, window};
 use old_launcher::App;
 
 pub fn main() -> iced::Result {
+    // Quiet unless asked: `RUST_LOG=old_launcher=info` tells what the
+    // launcher does, and the banner's errors are logged either way.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+
     #[allow(unused_mut)]
     let mut window = window::Settings {
         size: Size::new(1100.0, 780.0),

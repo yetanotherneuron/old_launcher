@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 old_launcher_core = { workspace = true }
@@ -14,15 +15,18 @@ rustls = { workspace = true }
 rfd = { workspace = true }
 dirs = { workspace = true }
 open = { workspace = true }
-png = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
 
 [build-dependencies]
 winresource = { workspace = true }
+png = { workspace = true }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+old_launcher_core = { workspace = true, features = ["testing"] }
 iced_test = { workspace = true }
 tempfile = { workspace = true }
 zip = { workspace = true }
@@ -33,10 +37,12 @@ resolver = "3"
 members = ["core", "indexer"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://gitlab.com/juxuanu/old_launcher"
+# The project page, where the downloads are.
+homepage = "https://old-launcher-0d3217.gitlab.io/"
 
 # Nothing outside tests may panic on purpose: errors are returned and shown.
 # Tests may (clippy.toml), since a failed assertion is how they fail.
@@ -61,10 +67,15 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rfd = "0.17"
 dirs = "7"
 open = "5"
-# Decodes the window icon; already in the tree through iced.
+# Decodes the window icon when building (build.rs).
 png = "0.18"
 # The Windows executable's icon and file details (build.rs).
 winresource = "0.1"
+# What the launcher does, for `RUST_LOG=old_launcher=info`.
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+# Canonical paths without Windows' `\\?\` prefix, which its shell can't open.
+dunce = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"
@@ -90,8 +101,9 @@ lto = "fat"
 codegen-units = 1
 strip = true
 
-# iced 0.15 is unreleased — track the dev branch. Every iced crate in the tree
-# must come from the same git source.
+# iced 0.15 is unreleased: this is the commit of its master branch the
+# launcher is written against. Every iced crate in the tree must come from
+# the same git source.
 [patch.crates-io]
-iced = { git = "https://github.com/iced-rs/iced", branch = "master" }
-iced_test = { git = "https://github.com/iced-rs/iced", branch = "master" }
+iced = { git = "https://github.com/iced-rs/iced", rev = "90dec30cc7368c3fbaac69790e43a4b08a21691d" }
+iced_test = { git = "https://github.com/iced-rs/iced", rev = "90dec30cc7368c3fbaac69790e43a4b08a21691d" }

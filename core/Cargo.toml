@@ -7,6 +7,10 @@ license.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The `testing` module: fixtures for the tests of crates using this one.
+testing = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -18,5 +22,6 @@ sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
 shlex = { workspace = true }
 sysinfo = { workspace = true }
+dunce = { workspace = true }
 
 [dev-dependencies]

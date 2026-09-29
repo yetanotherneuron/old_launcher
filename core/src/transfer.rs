@@ -351,25 +351,17 @@ mod tests {
     use super::*;
     use crate::catalog::{Download, Folder};
 
-    const WOW_EXE: [u32; 4] = [0xFEEF_04BD, 0x0001_0000, 3 << 16 | 3, 5 << 16 | 12340];
-
-    /// A 3.3.5a client in a temporary directory with empty `files`.
+    /// A 3.3.5a client in a temporary directory, with `files` each holding
+    /// its own path.
     fn client(files: &[&str]) -> (tempfile::TempDir, Installation) {
-        let root = tempfile::tempdir().unwrap();
-        let mut exe = b"MZ".to_vec();
-        for word in WOW_EXE {
-            exe.extend(word.to_le_bytes());
-        }
-        fs::write(root.path().join("Wow.exe"), exe).unwrap();
+        let contents: Vec<String> = files.iter().map(|file| format!("-- {file}")).collect();
+        let with_contents: Vec<(&str, &str)> = files
+            .iter()
+            .zip(&contents)
+            .map(|(file, contents)| (*file, contents.as_str()))
+            .collect();
 
-        for file in files {
-            let path = root.path().join(file);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, format!("-- {file}")).unwrap();
-        }
-
-        let installation = Installation::open(root.path()).unwrap();
-        (root, installation)
+        crate::testing::client_with(&with_contents)
     }
 
     fn entry(name: &str, source: &str, folders: &[&str]) -> Entry {

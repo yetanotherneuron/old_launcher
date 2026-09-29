@@ -12,14 +12,18 @@ mod addons;
 mod catalog;
 mod clients;
 mod errors;
+mod game;
+mod recognize;
 mod recovery;
+#[cfg(test)]
+mod screenshots;
 mod setup;
 mod style;
 #[cfg(test)]
 mod testing;
 mod transfer;
+mod update;
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,36 +31,24 @@ use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
     button, center, column, container, operation, row, scrollable, space, text, tooltip,
 };
-use iced::{
-    Center, Element, Event, Fill, Fit, Function, Subscription, Task, Theme, event, padding, window,
-};
+use iced::{Center, Element, Event, Fill, Function, Subscription, Task, Theme, event, window};
 
 use crate::catalog::Catalog;
-use crate::core::{Adoption, Config, Installation, Snapshot};
+use crate::core::{Config, Installation, Snapshot};
 use crate::errors::Errors;
 
 /// Where the launcher's code lives, as `Cargo.toml` says.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
-/// The launcher's icon, rendered from `assets/old_launcher.svg`.
-const ICON: &[u8] = include_bytes!("../assets/old_launcher.png");
+/// The launcher's icon, rendered from `assets/old_launcher.svg` and decoded
+/// when building.
+const ICON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/icon.rgba"));
+include!(concat!(env!("OUT_DIR"), "/icon_size.rs"));
 
 /// The window's icon, for the title bar, taskbar and window switcher on
 /// Windows and X11. Wayland desktops take it from the desktop entry.
 pub fn icon() -> Option<iced::window::Icon> {
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(ICON));
-    decoder.set_transformations(png::Transformations::EXPAND);
-
-    let mut reader = decoder.read_info().ok()?;
-    let mut pixels = vec![0; reader.output_buffer_size()?];
-    let frame = reader.next_frame(&mut pixels).ok()?;
-
-    if (frame.color_type, frame.bit_depth) != (png::ColorType::Rgba, png::BitDepth::Eight) {
-        return None;
-    }
-    pixels.truncate(frame.line_size * frame.height as usize);
-
-    iced::window::icon::from_rgba(pixels, frame.width, frame.height).ok()
+    iced::window::icon::from_rgba(ICON.to_vec(), ICON_WIDTH, ICON_HEIGHT).ok()
 }
 
 /// The launcher.
@@ -76,36 +68,15 @@ pub struct App {
     errors: Errors,
     /// Something that went well and is worth saying, until dismissed.
     notice: Option<String>,
-    /// Addons of the selected client that were installed without the
-    /// launcher and have just been recognized as catalog entries.
-    recognized: Vec<Adoption>,
-    /// Whether the list of recognized addons is open.
-    details: bool,
+    /// Addons of the selected client installed without the launcher that
+    /// match the catalog, proposed for recognition.
+    recognize: recognize::State,
     transfer: transfer::State,
-    /// The clients dialog, while open.
-    clients: Option<clients::State>,
-    /// The games started from the launcher or found running, by client
-    /// folder, until over.
-    games: BTreeMap<PathBuf, Game>,
-}
-
-/// A game started from the launcher, or found running. Once started it is
-/// set up (Proton downloaded, a prefix made, …) until its `Wow.exe` shows
-/// up, and over when that is gone.
-struct Game {
-    /// Whether its `Wow.exe` was seen, so it is past the setting up.
-    started: bool,
-    /// Whether the command that started it is still running.
-    command: bool,
-    /// How many more checks to wait for `Wow.exe` once the command exited
-    /// fine without it: Steam or Lutris take the game over and exit.
-    patience: u8,
-}
-
-impl Game {
-    /// Checks, a second apart, that `Wow.exe` gets to show up after the
-    /// command that started it exited.
-    const PATIENCE: u8 = 60;
+    clients: clients::State,
+    /// The games started, and the selected client's when found running.
+    game: game::State,
+    /// A newer launcher version than this one, when published.
+    latest: Option<String>,
 }
 
 /// The state of the client folder being shown.
@@ -131,6 +102,17 @@ impl Selected {
             Self::Open { installation, .. } => Some(installation.root()),
         }
     }
+
+    /// The client, once it opened, and what was last scanned in it.
+    fn open(&self) -> (Option<&Installation>, Option<&Snapshot>) {
+        match self {
+            Self::Open {
+                installation,
+                snapshot,
+            } => (Some(installation), snapshot.as_ref()),
+            _ => (None, None),
+        }
+    }
 }
 
 /// Everything that can happen in the launcher.
@@ -146,17 +128,14 @@ pub enum Message {
     Transfer(transfer::Message),
     /// An interaction with the clients dialog.
     Clients(clients::Message),
+    /// An interaction with the proposal to recognize addons.
+    Recognize(recognize::Message),
+    /// Something happened to a game.
+    Game(game::Message),
     /// Open the clients dialog.
     ManageClients,
     /// Start the game.
     Play,
-    /// The command that started the game of this client folder exited, with
-    /// this exit code if it had one, or failed to start.
-    Exited(PathBuf, Result<Option<i32>, String>),
-    /// Time to look for the games started, and the selected client's.
-    Watch,
-    /// The client folders whose game is running.
-    Watched(Result<Vec<PathBuf>, String>),
     /// The launcher's window got the focus back.
     Focused,
     /// The selected client folder was checked.
@@ -165,27 +144,22 @@ pub enum Message {
     Scanned(PathBuf, Result<Snapshot, String>),
     /// The published catalog was fetched.
     CatalogLoaded(Result<Catalog, String>),
-    /// Addons installed without the launcher were recognized as these
-    /// catalog entries.
-    Adopted(Result<Vec<Adoption>, String>),
+    /// Whether a newer launcher is published was checked.
+    UpdateChecked(Option<String>),
     /// Open `Interface/AddOns` in the file manager.
     OpenAddOns,
     /// Scan the selected client again.
     Refresh,
     /// Open the launcher's repository in the browser.
     OpenRepository,
+    /// Open the launcher's page, with the downloads, in the browser.
+    OpenPage,
     /// The config was written.
     Saved(Result<(), String>),
     /// Hide the error banner.
     DismissError,
     /// Hide the notice banner.
     DismissNotice,
-    /// List the recognized addons.
-    ShowRecognized,
-    /// Close the list of recognized addons.
-    CloseRecognized,
-    /// Hide the banner about recognized addons.
-    DismissRecognized,
     /// Escape was pressed.
     Escape,
     /// Ctrl+F was pressed.
@@ -228,8 +202,13 @@ impl App {
             ),
         };
 
+        // A connection that never comes, or a server that stops sending,
+        // ends the request rather than hanging the catalog refresh or a
+        // download forever. A slow but flowing download is fine.
         let client = reqwest::Client::builder()
             .user_agent(concat!("old_launcher/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(60))
             .build()
             .map_err(|error| describe(&error));
         if let Err(error) = &client {
@@ -255,11 +234,11 @@ impl App {
             recovery,
             errors,
             notice: None,
-            recognized: Vec::new(),
-            details: false,
+            recognize: recognize::State::default(),
             transfer: transfer::State::default(),
-            clients: None,
-            games: BTreeMap::new(),
+            clients: clients::State::default(),
+            game: game::State::default(),
+            latest: None,
         };
 
         let start = if app.recovery.is_some() {
@@ -272,7 +251,8 @@ impl App {
     }
 
     /// Gets going with a readable config: opens the last client (or asks
-    /// for one) and fetches the published catalog.
+    /// for one), fetches the published catalog, and looks for a newer
+    /// launcher.
     fn start(&mut self) -> Task<Message> {
         let last = self
             .config
@@ -289,7 +269,11 @@ impl App {
             }
         };
 
-        Task::batch([self.refresh_catalog(), open])
+        Task::batch([
+            self.refresh_catalog(),
+            open,
+            Task::perform(update::check(self.client.clone()), Message::UpdateChecked),
+        ])
     }
 
     /// The window title.
@@ -320,9 +304,11 @@ impl App {
                             self.config.installations.push(root.clone());
                         }
                         // Added from the clients dialog, which shows it next.
-                        let read = self.clients.as_mut().map_or_else(Task::none, |clients| {
-                            clients.read(&root).map(Message::Clients)
-                        });
+                        let read = if self.clients.is_open() {
+                            self.clients.read(&root).map(Message::Clients)
+                        } else {
+                            Task::none()
+                        };
 
                         self.config.selected = Some(root);
                         self.selected = Selected::Open {
@@ -330,7 +316,7 @@ impl App {
                             snapshot: None,
                         };
                         self.setup = None;
-                        self.recognized.clear();
+                        self.recognize.clear();
 
                         Task::batch([task, read, self.rescan(), self.save()])
                     }
@@ -364,13 +350,7 @@ impl App {
                 }
             }
             Message::Addons(message) => {
-                let (installation, snapshot) = match &self.selected {
-                    Selected::Open {
-                        installation,
-                        snapshot,
-                    } => (Some(installation), snapshot.as_ref()),
-                    _ => (None, None),
-                };
+                let (installation, snapshot) = self.selected.open();
                 let action = self.addons.update(
                     message,
                     &self.catalog,
@@ -390,11 +370,11 @@ impl App {
                 }
             }
             Message::Clients(message) => {
-                let Some(clients) = &mut self.clients else {
+                if !self.clients.is_open() {
                     return Task::none();
-                };
+                }
                 let current = self.selected.path().map(Path::to_path_buf);
-                let action = clients.update(
+                let action = self.clients.update(
                     message,
                     &mut self.config,
                     current.as_deref(),
@@ -417,18 +397,16 @@ impl App {
                         };
                         self.config.remove(&removed);
                         self.selected = Selected::Nothing;
+                        self.recognize.clear();
 
                         let open = match self.config.selected.clone() {
                             Some(path) => {
-                                let read =
-                                    self.clients.as_mut().map_or_else(Task::none, |clients| {
-                                        clients.read(&path).map(Message::Clients)
-                                    });
+                                let read = self.clients.read(&path).map(Message::Clients);
                                 Task::batch([read, self.open(path)])
                             }
                             // Nothing left to manage: the first-run form.
                             None => {
-                                self.clients = None;
+                                self.clients.close();
                                 self.setup = Some(setup::State::new(false));
                                 operation::focus(setup::PATH)
                             }
@@ -436,150 +414,63 @@ impl App {
 
                         Task::batch([task, open, self.save()])
                     }
-                    Some(clients::Instruction::Close { edited }) => {
-                        self.clients = None;
+                    Some(clients::Instruction::Close { edited: true }) => {
+                        Task::batch([task, self.save()])
+                    }
+                    Some(clients::Instruction::Close { edited: false }) | None => task,
+                }
+            }
+            Message::ManageClients => self
+                .clients
+                .open(self.selected.path())
+                .map(Message::Clients),
+            Message::Recognize(message) => {
+                let (installation, _) = self.selected.open();
+                let action = self
+                    .recognize
+                    .update(message, installation, &mut self.errors);
+                let task = action.task.map(Message::Recognize);
 
-                        if edited {
-                            Task::batch([task, self.save()])
-                        } else {
-                            task
-                        }
+                match action.instruction {
+                    Some(recognize::Instruction::Recognized(count)) => {
+                        self.notice = Some(format!(
+                            "Recognized {}: now listed as installed.",
+                            counted(count, "addon")
+                        ));
+                        Task::batch([task, self.rescan()])
                     }
                     None => task,
                 }
-            }
-            Message::ManageClients => {
-                let mut clients = clients::State::default();
-                let read = self
-                    .selected
-                    .path()
-                    .map_or_else(Task::none, |path| clients.read(path).map(Message::Clients));
-                self.clients = Some(clients);
-
-                read
             }
             Message::Play => {
                 let Selected::Open { installation, .. } = &self.selected else {
                     return Task::none();
                 };
-                let root = installation.root().to_path_buf();
+                let launch = self.config.launch(installation.root());
 
-                if self.games.contains_key(&root) {
-                    return Task::none();
-                }
-
-                match core::launch::command(installation, &self.config.launch(&root)) {
-                    Ok(command) => {
-                        self.games.insert(
-                            root.clone(),
-                            Game {
-                                started: false,
-                                command: true,
-                                patience: Game::PATIENCE,
-                            },
-                        );
-                        Task::perform(play(command), Message::Exited.with(root))
-                    }
-                    Err(error) => {
-                        self.errors
-                            .report(format!("Could not start World of Warcraft: {error}"));
-                        Task::none()
-                    }
-                }
+                self.game
+                    .play(installation, &launch, &mut self.errors)
+                    .map(Message::Game)
             }
-            Message::Exited(root, result) => {
-                // A fine exit may leave the game running, or about to (see
-                // `Game::patience`): the watching tells.
-                if result == Ok(Some(0)) {
-                    if let Some(game) = self.games.get_mut(&root) {
-                        game.command = false;
-                    }
-                } else {
-                    self.games.remove(&root);
-                }
+            Message::Game(message) => {
+                let (installation, _) = self.selected.open();
+                let selected = installation.map(Installation::root);
 
-                match result {
-                    Ok(None | Some(0)) => {}
-                    // What `sh` says when it can't find or run the command.
-                    Ok(Some(127)) if !cfg!(windows) => self.errors.report(
-                        "Could not start World of Warcraft: the command to start it was not \
-                         found. Check it under Manage clients.",
-                    ),
-                    Ok(Some(126)) if !cfg!(windows) => self.errors.report(
-                        "Could not start World of Warcraft: the command to start it can't be \
-                         run. Check it under Manage clients.",
-                    ),
-                    Ok(Some(code)) => self
-                        .errors
-                        .report(format!("World of Warcraft exited with status {code}.")),
-                    Err(error) => self
-                        .errors
-                        .report(format!("Could not start World of Warcraft: {error}")),
-                }
-
-                Task::none()
+                self.game
+                    .update(message, selected, &mut self.errors)
+                    .map(Message::Game)
             }
-            Message::Watch => {
-                // The selected client too, whose game may have been started
-                // elsewhere, or before the launcher was.
-                let selected = match &self.selected {
-                    Selected::Open { installation, .. } => Some(installation.root()),
-                    _ => None,
-                };
-                let mut roots: Vec<PathBuf> = self.games.keys().cloned().collect();
-                roots.extend(
-                    selected
-                        .filter(|root| !self.games.contains_key(*root))
-                        .map(Path::to_path_buf),
-                );
-
-                if roots.is_empty() {
-                    return Task::none();
-                }
-
-                Task::perform(
-                    blocking(move || Ok(core::launch::running(&roots))),
-                    Message::Watched,
-                )
-            }
-            Message::Watched(Ok(running)) => {
-                for root in &running {
-                    self.games.entry(root.clone()).or_insert(Game {
-                        started: true,
-                        command: false,
-                        patience: 0,
-                    });
-                }
-
-                self.games.retain(|root, game| {
-                    if running.contains(root) {
-                        game.started = true;
-                        return true;
-                    }
-
-                    // Gone once seen: the game is over, even if what started
-                    // it lingers (Lutris' window, say).
-                    if game.started {
-                        return false;
-                    }
-                    if game.command {
-                        return true;
-                    }
-
-                    game.patience = game.patience.saturating_sub(1);
-                    game.patience > 0
-                });
-
-                Task::none()
-            }
-            // The next look will do.
-            Message::Watched(Err(_)) => Task::none(),
             // Back from somewhere else, where a game may have started or a
             // realmlist been edited.
-            Message::Focused => Task::batch([
-                self.update(Message::Watch),
-                self.update(Message::Clients(clients::Message::Focused)),
-            ]),
+            Message::Focused => {
+                let (installation, _) = self.selected.open();
+                let selected = installation.map(Installation::root);
+
+                Task::batch([
+                    self.game.watch(selected).map(Message::Game),
+                    self.update(Message::Clients(clients::Message::Focused)),
+                ])
+            }
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
                     return Task::none();
@@ -587,11 +478,15 @@ impl App {
 
                 match result {
                     Ok(installation) => {
+                        let watch = self
+                            .game
+                            .watch(Some(installation.root()))
+                            .map(Message::Game);
                         self.selected = Selected::Open {
                             installation,
                             snapshot: None,
                         };
-                        Task::batch([self.rescan(), self.update(Message::Watch)])
+                        Task::batch([self.rescan(), watch])
                     }
                     Err(error) => {
                         self.errors
@@ -616,7 +511,12 @@ impl App {
                 match result {
                     Ok(scanned) => {
                         *snapshot = Some(scanned);
-                        self.adopt()
+                        self.propose();
+
+                        // What the folder holds changed with its addons.
+                        self.clients
+                            .changed(&root, Some(&root))
+                            .map(Message::Clients)
                     }
                     Err(error) => {
                         self.errors
@@ -630,31 +530,22 @@ impl App {
 
                 match result {
                     Ok(catalog) => {
+                        log::info!("Refreshed the catalog: {} addons", catalog.entries.len());
                         self.catalog = catalog;
-                        self.adopt()
+                        self.propose();
                     }
                     Err(error) => {
                         self.errors.report(format!(
                             "Could not refresh the catalog, showing the one built into the \
                              launcher: {error}"
                         ));
-                        Task::none()
                     }
                 }
-            }
-            Message::Adopted(Ok(adopted)) => {
-                if adopted.is_empty() {
-                    return Task::none();
-                }
 
-                self.recognized.extend(adopted);
-                self.recognized
-                    .sort_by_cached_key(|adoption| adoption.name.to_lowercase());
-                self.rescan()
+                Task::none()
             }
-            Message::Adopted(Err(error)) => {
-                self.errors
-                    .report(format!("Could not mark recognized addons: {error}"));
+            Message::UpdateChecked(latest) => {
+                self.latest = latest;
                 Task::none()
             }
             Message::OpenAddOns => {
@@ -684,6 +575,14 @@ impl App {
 
                 Task::none()
             }
+            Message::OpenPage => {
+                if let Err(error) = open::that_detached(update::PAGE) {
+                    self.errors
+                        .report(format!("Could not open {}: {error}", update::PAGE));
+                }
+
+                Task::none()
+            }
             Message::Saved(result) => {
                 if let Err(error) = result {
                     self.errors
@@ -696,31 +595,12 @@ impl App {
                 self.errors.clear();
                 Task::none()
             }
-            Message::ShowRecognized => {
-                self.details = true;
-                Task::none()
-            }
-            Message::CloseRecognized => {
-                self.details = false;
-                Task::none()
-            }
-            Message::DismissRecognized => {
-                self.recognized.clear();
-                self.details = false;
-                Task::none()
-            }
             Message::DismissNotice => {
                 self.notice = None;
                 Task::none()
             }
             Message::Transfer(message) => {
-                let (installation, snapshot) = match &self.selected {
-                    Selected::Open {
-                        installation,
-                        snapshot,
-                    } => (Some(installation), snapshot.as_ref()),
-                    _ => (None, None),
-                };
+                let (installation, snapshot) = self.selected.open();
                 let action = self.transfer.update(
                     message,
                     &self.catalog,
@@ -769,10 +649,10 @@ impl App {
             Message::Escape => {
                 if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
-                } else if self.clients.is_some() {
+                } else if self.clients.is_open() {
                     self.update(Message::Clients(clients::Message::Close))
-                } else if self.details {
-                    self.update(Message::CloseRecognized)
+                } else if self.recognize.details_open() {
+                    self.update(Message::Recognize(recognize::Message::Close))
                 } else if self.transfer.view().is_some() {
                     self.update(Message::Transfer(transfer::Message::Cancel))
                 } else {
@@ -801,8 +681,6 @@ impl App {
             return center(setup.view().map(Message::Setup)).padding(20).into();
         }
 
-        let game = self.selected.path().and_then(|path| self.games.get(path));
-
         let title = button(text("Old Launcher").size(24).font(style::BOLD))
             .padding(0)
             .on_press(Message::OpenRepository)
@@ -822,6 +700,23 @@ impl App {
                 }
             });
 
+        let version = text(format!("v{}", update::VERSION))
+            .size(13)
+            .style(text::secondary);
+
+        let newer = self.latest.as_deref().map(|latest| {
+            style::tip(
+                button(text(format!("Update to {latest} ↗")).size(13))
+                    .style(button::text)
+                    .padding([2, 6])
+                    .on_press(Message::OpenPage),
+                "A newer launcher is published. This opens its page, where the downloads \
+                 are.",
+            )
+        });
+
+        let game = self.selected.path().and_then(|path| self.game.phase(path));
+
         let header = row![
             tooltip(
                 title,
@@ -830,25 +725,31 @@ impl App {
                     .style(container::rounded_box),
                 tooltip::Position::Bottom,
             ),
-            space::horizontal(),
+            version,
+        ]
+        .push(newer)
+        .push(space::horizontal())
+        .push(
             button("Manage clients…")
                 .style(button::secondary)
                 .on_press(Message::ManageClients),
+        )
+        .push(
             button(
                 text(match game {
                     None => "Play",
-                    Some(Game { started: false, .. }) => "Setting up…",
-                    Some(Game { started: true, .. }) => "Game running",
+                    Some(game::Phase::SettingUp) => "Setting up…",
+                    Some(game::Phase::Running) => "Game running",
                 })
-                .font(style::BOLD)
+                .font(style::BOLD),
             )
             .padding([6, 26])
             .style(button::primary)
             .on_press_maybe(
                 (matches!(self.selected, Selected::Open { .. }) && game.is_none())
-                    .then_some(Message::Play)
+                    .then_some(Message::Play),
             ),
-        ]
+        )
         .spacing(10)
         .align_y(Center);
 
@@ -902,7 +803,8 @@ impl App {
                         .then_some(Message::Transfer(transfer::Message::Export)),
                 ),
                 "Saves the list of addons and their saved settings to a zip file, to \
-                 import on another computer.",
+                 import on another computer. The files in it are named after your \
+                 account and characters.",
             ))
             .push(style::tip(
                 button("Import…").style(button::text).on_press_maybe(
@@ -934,46 +836,12 @@ impl App {
             .style(style::banner(style::Tone::Success))
         });
 
-        // Adoption only adds a marker file to folders that were already
-        // there, so there is nothing to do about it; the banner just says so.
-        let recognized = (!self.recognized.is_empty()).then(|| {
-            let notice = match self.recognized.as_slice() {
-                [one] => format!(
-                    "{} was already installed and matches the catalog, so it now shows as \
-                     installed. Nothing else changed.",
-                    one.name
-                ),
-                all => format!(
-                    "{} addons already installed match the catalog, so they now show as \
-                     installed. Nothing else changed.",
-                    all.len()
-                ),
-            };
+        let proposal = self
+            .recognize
+            .banner()
+            .map(|banner| banner.map(Message::Recognize));
 
-            container(
-                row![
-                    text(notice).width(Fill),
-                    button("Details")
-                        .style(button::secondary)
-                        .on_press(Message::ShowRecognized),
-                    button("Dismiss")
-                        .style(button::text)
-                        .on_press(Message::DismissRecognized),
-                ]
-                .spacing(8)
-                .align_y(Center),
-            )
-            .padding([6, 12])
-            .style(style::banner(style::Tone::Success))
-        });
-
-        let (installation, snapshot) = match &self.selected {
-            Selected::Open {
-                installation,
-                snapshot,
-            } => (Some(installation), snapshot.as_ref()),
-            _ => (None, None),
-        };
+        let (installation, snapshot) = self.selected.open();
 
         let body = self
             .addons
@@ -989,113 +857,56 @@ impl App {
             column![header, client]
                 .push(error)
                 .push(notice)
-                .push(recognized)
+                .push(proposal)
                 .spacing(14),
             container(body).height(Fill),
         ]
         .spacing(14)
         .padding(20);
 
-        let (dialog, on_blur) = match (&self.setup, &self.clients) {
+        let (dialog, on_blur) = if let Some(setup) = &self.setup {
             // Added from the clients dialog, which comes back afterwards.
-            (Some(setup), _) => (
+            (
                 Some(setup.view().map(Message::Setup)),
                 Message::Setup(setup::Message::Cancel),
-            ),
-            (None, Some(clients)) => (
+            )
+        } else if self.clients.is_open() {
+            (
                 Some(
-                    clients
+                    self.clients
                         .view(&self.config, self.selected.path(), installation)
                         .map(Message::Clients),
                 ),
                 Message::Clients(clients::Message::Close),
-            ),
-            (None, None) if self.details => {
-                (Some(self.recognized_view()), Message::CloseRecognized)
-            }
-            (None, None) => (
+            )
+        } else if self.recognize.details_open() {
+            (
+                self.recognize
+                    .dialog(&self.catalog)
+                    .map(|dialog| dialog.map(Message::Recognize)),
+                Message::Recognize(recognize::Message::Close),
+            )
+        } else {
+            (
                 self.transfer
                     .view()
                     .map(|dialog| dialog.map(Message::Transfer)),
                 Message::Transfer(transfer::Message::Cancel),
-            ),
+            )
         };
 
         style::modal(content, dialog, on_blur)
     }
 
-    /// Every recognized addon, with the source it is now recorded as
-    /// installed from and its folders.
-    fn recognized_view(&self) -> Element<'_, Message> {
-        let addons = self.recognized.iter().map(|adoption| {
-            let source = self
-                .catalog
-                .source(&adoption.marker.source)
-                .map_or(adoption.marker.source.as_str(), |source| {
-                    source.name.as_str()
-                });
-
-            column![
-                row![
-                    text(&adoption.name).font(style::BOLD).width(Fill),
-                    text(source).size(13).style(text::secondary),
-                ]
-                .spacing(8),
-                text(format!("Folders: {}", adoption.folders.join(", ")))
-                    .size(12)
-                    .style(text::secondary),
-            ]
-            .spacing(2)
-            .into()
-        });
-
-        container(
-            column![
-                text("Recognized addons").size(20).font(style::BOLD),
-                text(
-                    "These addons were in Interface/AddOns before the launcher, and their \
-                     folders match a catalog entry exactly. They are now listed as installed \
-                     from that entry, so they can be reinstalled and uninstalled like any \
-                     other. Their files were left as they were: each folder only got a small \
-                     .old_launcher.toml file recording where it comes from."
-                )
-                .style(text::secondary),
-                container(
-                    scrollable(column(addons).spacing(10).padding(padding::right(14)))
-                        .height(Fit.max(360))
-                        .width(Fill)
-                )
-                .padding(10)
-                .width(Fill)
-                .style(container::rounded_box),
-                row![
-                    space::horizontal(),
-                    button("Close")
-                        .style(button::primary)
-                        .on_press(Message::CloseRecognized),
-                ],
-            ]
-            .spacing(14),
-        )
-        .padding(24)
-        .width(Fill.max(620))
-        .style(style::card)
-        .into()
-    }
-
     /// Keyboard shortcuts (see [`shortcut`]), the window getting the focus
-    /// back, and a look for the games every second while there are some.
+    /// back, and the games being followed.
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
             event::listen_with(|event, _status, _window| {
                 matches!(event, Event::Window(window::Event::Focused)).then_some(Message::Focused)
             }),
-            if self.games.is_empty() {
-                Subscription::none()
-            } else {
-                iced::time::every(Duration::from_secs(1)).map(|_| Message::Watch)
-            },
+            self.game.subscription().map(Message::Game),
         ])
     }
 
@@ -1106,51 +917,28 @@ impl App {
             return Task::none();
         };
 
+        log::info!("Refreshing the catalog from {location}");
         self.refresh = catalog::Refresh::Running;
 
         Task::perform(location.load(self.client.clone()), Message::CatalogLoaded)
     }
 
-    /// Marks the selected client's addons that were installed without the
-    /// launcher but match a catalog entry exactly.
-    fn adopt(&self) -> Task<Message> {
-        let Selected::Open {
-            installation,
+    /// Proposes recognizing the selected client's addons that were installed
+    /// without the launcher but match a catalog entry exactly.
+    fn propose(&mut self) {
+        if let Selected::Open {
             snapshot: Some(snapshot),
+            ..
         } = &self.selected
-        else {
-            return Task::none();
-        };
-
-        let adoptions = Adoption::plan(snapshot, &self.catalog.entries);
-
-        if adoptions.is_empty() {
-            return Task::none();
+        {
+            self.recognize.propose(snapshot, &self.catalog.entries);
         }
-
-        let installation = installation.clone();
-
-        Task::perform(
-            blocking(move || {
-                let mut adopted = Vec::new();
-
-                for adoption in adoptions {
-                    if installation.adopt(&adoption)? > 0 {
-                        adopted.push(adoption);
-                    }
-                }
-
-                Ok(adopted)
-            }),
-            Message::Adopted,
-        )
     }
 
     /// Starts checking the client at `path`.
     fn open(&mut self, path: PathBuf) -> Task<Message> {
         self.selected = Selected::Opening(path.clone());
-        self.recognized.clear();
-        self.details = false;
+        self.recognize.clear();
 
         Task::perform(
             blocking({
@@ -1223,17 +1011,6 @@ fn size(bytes: u64) -> String {
     }
 }
 
-/// Starts the game with `command` and waits for it to exit: its exit code,
-/// if it has one. The game keeps running if the launcher quits first.
-async fn play(command: std::process::Command) -> Result<Option<i32>, String> {
-    let status = tokio::process::Command::from(command)
-        .status()
-        .await
-        .map_err(|error| describe(&error))?;
-
-    Ok(status.code())
-}
-
 /// Runs filesystem work on a blocking thread, so the UI never waits on disk.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, core::Error> + Send + 'static,
@@ -1268,7 +1045,8 @@ mod tests {
     use super::*;
     use iced_test::simulator;
 
-    fn app(installations: &[&str]) -> App {
+    /// A launcher listing `installations`, with nothing open.
+    pub(crate) fn app(installations: &[&str]) -> App {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let installations: Vec<PathBuf> = installations.iter().map(PathBuf::from).collect();
 
@@ -1288,12 +1066,22 @@ mod tests {
             recovery: None,
             errors: Errors::default(),
             notice: None,
-            recognized: Vec::new(),
-            details: false,
+            recognize: recognize::State::default(),
             transfer: transfer::State::default(),
-            clients: None,
-            games: BTreeMap::new(),
+            clients: clients::State::default(),
+            game: game::State::default(),
+            latest: None,
         }
+    }
+
+    /// A launcher with `installation` open and scanned.
+    pub(crate) fn opened(installation: Installation) -> App {
+        let mut app = app(&[&installation.root().display().to_string()]);
+        app.selected = Selected::Open {
+            snapshot: installation.scan().ok(),
+            installation,
+        };
+        app
     }
 
     /// The app as it starts with an unreadable config at `path`, holding
@@ -1307,6 +1095,28 @@ mod tests {
             recovery: Some(recovery::State::new(path.to_path_buf(), &error)),
             ..app(&[])
         }
+    }
+
+    /// A catalog with one entry per name, each installing the folder of
+    /// that name from the source `test`.
+    fn catalog(names: &[&str]) -> Catalog {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| {
+                format!(
+                    r#"{{ "name": "{name}", "downloads": [{{ "source": "test", "name": "{name}",
+                         "url": "https://example.com/{name}.zip", "folders": [{{ "name": "{name}" }}] }}] }}"#
+                )
+            })
+            .collect();
+        let json = format!(
+            r#"{{ "version": 2,
+                  "sources": [{{ "id": "test", "name": "Test", "homepage": "https://example.com" }}],
+                  "entries": [{}] }}"#,
+            entries.join(", ")
+        );
+
+        Catalog::parse(json.as_bytes()).unwrap()
     }
 
     #[test]
@@ -1331,6 +1141,7 @@ mod tests {
     #[test]
     fn the_window_icon_decodes() {
         assert!(icon().is_some());
+        assert_eq!((ICON_WIDTH, ICON_HEIGHT), (256, 256));
     }
 
     #[test]
@@ -1353,10 +1164,12 @@ mod tests {
     }
 
     #[test]
-    fn the_title_links_to_the_repository() {
+    fn the_title_links_to_the_repository_and_shows_the_version() {
         let app = app(&[]);
 
         let mut ui = simulator(app.view());
+        assert!(ui.find(format!("v{}", update::VERSION)).is_ok());
+        assert!(ui.find("Update to").is_err(), "nothing newer is known");
         let _ = ui.click("Old Launcher").unwrap();
 
         assert!(matches!(
@@ -1367,24 +1180,23 @@ mod tests {
     }
 
     #[test]
+    fn a_newer_version_is_offered_next_to_the_version() {
+        let mut app = app(&[]);
+        let _ = app.update(Message::UpdateChecked(Some("9.0.0".into())));
+
+        let mut ui = simulator(app.view());
+        let _ = ui.click("Update to 9.0.0 ↗").unwrap();
+
+        assert!(matches!(ui.into_messages().next(), Some(Message::OpenPage)));
+    }
+
+    #[test]
     fn an_import_restores_the_settings_then_installs_its_addons() {
         use crate::core::transfer::{Import, Manifest, Plan};
 
         let (_root, installation) = crate::testing::client(&[]);
-        let mut app = app(&[&installation.root().display().to_string()]);
-        app.catalog = Catalog::parse(
-            br#"{ "version": 2,
-                  "sources": [{ "id": "test", "name": "Test", "homepage": "https://example.com" }],
-                  "entries": [{ "name": "Addon Control Panel",
-                                "downloads": [{ "source": "test", "name": "ACP",
-                                                "url": "https://example.com/ACP.zip",
-                                                "folders": [{ "name": "ACP" }] }] }] }"#,
-        )
-        .unwrap();
-        app.selected = Selected::Open {
-            snapshot: Some(installation.scan().unwrap()),
-            installation,
-        };
+        let mut app = opened(installation);
+        app.catalog = catalog(&["ACP"]);
         let import = Import {
             path: PathBuf::from("/exports/old_launcher-addons.zip"),
             manifest: Manifest {
@@ -1491,7 +1303,7 @@ mod tests {
         drop(ui);
 
         let _ = app.update(Message::Escape);
-        assert!(app.clients.is_none(), "Escape closes it");
+        assert!(!app.clients.is_open(), "Escape closes it");
     }
 
     #[test]
@@ -1523,16 +1335,19 @@ mod tests {
     fn removing_the_last_client_asks_for_another() {
         let mut app = app(&["/games/wotlk"]);
         app.selected = Selected::Failed("/games/wotlk".into());
-        app.config
+        let _ = app
+            .config
             .launch
             .insert("/games/wotlk".into(), crate::core::Launch::default());
         let _ = app.update(Message::ManageClients);
 
         let _ = app.update(Message::Clients(clients::Message::Remove));
+        assert_eq!(app.config.installations.len(), 1, "asked first");
+        let _ = app.update(Message::Clients(clients::Message::ConfirmRemove));
 
         assert!(app.config.installations.is_empty());
         assert!(app.config.launch.is_empty());
-        assert!(app.clients.is_none());
+        assert!(!app.clients.is_open());
         let mut ui = simulator(app.view());
         assert!(ui.find("Add a WoW 3.3.5a client").is_ok());
         assert!(ui.find("Cancel").is_err(), "there is nothing to go back to");
@@ -1547,12 +1362,8 @@ mod tests {
             .join("3.3.5a ".repeat(12).trim_end());
         std::fs::create_dir_all(&long).unwrap();
         std::fs::copy(root.path().join("Wow.exe"), long.join("Wow.exe")).unwrap();
-        let installation = Installation::open(&long).unwrap();
-        let mut app = app(&[&long.display().to_string()]);
-        app.selected = Selected::Open {
-            snapshot: Some(installation.scan().unwrap()),
-            installation,
-        };
+        let mut app = opened(Installation::open(&long).unwrap());
+        let _ = app.update(Message::UpdateChecked(Some("9.0.0".into())));
 
         let mut ui = iced_test::simulator::Simulator::with_size(
             iced::Settings::default(),
@@ -1560,23 +1371,13 @@ mod tests {
             app.view(),
         );
 
-        for button in ["Play", "Manage clients…", "Import…"] {
+        for button in ["Play", "Manage clients…", "Import…", "Update to 9.0.0 ↗"] {
             let bounds = ui.find(button).unwrap().bounds();
             assert!(
                 bounds.x + bounds.width <= App::MIN_SIZE.width,
                 "{button} ends inside the window: {bounds:?}"
             );
         }
-    }
-
-    /// An app with the client at `root` open.
-    fn playable(installation: Installation) -> App {
-        let mut app = app(&[&installation.root().display().to_string()]);
-        app.selected = Selected::Open {
-            snapshot: None,
-            installation,
-        };
-        app
     }
 
     /// Whether the Play button, which must say `label`, can be pressed.
@@ -1587,108 +1388,32 @@ mod tests {
     }
 
     #[test]
-    fn a_game_is_set_up_then_running_until_its_wow_exe_is_gone() {
+    fn the_play_button_follows_the_game() {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root().to_path_buf();
-        let mut app = playable(installation);
+        let mut app = opened(installation);
 
         assert!(play_button(&app, "Play"));
         let _ = app.update(Message::Play);
-        let _ = app.update(Message::Watched(Ok(Vec::new())));
-        assert!(
-            !play_button(&app, "Setting up…"),
-            "no Wow.exe yet: Proton being set up, say"
-        );
+        let label = if cfg!(windows) {
+            "Game running"
+        } else {
+            "Setting up…"
+        };
+        assert!(!play_button(&app, label), "started, so not again");
 
-        let _ = app.update(Message::Watched(Ok(vec![root.clone()])));
+        let _ = app.update(Message::Game(game::Message::Watched(Ok(vec![
+            root.clone(),
+        ]))));
         assert!(!play_button(&app, "Game running"));
 
-        // wine or umu-run exit with the game, which then goes.
-        let _ = app.update(Message::Exited(root.clone(), Ok(Some(0))));
-        assert!(!play_button(&app, "Game running"), "until it is gone");
-        let _ = app.update(Message::Watched(Ok(Vec::new())));
+        let _ = app.update(Message::Game(game::Message::Exited(
+            root.clone(),
+            Ok(Some(0)),
+        )));
+        let _ = app.update(Message::Game(game::Message::Watched(Ok(Vec::new()))));
         assert!(play_button(&app, "Play"));
         assert!(app.errors.messages().is_empty(), "a normal exit");
-
-        let _ = app.update(Message::Play);
-        let _ = app.update(Message::Exited(root, Ok(Some(3))));
-        assert!(play_button(&app, "Play"), "over at once");
-        assert_eq!(
-            app.errors.messages(),
-            ["World of Warcraft exited with status 3."]
-        );
-    }
-
-    #[test]
-    fn a_game_already_running_is_found_and_followed() {
-        let (_root, installation) = crate::testing::client(&[]);
-        let root = installation.root().to_path_buf();
-        let mut app = playable(installation);
-
-        // Nothing was started, but the selected client is looked at: when
-        // it opens, and when the launcher gets the focus back.
-        assert!(app.update(Message::Watch).units() > 0);
-        let _ = app.update(Message::Watched(Ok(vec![root])));
-        assert!(!play_button(&app, "Game running"));
-
-        let _ = app.update(Message::Watched(Ok(Vec::new())));
-        assert!(play_button(&app, "Play"));
-
-        app.selected = Selected::Nothing;
-        assert_eq!(app.update(Message::Watch).units(), 0, "nothing to look for");
-    }
-
-    #[test]
-    fn a_game_handed_to_another_launcher_is_waited_for() {
-        let (_root, installation) = crate::testing::client(&[]);
-        let root = installation.root().to_path_buf();
-        let mut app = playable(installation);
-
-        // `steam steam://rungameid/…` exits as soon as Steam has the game.
-        let _ = app.update(Message::Play);
-        let _ = app.update(Message::Exited(root.clone(), Ok(Some(0))));
-        for _ in 1..Game::PATIENCE {
-            let _ = app.update(Message::Watched(Ok(Vec::new())));
-        }
-        assert!(!play_button(&app, "Setting up…"));
-        let _ = app.update(Message::Watched(Ok(vec![root.clone()])));
-        assert!(!play_button(&app, "Game running"));
-        let _ = app.update(Message::Watched(Ok(Vec::new())));
-        assert!(play_button(&app, "Play"));
-
-        // And when the game never shows up, the launcher stops waiting.
-        let _ = app.update(Message::Play);
-        let _ = app.update(Message::Exited(root, Ok(Some(0))));
-        for _ in 0..Game::PATIENCE {
-            let _ = app.update(Message::Watched(Ok(Vec::new())));
-        }
-        assert!(play_button(&app, "Play"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn playing_waits_for_the_game_and_tells_how_it_ended() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let shell = |line: &str| {
-            let mut command = std::process::Command::new("sh");
-            command.arg("-c").arg(line);
-            command
-        };
-
-        assert_eq!(runtime.block_on(play(shell("exit 0"))), Ok(Some(0)));
-        assert_eq!(runtime.block_on(play(shell("exit 3"))), Ok(Some(3)));
-        assert_eq!(
-            runtime.block_on(play(shell("kill -9 $$"))),
-            Ok(None),
-            "killed, so no exit code"
-        );
-        assert!(
-            runtime
-                .block_on(play(std::process::Command::new(
-                    "/nonexistent/old_launcher_game"
-                )))
-                .is_err()
-        );
     }
 
     #[cfg(not(windows))]
@@ -1696,11 +1421,7 @@ mod tests {
     fn a_command_that_cant_start_the_game_is_pointed_at() {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root().to_path_buf();
-        let mut app = app(&[&root.display().to_string()]);
-        app.selected = Selected::Open {
-            snapshot: None,
-            installation,
-        };
+        let mut app = opened(installation);
 
         app.config.set_launch(
             &root,
@@ -1710,11 +1431,11 @@ mod tests {
             },
         );
         let _ = app.update(Message::Play);
-        assert!(app.games.is_empty(), "nothing was started");
+        assert!(app.game.phase(&root).is_none(), "nothing was started");
 
         app.config.set_launch(&root, crate::core::Launch::default());
         let _ = app.update(Message::Play);
-        let _ = app.update(Message::Exited(root, Ok(Some(127))));
+        let _ = app.update(Message::Game(game::Message::Exited(root, Ok(Some(127)))));
 
         assert_eq!(
             app.errors.messages(),
@@ -1734,11 +1455,7 @@ mod tests {
 
         let mut opening = app(&[&path]);
         opening.selected = Selected::Opening(installation.root().to_path_buf());
-        let mut open = app(&[&path]);
-        open.selected = Selected::Open {
-            snapshot: Some(installation.scan().unwrap()),
-            installation,
-        };
+        let open = opened(installation);
 
         // What happens right after every launch: the line under the header
         // goes from "Opening …" to the client's badges and buttons.
@@ -1755,28 +1472,16 @@ mod tests {
             .collect();
         let (_root, installation) =
             crate::testing::client(&tocs.iter().map(String::as_str).collect::<Vec<_>>());
-        let path = installation.root().display().to_string();
         let snapshot = installation.scan().unwrap();
-        let open = |error: Option<&str>, recognized: bool| {
-            let mut app = app(&[&path]);
+        let catalog = catalog(&["Addon07"]);
+        let open = |error: Option<&str>, proposed: bool| {
+            let mut app = opened(installation.clone());
             if let Some(error) = error {
                 app.errors.report(error);
             }
-            if recognized {
-                app.recognized = vec![Adoption {
-                    name: "Addon07".into(),
-                    marker: crate::core::Marker {
-                        source: "test".into(),
-                        entry: "Addon07".into(),
-                        url: "https://example.com/Addon07.zip".into(),
-                    },
-                    folders: vec!["Addon07".into()],
-                }];
+            if proposed {
+                app.recognize.propose(&snapshot, &catalog.entries);
             }
-            app.selected = Selected::Open {
-                installation: installation.clone(),
-                snapshot: Some(snapshot.clone()),
-            };
             app
         };
 
@@ -1805,47 +1510,48 @@ mod tests {
     }
 
     #[test]
-    fn recognized_addons_are_announced_and_listed_on_request() {
+    fn recognizing_addons_is_proposed_after_a_scan_and_done_on_request() {
         let (_root, installation) = crate::testing::client(&["Interface/AddOns/ACP/ACP.toc"]);
-        let mut app = app(&[&installation.root().display().to_string()]);
-        app.catalog = Catalog::parse(
-            br#"{ "version": 2,
-                  "sources": [{ "id": "nom0re", "name": "NoM0Re", "homepage": "https://example.com" }],
-                  "entries": [{ "name": "Addon Control Panel",
-                                "downloads": [{ "source": "nom0re", "name": "ACP",
-                                                "url": "https://example.com/ACP.zip",
-                                                "folders": [{ "name": "ACP" }] }] }] }"#,
-        )
-        .unwrap();
-        let snapshot = installation.scan().unwrap();
-        let adoptions = Adoption::plan(&snapshot, &app.catalog.entries);
-        app.selected = Selected::Open {
-            installation,
-            snapshot: Some(snapshot),
-        };
+        let root = installation.root().to_path_buf();
+        let mut app = opened(installation.clone());
+        app.catalog = catalog(&["ACP"]);
 
-        let _ = app.update(Message::Adopted(Ok(adoptions)));
+        let _ = app.update(Message::Scanned(
+            root.clone(),
+            Ok(installation.scan().unwrap()),
+        ));
 
         let mut ui = simulator(app.view());
         assert!(
             ui.find(
-                "Addon Control Panel was already installed and matches the catalog, so it now \
-                 shows as installed. Nothing else changed."
+                "ACP was installed without the launcher and matches the catalog. Recognize \
+                 it, so it shows as installed and can be updated from here?"
             )
             .is_ok()
         );
+        assert!(ui.find("Installed manually").is_ok(), "not yet recognized");
         let _ = ui.click("Details").unwrap();
         for message in ui.into_messages() {
             let _ = app.update(message);
         }
 
         let mut ui = simulator(app.view());
-        assert!(ui.find("Recognized addons").is_ok());
-        assert!(ui.find("NoM0Re").is_ok(), "the source it is recorded under");
+        assert!(ui.find("Addons to recognize").is_ok());
         drop(ui);
-
         let _ = app.update(Message::Escape);
-        assert!(!app.details, "Escape closes the list");
-        assert_eq!(app.recognized.len(), 1, "the banner stays until dismissed");
+        assert!(!app.recognize.details_open(), "Escape closes the list");
+
+        // Recognizing writes the markers (in a task not run here) and
+        // reports; the client is then scanned again.
+        let adopted = core::Adoption::plan(&installation.scan().unwrap(), &app.catalog.entries);
+        let rescan = app.update(Message::Recognize(recognize::Message::Adopted(Ok(adopted))));
+
+        assert!(rescan.units() > 0);
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Recognized 1 addon: now listed as installed.")
+        );
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Recognize").is_err(), "nothing left to propose");
     }
 }

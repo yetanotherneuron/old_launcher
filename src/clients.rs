@@ -1,7 +1,7 @@
 //! The clients dialog: which client the launcher shows, what its folder
 //! holds and, outside Windows, how the game starts.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use iced::widget::{
@@ -33,14 +33,22 @@ pub const COMMAND: &str = "clients-command";
 /// The width and height of the buttons beside the client picker.
 const PICKER_BUTTON: f32 = 38.0;
 
-/// The dialog's state.
+/// The dialog's state, kept between openings: what a client folder holds
+/// takes a moment to read, and is remembered until the client changes.
 #[derive(Default)]
 pub struct State {
+    /// Whether the dialog is open.
+    open: bool,
     /// What each client folder read so far holds, or why it couldn't be
-    /// read; `None` while it is being read.
+    /// read; `None` while it is being read for the first time.
     details: BTreeMap<PathBuf, Option<Result<Details, String>>>,
+    /// The client folders that changed since they were read: they are read
+    /// again when next shown, showing the old reading until the new one.
+    stale: BTreeSet<PathBuf>,
     /// Whether how a client starts was changed, so the config needs saving.
     edited: bool,
+    /// Whether the client shown is about to be removed, pending a yes.
+    removing: bool,
 }
 
 /// Interactions with the dialog.
@@ -62,8 +70,12 @@ pub enum Message {
     Command(String),
     /// The "+" beside the picker was pressed.
     Add,
-    /// The trash can beside the picker was pressed.
+    /// The trash can beside the picker was pressed: ask first.
     Remove,
+    /// Removing the client shown was confirmed.
+    ConfirmRemove,
+    /// Removing the client shown was thought better of.
+    CancelRemove,
     /// The dialog was closed.
     Close,
 }
@@ -76,7 +88,7 @@ pub enum Instruction {
     Add,
     /// Forget the client shown.
     Remove,
-    /// Close the dialog.
+    /// The dialog closed.
     Close {
         /// Whether how a client starts was changed, so the config needs
         /// saving.
@@ -85,12 +97,47 @@ pub enum Instruction {
 }
 
 impl State {
-    /// Reads what the client folder at `root` holds, unless it already was.
+    /// Opens the dialog on the `current` client, reading its folder if it
+    /// wasn't yet or changed since.
+    pub fn open(&mut self, current: Option<&Path>) -> Task<Message> {
+        self.open = true;
+        self.removing = false;
+
+        current.map_or_else(Task::none, |root| self.read(root))
+    }
+
+    /// Whether the dialog is open.
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
+    /// Closes the dialog without a word to the parent: there is nothing
+    /// left to manage.
+    pub fn close(&mut self) {
+        self.open = false;
+        self.removing = false;
+    }
+
+    /// Notes that the client folder at `root` changed (addons came or went),
+    /// so what it holds is read again: now, if the dialog shows it
+    /// (`current`), or when it next does.
+    pub fn changed(&mut self, root: &Path, current: Option<&Path>) -> Task<Message> {
+        let _ = self.stale.insert(root.to_path_buf());
+
+        if self.open && current == Some(root) {
+            self.read(root)
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Reads what the client folder at `root` holds, unless it was read
+    /// already and hasn't changed since.
     pub fn read(&mut self, root: &Path) -> Task<Message> {
-        if self.details.contains_key(root) {
+        if self.details.contains_key(root) && !self.stale.remove(root) {
             return Task::none();
         }
-        self.details.insert(root.to_path_buf(), None);
+        let _ = self.details.entry(root.to_path_buf()).or_insert(None);
 
         let root = root.to_path_buf();
 
@@ -114,11 +161,12 @@ impl State {
     ) -> Action<Instruction, Message> {
         match message {
             Message::Select(path) => {
+                self.removing = false;
                 let read = self.read(&path);
                 Action::new(Instruction::Select(path), read)
             }
             Message::Read(path, result) => {
-                self.details.insert(path, Some(result));
+                let _ = self.details.insert(path, Some(result));
                 Action::none()
             }
             Message::EditRealmlist(path) => {
@@ -136,9 +184,9 @@ impl State {
                 Action::none()
             }
             Message::Focused => {
-                let Some(root) =
-                    current.filter(|root| matches!(self.details.get(*root), Some(Some(Ok(_)))))
-                else {
+                let Some(root) = current.filter(|root| {
+                    self.open && matches!(self.details.get(*root), Some(Some(Ok(_))))
+                }) else {
                     return Action::none();
                 };
                 let root = root.to_path_buf();
@@ -177,11 +225,28 @@ impl State {
                 }
                 Action::none()
             }
-            Message::Add => Action::instruction(Instruction::Add),
-            Message::Remove => Action::instruction(Instruction::Remove),
-            Message::Close => Action::instruction(Instruction::Close {
-                edited: self.edited,
-            }),
+            Message::Add => {
+                self.removing = false;
+                Action::instruction(Instruction::Add)
+            }
+            Message::Remove => {
+                self.removing = current.is_some();
+                Action::none()
+            }
+            Message::ConfirmRemove => {
+                self.removing = false;
+                Action::instruction(Instruction::Remove)
+            }
+            Message::CancelRemove => {
+                self.removing = false;
+                Action::none()
+            }
+            Message::Close => {
+                self.close();
+                Action::instruction(Instruction::Close {
+                    edited: std::mem::take(&mut self.edited),
+                })
+            }
         }
     }
 
@@ -236,11 +301,33 @@ impl State {
                 PICKER_BUTTON,
                 button::danger,
                 "Remove this client from the launcher. Its folder is left as it is.",
-                current.map(|_| Message::Remove),
+                current.filter(|_| !self.removing).map(|_| Message::Remove),
             ),
         ]
         .spacing(8)
         .align_y(Center);
+
+        let removal = current.filter(|_| self.removing).map(|root| {
+            container(
+                row![
+                    text(format!(
+                        "Remove {} from the launcher? Its folder is left as it is.",
+                        root.display()
+                    ))
+                    .width(Fill),
+                    button("Cancel")
+                        .style(button::text)
+                        .on_press(Message::CancelRemove),
+                    button("Remove")
+                        .style(button::danger)
+                        .on_press(Message::ConfirmRemove),
+                ]
+                .spacing(8)
+                .align_y(Center),
+            )
+            .padding([6, 12])
+            .style(style::banner(style::Tone::Danger))
+        });
 
         let about =
             current.map(|root| {
@@ -329,11 +416,17 @@ impl State {
             .spacing(10)
         });
 
-        container(column![title, picker].push(about).push(launch).spacing(14))
-            .padding(24)
-            .width(Fill.max(620))
-            .style(style::card)
-            .into()
+        container(
+            column![title, picker]
+                .push(removal)
+                .push(about)
+                .push(launch)
+                .spacing(14),
+        )
+        .padding(24)
+        .width(Fill.max(620))
+        .style(style::card)
+        .into()
     }
 }
 
@@ -402,12 +495,27 @@ mod tests {
         )
     }
 
-    #[test]
-    fn the_dialog_says_what_the_client_holds() {
+    /// An open dialog on the wotlk client, whose folder was read.
+    fn opened(read: Option<Details>) -> (State, Config) {
         let mut state = State::default();
         let mut config = config();
+        let _ = state.open(Some(Path::new(WOTLK)));
+
+        if let Some(details) = read {
+            let _ = update(
+                &mut state,
+                &mut config,
+                Message::Read(WOTLK.into(), Ok(details)),
+            );
+        }
+
+        (state, config)
+    }
+
+    #[test]
+    fn the_dialog_says_what_the_client_holds() {
+        let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
-        let _ = state.read(root);
 
         let mut ui = simulator(state.view(&config, Some(root), None));
         assert!(ui.find("Reading the folder…").is_ok());
@@ -429,15 +537,37 @@ mod tests {
     }
 
     #[test]
-    fn a_realmlist_is_edited_in_place_and_read_again_on_return() {
-        let mut state = State::default();
-        let mut config = config();
+    fn what_a_folder_holds_is_read_once_until_it_changes() {
+        let (mut state, _) = opened(Some(details(None)));
         let root = Path::new(WOTLK);
-        let _ = update(
-            &mut state,
-            &mut config,
-            Message::Read(root.into(), Ok(details(Some(realmlist(None))))),
+
+        state.close();
+        assert_eq!(state.open(Some(root)).units(), 0, "remembered");
+
+        // Addons came or went while the dialog was closed.
+        state.close();
+        assert_eq!(state.changed(root, None).units(), 0, "read when next shown");
+        assert!(state.open(Some(root)).units() > 0);
+        assert!(
+            matches!(state.details.get(root), Some(Some(Ok(_)))),
+            "the old reading shows meanwhile"
         );
+
+        // And while it is open and showing that client.
+        assert!(state.changed(root, Some(root)).units() > 0);
+        assert_eq!(
+            state
+                .changed(Path::new("/games/warmane"), Some(root))
+                .units(),
+            0,
+            "another client: when next shown"
+        );
+    }
+
+    #[test]
+    fn a_realmlist_is_edited_in_place_and_read_again_on_return() {
+        let (mut state, mut config) = opened(Some(details(Some(realmlist(None)))));
+        let root = Path::new(WOTLK);
 
         let mut ui = simulator(state.view(&config, Some(root), None));
         assert!(ui.find("Not set").is_ok());
@@ -462,16 +592,9 @@ mod tests {
 
     #[test]
     fn a_client_without_a_realmlist_offers_nothing_to_edit() {
-        let mut state = State::default();
-        let mut config = config();
-        let root = Path::new(WOTLK);
-        let _ = update(
-            &mut state,
-            &mut config,
-            Message::Read(root.into(), Ok(details(None))),
-        );
+        let (state, config) = opened(Some(details(None)));
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None));
 
         assert!(ui.find("No realmlist.wtf").is_ok());
         assert!(ui.find(selector::id(EDIT_REALMLIST)).is_err());
@@ -479,8 +602,7 @@ mod tests {
 
     #[test]
     fn picking_a_client_shows_it_and_reads_its_folder() {
-        let mut state = State::default();
-        let mut config = config();
+        let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
         let mut ui = simulator(state.view(&config, Some(root), None));
@@ -498,17 +620,51 @@ mod tests {
     }
 
     #[test]
-    fn adding_and_removing_are_left_to_the_launcher() {
-        let mut state = State::default();
-        let config = config();
+    fn removing_a_client_is_asked_about_first() {
+        let (mut state, mut config) = opened(None);
+        let root = Path::new(WOTLK);
+
+        let mut ui = simulator(state.view(&config, Some(root), None));
+        let _ = ui.click(selector::id(REMOVE)).unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        for message in messages {
+            let action = update(&mut state, &mut config, message);
+            assert!(action.instruction.is_none(), "not yet");
+        }
+
+        let mut ui = simulator(state.view(&config, Some(root), None));
+        assert!(
+            ui.find("Remove /games/wotlk from the launcher? Its folder is left as it is.")
+                .is_ok()
+        );
+        let _ = ui.click("Cancel").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        for message in messages {
+            let _ = update(&mut state, &mut config, message);
+        }
+        assert!(!state.removing);
+
+        let _ = update(&mut state, &mut config, Message::Remove);
+        let mut ui = simulator(state.view(&config, Some(root), None));
+        let _ = ui.click("Remove").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        let instructions: Vec<Instruction> = messages
+            .into_iter()
+            .filter_map(|message| update(&mut state, &mut config, message).instruction)
+            .collect();
+
+        assert!(matches!(instructions.as_slice(), [Instruction::Remove]));
+    }
+
+    #[test]
+    fn adding_and_closing_are_left_to_the_launcher() {
+        let (mut state, mut config) = opened(None);
 
         let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None));
         let _ = ui.click(selector::id(ADD)).unwrap();
-        let _ = ui.click(selector::id(REMOVE)).unwrap();
         let _ = ui.click("Close").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
 
-        let mut config = config.clone();
         let instructions: Vec<Instruction> = messages
             .into_iter()
             .filter_map(|message| update(&mut state, &mut config, message).instruction)
@@ -516,12 +672,9 @@ mod tests {
 
         assert!(matches!(
             instructions.as_slice(),
-            [
-                Instruction::Add,
-                Instruction::Remove,
-                Instruction::Close { edited: false }
-            ]
+            [Instruction::Add, Instruction::Close { edited: false }]
         ));
+        assert!(!state.is_open());
     }
 
     #[cfg(not(windows))]
@@ -529,8 +682,7 @@ mod tests {
     fn how_each_client_starts_is_typed_in() {
         use crate::core::Launch;
 
-        let mut state = State::default();
-        let mut config = config();
+        let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
         let mut ui = simulator(state.view(&config, Some(root), None));
