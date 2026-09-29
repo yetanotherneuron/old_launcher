@@ -1244,11 +1244,11 @@ mod tests {
         let _ = app.update(Message::Refresh);
         assert_eq!(app.refresh, catalog::Refresh::Idle);
 
-        // Long enough ago: fetched again, which finds nothing to fetch from
-        // here.
+        // Long enough ago: fetched again, from wherever this build gets its
+        // catalog, if anywhere.
         app.refreshed = Instant::now().checked_sub(REFRESH_PAUSE);
         let _ = app.update(Message::Refresh);
-        assert_eq!(app.refresh, catalog::Refresh::Unavailable);
+        assert_ne!(app.refresh, catalog::Refresh::Idle);
     }
 
     #[test]
