@@ -470,16 +470,11 @@ impl State {
         .ellipsis(text::Ellipsis::End);
 
         let reload = match refresh {
-            catalog::Refresh::Unavailable => None,
-            catalog::Refresh::Idle => Some(
-                button("Reload")
-                    .style(button::secondary)
-                    .padding(10)
-                    .on_press(Message::Reload),
-            ),
-            catalog::Refresh::Running => {
-                Some(button("Refreshing…").style(button::secondary).padding(10))
-            }
+            catalog::Refresh::Idle => button("Reload")
+                .style(button::secondary)
+                .padding(10)
+                .on_press(Message::Reload),
+            catalog::Refresh::Running => button("Refreshing…").style(button::secondary).padding(10),
         };
 
         let toolbar = row![
@@ -521,7 +516,12 @@ impl State {
                 empty(
                     match self.filter.status {
                         _ if filtered => "No addon matches.",
-                        Status::All => "The catalog is empty.",
+                        Status::All => match refresh {
+                            catalog::Refresh::Running => "Fetching the catalog…",
+                            catalog::Refresh::Idle => {
+                                "No catalog yet: check the connection and press Reload."
+                            }
+                        },
                         Status::Installed => "No addons installed yet.",
                         Status::Updatable => "Every installed addon is at the catalog's version.",
                         Status::NotInstalled => "Every addon in the catalog is installed.",

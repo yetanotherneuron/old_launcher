@@ -4,7 +4,7 @@ use iced_test::core::widget::{Id, Operation, operation};
 use iced_test::core::{Rectangle, Size, Vector};
 use iced_test::simulator::Simulator;
 
-pub use crate::core::testing::client;
+pub use crate::core::testing::{client, client_with};
 
 /// The vertical scroll offset of every scrollable on screen, as drawn, in
 /// the order they are laid out.

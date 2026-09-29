@@ -23,7 +23,7 @@ use crate::{App, Message, Selected, addons, catalog, clients, style, transfer};
 fn screenshots() {
     let root = PathBuf::from(std::env::var("SCREENSHOT_CLIENT").unwrap());
     let out = std::env::var("SCREENSHOT_OUT").unwrap();
-    let catalog = catalog::embedded().unwrap();
+    let catalog = catalog::repository();
     let entry = |name: &str| {
         catalog
             .entries

@@ -30,11 +30,6 @@ variables:
   # The simulator tests render in software: runners have no GPU.
   ICED_TEST_BACKEND: tiny-skia
   DEBIAN_FRONTEND: noninteractive
-  # Where the project page is, and the catalog it publishes: what the
-  # binaries refresh their catalog from, and where the launcher sends
-  # people for a newer version.
-  PAGE_URL: https://old-launcher-0d3217.gitlab.io
-  OLD_LAUNCHER_INDEX_URL: https://old-launcher-0d3217.gitlab.io/wotlk.json
 
 # One pipeline per change: a merge request's, or else the branch's. A
 # schedule runs only the `index` job. Pipelines of the default branch all
@@ -70,10 +65,13 @@ workflow:
       - .cargo/git/db/
       - target/
 
-# Every job but `index`: not on a schedule.
+# Every job but `index` and `pages`: not on a schedule, and not for a
+# catalog update, which nothing but the page depends on.
 .push:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CATALOG_ONLY == "true"
       when: never
     - when: on_success
 
@@ -124,6 +122,8 @@ test-windows:
   stage: release
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CATALOG_ONLY == "true"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   artifacts:
@@ -206,6 +206,8 @@ aur:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
+    - if: $CATALOG_ONLY == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
     - pacman -Syu --noconfirm --needed git openssh
@@ -271,9 +273,8 @@ pages:
       - public
 
 # Regenerates the catalog from the upstream sources and commits it when it
-# changed, which then goes through a normal pipeline: the binaries embed it
-# and the page publishes it. Run from a pipeline schedule (Build > Pipeline
-# schedules, say weekly, on the default branch).
+# changed, for the page to publish. Run from a pipeline schedule (Build >
+# Pipeline schedules, say weekly, on the default branch).
 #
 # It needs two CI/CD variables: CI_PUSH_TOKEN, a project access token with
 # the `write_repository` scope (Settings > Access tokens; the Developer role
@@ -296,4 +297,5 @@ index:
     - >-
       if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
     - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog"
-    - git push "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+    # The pipeline this starts publishes the page and nothing else.
+    - git push -o ci.variable="CATALOG_ONLY=true" "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

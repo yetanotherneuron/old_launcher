@@ -128,11 +128,28 @@ fn installing_needs_an_open_client() {
 }
 
 #[test]
+fn without_a_catalog_the_list_says_what_is_going_on() {
+    let state = State::new();
+    let catalog = Catalog::default();
+
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Running));
+    assert!(ui.find("Fetching the catalog…").is_ok());
+    drop(ui);
+
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    assert!(
+        ui.find("No catalog yet: check the connection and press Reload.")
+            .is_ok()
+    );
+    assert!(ui.find("Reload").is_ok());
+}
+
+#[test]
 fn cards_show_every_source_the_date_folders_and_foreign_interfaces() {
     let catalog = catalog();
     let state = State::new();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Unavailable));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
 
     assert!(ui.find("Other Source ↗").is_ok());
     assert!(ui.find("Test Source ↗").is_ok());
@@ -142,7 +159,6 @@ fn cards_show_every_source_the_date_folders_and_foreign_interfaces() {
     );
     assert!(ui.find("Folders: Skada, SkadaStorage").is_ok());
     assert!(ui.find("Made for Cataclysm").is_ok());
-    assert!(ui.find("Reload").is_err(), "nothing to reload from");
 }
 
 #[test]
@@ -920,13 +936,20 @@ async fn serve(files: Vec<(&'static str, Option<Vec<u8>>)>) -> String {
 }
 
 fn acp_zip() -> Vec<u8> {
+    zip_with(&[("ACP/ACP.toc", "## Title: ACP\n")])
+}
+
+/// A zip holding `files` (path, contents).
+fn zip_with(files: &[(&str, &str)]) -> Vec<u8> {
     use std::io::Write;
 
     let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    writer
-        .start_file("ACP/ACP.toc", zip::write::SimpleFileOptions::default())
-        .unwrap();
-    writer.write_all(b"## Title: ACP\n").unwrap();
+    for (path, contents) in files {
+        writer
+            .start_file(*path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(contents.as_bytes()).unwrap();
+    }
     writer.finish().unwrap().into_inner()
 }
 
@@ -1030,6 +1053,113 @@ async fn a_stopped_download_installs_nothing_and_tries_no_other_source() {
     assert!(installation.scan().unwrap().addons.is_empty());
 }
 
+/// Version 1.0 of an addon is installed, in two folders; the catalog offers
+/// 2.0, which ships one of them. Pressing Update brings the client to 2.0,
+/// the folder 2.0 no longer ships included.
+#[tokio::test]
+async fn an_installed_addon_is_updated_to_the_catalogs_version() {
+    let server = serve(vec![(
+        "/acp.zip",
+        Some(zip_with(&[(
+            "ACP/ACP.toc",
+            "## Title: ACP\n## Version: 2.0\n",
+        )])),
+    )])
+    .await;
+    let catalog = Catalog::parse(
+        format!(
+            r#"{{ "version": 2,
+                  "sources": [{{ "id": "test", "name": "Test Source", "homepage": "https://example.com" }}],
+                  "entries": [{{ "name": "Addon Control Panel",
+                                "downloads": [{{ "source": "test", "name": "ACP", "url": "{server}/acp.zip",
+                                                "folders": [{{ "name": "ACP", "version": "2.0" }}] }}] }}] }}"#
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    let entry = &catalog.entries[0];
+    let (_root, installation) = testing::client_with(&[
+        (
+            "Interface/AddOns/ACP/ACP.toc",
+            "## Title: ACP\n## Version: 1.0\n",
+        ),
+        (
+            "Interface/AddOns/ACP_Extras/ACP_Extras.toc",
+            "## Title: ACP Extras\n## Version: 1.0\n",
+        ),
+    ]);
+    for folder in ["ACP", "ACP_Extras"] {
+        entry.downloads[0]
+            .marker()
+            .write(&installation.addons_directory().join(folder))
+            .unwrap();
+    }
+    let snapshot = installation.scan().unwrap();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+
+    // Offered as an update, and pressing it starts one.
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Update available").is_ok());
+    let _ = ui.click("Update").unwrap();
+    for message in ui.into_messages() {
+        let _ = state.update(
+            message,
+            &catalog,
+            Ok(&client()),
+            Some(&installation),
+            Some(&snapshot),
+            &mut errors,
+        );
+    }
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Cancel").is_ok(), "downloading");
+    drop(ui);
+
+    // What the task it started does: replaces the version installed.
+    let replacing = snapshot
+        .installed(entry)
+        .into_iter()
+        .map(|addon| addon.name.clone())
+        .collect();
+    let folders = install(
+        client(),
+        vec![("Test Source".to_owned(), entry.downloads[0].clone())],
+        installation.clone(),
+        replacing,
+        Arc::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(folders, ["ACP"]);
+    let action = state.update(
+        Message::Finished(Key::of(entry), Ok(folders)),
+        &catalog,
+        Ok(&client()),
+        Some(&installation),
+        Some(&snapshot),
+        &mut errors,
+    );
+    assert!(matches!(action.instruction, Some(Instruction::Changed)));
+    assert!(errors.messages().is_empty());
+
+    // Scanned again, the client is at the catalog's version.
+    let snapshot = installation.scan().unwrap();
+    let acp = snapshot
+        .addons
+        .iter()
+        .find(|addon| addon.name == "ACP")
+        .unwrap();
+    assert_eq!(acp.toc.as_ref().unwrap().version.as_deref(), Some("2.0"));
+    assert!(
+        !installation.addons_directory().join("ACP_Extras").exists(),
+        "the folder 2.0 no longer ships is gone"
+    );
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Update available").is_err());
+    assert!(ui.find("Reinstall").is_ok());
+}
+
 /// Installs one catalog entry of every archive shape into the client at
 /// `$OLD_LAUNCHER_TEST_CLIENT`, checks the result, and uninstalls again.
 /// Entries with folders the client already has are skipped, so the client's
@@ -1039,7 +1169,7 @@ async fn a_stopped_download_installs_nothing_and_tries_no_other_source() {
 async fn catalog_entries_install_into_a_real_client() {
     let root = std::env::var("OLD_LAUNCHER_TEST_CLIENT").expect("OLD_LAUNCHER_TEST_CLIENT is set");
     let installation = Installation::open(root).unwrap();
-    let catalog = catalog::embedded().unwrap();
+    let catalog = catalog::repository();
 
     // A repository zip, a branch snapshot, a rar, a 7z and a bare
     // repository link, plus one from another source.

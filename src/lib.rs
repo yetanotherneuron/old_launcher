@@ -65,6 +65,10 @@ pub struct App {
     /// When the catalog was last fetched, so a refresh doesn't fetch it
     /// again right away.
     refreshed: Option<Instant>,
+    /// The tag the server gave the catalog shown, to ask whether it changed.
+    tag: Option<String>,
+    /// Where the catalog fetched last is kept for the next start.
+    cache: catalog::Cache,
     selected: Selected,
     addons: addons::State,
     setup: Option<setup::State>,
@@ -149,7 +153,7 @@ pub enum Message {
     /// A client folder was scanned.
     Scanned(PathBuf, Result<Snapshot, String>),
     /// The published catalog was fetched.
-    CatalogLoaded(Result<Catalog, String>),
+    CatalogLoaded(Result<catalog::Fetched, String>),
     /// Whether a newer launcher is published was checked.
     UpdateChecked(Option<String>),
     /// Open `Interface/AddOns` in the file manager.
@@ -236,20 +240,32 @@ impl App {
             errors.report(addons::unavailable(error));
         }
 
-        // Only a broken build has a catalog that doesn't parse; the published
-        // one may still load.
-        let catalog = catalog::embedded().unwrap_or_else(|error| {
-            errors.report(format!("The built-in catalog is unreadable: {error}"));
-            Catalog::default()
-        });
+        // The catalog fetched last time shows right away, and a fresh one is
+        // fetched in a moment. Another catalog, when asked for, comes alone.
+        let cache = catalog::Cache::default_location();
+        let (catalog, tag) = if catalog::Location::configured().is_published() {
+            cache.read().unwrap_or_default()
+        } else {
+            (Catalog::default(), None)
+        };
+        if catalog.entries.is_empty() {
+            log::info!("No catalog fetched yet");
+        } else {
+            log::info!(
+                "Showing the catalog fetched last time: {}",
+                counted(catalog.entries.len(), "addon")
+            );
+        }
 
         let mut app = Self {
             config_path,
             config,
             client,
             catalog,
-            refresh: catalog::Refresh::Unavailable,
+            refresh: catalog::Refresh::Idle,
             refreshed: None,
+            tag,
+            cache,
             selected: Selected::Nothing,
             addons: addons::State::new(),
             setup: None,
@@ -571,16 +587,27 @@ impl App {
                 self.refresh = catalog::Refresh::Idle;
 
                 match result {
-                    Ok(catalog) => {
-                        log::info!("Refreshed the catalog: {} addons", catalog.entries.len());
+                    Ok(catalog::Fetched::Unchanged) => {
+                        log::info!("The catalog is unchanged");
+                    }
+                    Ok(catalog::Fetched::Changed { catalog, tag }) => {
+                        log::info!(
+                            "Refreshed the catalog: {}",
+                            counted(catalog.entries.len(), "addon")
+                        );
                         self.catalog = catalog;
+                        self.tag = tag;
                         self.propose();
                     }
                     Err(error) => {
-                        self.errors.report(format!(
-                            "Could not refresh the catalog, showing the one built into the \
-                             launcher: {error}"
-                        ));
+                        self.errors.report(if self.catalog.entries.is_empty() {
+                            format!("Could not fetch the catalog: {error}")
+                        } else {
+                            format!(
+                                "Could not refresh the catalog, showing the last one fetched: \
+                                 {error}"
+                            )
+                        });
                     }
                 }
 
@@ -960,8 +987,8 @@ impl App {
         ])
     }
 
-    /// Fetches the published catalog, if there is one to fetch and it
-    /// wasn't fetched in the last [`REFRESH_PAUSE`].
+    /// Fetches the catalog, unless it was fetched in the last
+    /// [`REFRESH_PAUSE`].
     fn refresh_catalog(&mut self) -> Task<Message> {
         if self.refresh == catalog::Refresh::Running {
             return Task::none();
@@ -975,20 +1002,22 @@ impl App {
             return Task::none();
         }
 
-        let Some(location) = catalog::Location::configured() else {
-            log::info!(
-                "No catalog location is configured: showing the {} addons built in",
-                self.catalog.entries.len()
-            );
-            self.refresh = catalog::Refresh::Unavailable;
-            return Task::none();
+        let location = catalog::Location::configured();
+        // The tag and the copy kept belong to the published catalog only.
+        let (tag, cache) = if location.is_published() {
+            (self.tag.clone(), Some(self.cache.clone()))
+        } else {
+            (None, None)
         };
 
         log::info!("Refreshing the catalog from {location}");
         self.refresh = catalog::Refresh::Running;
         self.refreshed = Some(Instant::now());
 
-        Task::perform(location.load(self.client.clone()), Message::CatalogLoaded)
+        Task::perform(
+            location.fetch(self.client.clone(), tag, cache),
+            Message::CatalogLoaded,
+        )
     }
 
     /// Proposes recognizing the selected client's addons that were installed
@@ -1129,8 +1158,10 @@ mod tests {
             },
             client: Ok(reqwest::Client::new()),
             catalog: Catalog::default(),
-            refresh: catalog::Refresh::Unavailable,
+            refresh: catalog::Refresh::Idle,
             refreshed: None,
+            tag: None,
+            cache: catalog::Cache::at("cache".into()),
             selected: Selected::Nothing,
             addons: addons::State::new(),
             setup: None,
@@ -1244,11 +1275,10 @@ mod tests {
         let _ = app.update(Message::Refresh);
         assert_eq!(app.refresh, catalog::Refresh::Idle);
 
-        // Long enough ago: fetched again, from wherever this build gets its
-        // catalog, if anywhere.
+        // Long enough ago: fetched again.
         app.refreshed = Instant::now().checked_sub(REFRESH_PAUSE);
         let _ = app.update(Message::Refresh);
-        assert_ne!(app.refresh, catalog::Refresh::Idle);
+        assert_eq!(app.refresh, catalog::Refresh::Running);
     }
 
     #[test]
