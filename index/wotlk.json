@@ -2282,9 +2282,30 @@
       ]
     },
     {
-      "name": "BattleGroundHealers-WotLK",
-      "description": "WoW 3.3.5a Addon",
+      "name": "BattleGroundHealers",
+      "description": "BattleGroundHealers detects healers in battlegrounds through combat-log activity and scoreboard healing-to-damage ratios, then marks their nameplates with a configurable icon. It supports default nameplates and most custom nameplate addons, and can share detection data with BattlegroundTargets. Use /bgh to open the configuration panel.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/BattleGroundHealers.jpg",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "BattleGroundHealers",
+          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases/download/v1.6.3/BattleGroundHealers-v1.6.3.zip",
+          "updated": "2026-09-27",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "BattleGroundHealers",
+              "title": "BattleGroundHealers",
+              "version": "1.6.3",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "github-khalgh",
           "name": "BattleGroundHealers-WotLK",
@@ -2400,8 +2421,29 @@
     },
     {
       "name": "BigDebuffs",
-      "description": "BigDebuffs addon for WoW 3.3.5a (Project Ascension) - Display CC/debuffs on unit frames with raid and nameplate support",
+      "description": "BigDebuffs makes important crowd-control and defensive effects easier to see by placing duration icons on unit frames and enlarging priority debuffs on Compact Raid Frame.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/BigDebuffs.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "BigDebuffs",
+          "url": "https://gitlab.com/tsoukie-3.3.5/bigdebuffs/-/archive/main/bigdebuffs-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/bigdebuffs"
+            }
+          ],
+          "folders": [
+            {
+              "name": "BigDebuffs",
+              "title": "BigDebuffs",
+              "version": "1.7",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "github-xurkon",
           "name": "BigDebuffs",
@@ -3269,6 +3311,7 @@
     {
       "name": "Cell-WotLK",
       "description": "A World of Warcraft raid frame addon.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
         {
           "source": "nom0re",
@@ -3276,6 +3319,26 @@
           "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
           "updated": "2026-09-27",
           "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "Cell",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/releases/latest/download/Cell.zip",
+          "updated": "2026-09-27",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/Cell-WotLK"
+            }
+          ],
           "folders": [
             {
               "name": "Cell",
@@ -3530,8 +3593,35 @@
       ]
     },
     {
+      "name": "ClassicAPI",
+      "description": "ClassicAPI backports modern WoW API functions, templates, and systems so compatible addons can run on the 3.3.5a client. It is installed like a normal addon and is required by the Tsoukie addons in this list.",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "ClassicAPI",
+          "url": "https://gitlab.com/tsoukie-3.3.5/classicapi/-/archive/main/classicapi-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/classicapi"
+            }
+          ],
+          "folders": [
+            {
+              "name": "!!!ClassicAPI",
+              "title": "!!!ClassicAPI",
+              "version": "1.28",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "ClassicNumbers-WotLK",
       "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
@@ -3552,7 +3642,7 @@
     },
     {
       "name": "ClassLoot",
-      "description": "This addon is an in-game representation of Class Loot Lists as tooltip. Kaliban's Class Loot List provides ratings for all raid loot with respect to it's suitability for different class/spec combinations.",
+      "description": "RatingBuster adds rating conversions, stat breakdowns, item-level information, and equipment comparisons directly to item tooltips.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Classloot.jpg",
       "downloads": [
         {
@@ -3606,18 +3696,18 @@
     },
     {
       "name": "Clique",
-      "description": "Clique is a simple addon that enables powerful click-casting and hover-casting on your unit frames and in the 3D game world. You can bind virtually any mouse or keyboard combination to a spell or macro. In it's normal configuration this enables you to use the bindings over your unit frames in order to cast spells directly on that unit. This allows you to more quickly select both the spell to cast, and the target of the spell without requiring an extra click.",
+      "description": "Clique enables click-casting and mouseover casting on unit frames without requiring separate macros. Bind mouse buttons or key combinations directly to spells and use them on Compact Raid Frame and other supported unit frames.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Clique.jpeg",
       "downloads": [
         {
           "source": "nom0re",
           "name": "Clique",
-          "url": "https://gitlab.com/Tsoukie/clique-3.3.5/-/archive/main/clique-3.3.5-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/clique/-/archive/main/clique-main.zip",
           "updated": "2026-09-18",
           "links": [
             {
-              "label": "Gitlab",
-              "url": "https://gitlab.com/Tsoukie/clique-3.3.5"
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/clique"
             }
           ],
           "folders": [
@@ -3832,9 +3922,30 @@
       ]
     },
     {
-      "name": "CompactRaidFrame",
-      "description": "Diees Addon bietet eine frei konfigurierbare Alternative zu den nativen RaidFrames. Weiterhin werden oft benutzte Features wie ein Bereitschaftscheck, Raidsymbole und Pull Countdown in einem schnell zugänglichen Menü zur Verfügung gestellt.",
+      "name": "Compact Raid Frame",
+      "description": "Compact Raid Frame brings the compact group frames from WoW Classic to 3.3.5a, with configurable layouts, sizes, class colors, profiles, and raid-management tools.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/CompactRaidFrame.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Compact Raid Frame",
+          "url": "https://gitlab.com/tsoukie-3.3.5/compactraidframe/-/archive/main/compactraidframe-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/compactraidframe"
+            }
+          ],
+          "folders": [
+            {
+              "name": "CompactRaidFrame",
+              "title": "Compact Raid Frames",
+              "version": "1.14",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "rising-gods",
           "name": "CompactRaidFrame",
@@ -3846,6 +3957,60 @@
               "name": "CompactRaidFrame",
               "title": "Compact Raid Frames",
               "version": "1.2.2",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Compact Raid Frame: Enhanced Raid Frames",
+      "description": "A Compact Raid Frame plugin that adds configurable aura indicators, range settings, frame scale and opacity controls, and target icons.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/EnhancedRaidFrames.jpg",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Compact Raid Frame: Enhanced Raid Frames",
+          "url": "https://gitlab.com/tsoukie-3.3.5/enhancedraidframes/-/archive/main/enhancedraidframes-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/enhancedraidframes"
+            }
+          ],
+          "folders": [
+            {
+              "name": "EnhancedRaidFrames",
+              "title": "Enhanced Raid Frames",
+              "version": "1.8",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Compact Raid Frame: FrameSort",
+      "description": "A Compact Raid Frame plugin that sorts units by group, role, or name; places or hides the player frame; adjusts spacing; and provides targeting keybinds and macro variables based on visual frame position.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/FrameSort.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Compact Raid Frame: FrameSort",
+          "url": "https://gitlab.com/tsoukie-3.3.5/framesort/-/archive/main/framesort-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/framesort"
+            }
+          ],
+          "folders": [
+            {
+              "name": "FrameSort",
+              "title": "FrameSort",
+              "version": "1.2",
               "interface": 30300
             }
           ]
@@ -5838,7 +6003,7 @@
           "source": "nom0re",
           "name": "DragonUI",
           "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-09-28",
+          "updated": "2026-09-29",
           "links": [
             {
               "label": "GitHub",
@@ -5891,7 +6056,7 @@
             {
               "name": "DrDamage",
               "title": "DrDamage",
-              "version": "r1426",
+              "version": "r1420",
               "interface": 30300
             }
           ]
@@ -6705,6 +6870,32 @@
               "name": "enchantrix-barker",
               "title": "EnchantrixBarker",
               "version": "5.9.4960 (WhackyWallaby)",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EnsidiaFails",
+      "description": "Report raid player fails",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/EnsidiaFails.jpg",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "EnsidiaFails",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/EnsidiaFails.zip",
+          "updated": "2022-10-16",
+          "links": [
+            {
+              "label": "CurseForge",
+              "url": "https://www.curseforge.com/wow/addons/ensidiafails"
+            }
+          ],
+          "folders": [
+            {
+              "name": "EnsidiaFails",
+              "title": "EnsidiaFails",
               "interface": 30300
             }
           ]
@@ -8032,8 +8223,29 @@
     },
     {
       "name": "Gladdy",
-      "description": "Gladdy is a powerful arena addon with various modules which can be enabled/disabled and configured in behaviour/appearance.",
+      "description": "Gladdy provides customizable arena enemy frames with health, cooldown, diminishing-return, aura, cast-bar, and totem information for competitive PvP.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Gladdy.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Gladdy",
+          "url": "https://gitlab.com/tsoukie-3.3.5/gladdy/-/archive/main/gladdy-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/gladdy"
+            }
+          ],
+          "folders": [
+            {
+              "name": "Gladdy",
+              "title": "Gladdy",
+              "version": "2.54-Release",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "github-xurkon",
           "name": "Gladdy",
@@ -9258,9 +9470,57 @@
       ]
     },
     {
-      "name": "LeatrixPlus-WoTLK-3.3.5",
-      "description": "Moved to https://github.com/Sattva-108/Leatrix_Plus",
+      "name": "Leatrix Maps",
+      "description": "Leatrix Maps enhances the world map with a movable borderless window, opacity controls, coordinates, zone and fishing levels, points of interest, quest objectives, map reveal, and configurable zoom and panning. Open its options with /ltm.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/LeatrixMaps.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Leatrix Maps",
+          "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/refs/heads/main.zip",
+          "updated": "2026-09-28",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5"
+            }
+          ],
+          "folders": [
+            {
+              "name": "Leatrix_Maps",
+              "title": "Leatrix Maps",
+              "version": "3.0.188",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Leatrix Plus",
+      "description": "Leatrix Plus provides a collection of optional quality-of-life improvements for quests, gossip, summons, resurrection, vendors, chat, frames, text, and other interface systems. Open its configuration with /ltp.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/LeatrixPlus.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Leatrix Plus",
+          "url": "https://github.com/Sattva-108/Leatrix_Plus/releases/download/1.8.2/Leatrix_Plus.zip",
+          "updated": "2026-08-30",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/Sattva-108/Leatrix_Plus"
+            }
+          ],
+          "folders": [
+            {
+              "name": "Leatrix_Plus",
+              "title": "Leatrix Plus [ALPHA]",
+              "version": "3.3.5 (3.0.131)",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "github-sattva-108",
           "name": "Leatrix_Plus",
@@ -10844,9 +11104,30 @@
       ]
     },
     {
-      "name": "Omnibar",
-      "description": "OmniBar is an addon that tracks enemy cooldowns.",
+      "name": "OmniBar",
+      "description": "OmniBar tracks enemy spell cooldowns on one or more configurable bars, giving PvP players a clear view of when important interrupts, crowd control, and defensive abilities are available again.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/OmniBar.jpg",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "OmniBar",
+          "url": "https://gitlab.com/tsoukie-3.3.5/omnibar/-/archive/main/omnibar-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/omnibar"
+            }
+          ],
+          "folders": [
+            {
+              "name": "OmniBar",
+              "title": "OmniBar",
+              "version": "1.4",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "github-xurkon",
           "name": "Omnibar",
@@ -10872,8 +11153,8 @@
         {
           "source": "nom0re",
           "name": "OmniCC",
-          "url": "https://github.com/NoM0Re/OmniCC-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-07-07",
+          "url": "https://github.com/NoM0Re/OmniCC-WotLK/releases/latest/download/OmniCC.zip",
+          "updated": "2026-07-08",
           "links": [
             {
               "label": "Github",
@@ -10910,6 +11191,33 @@
             {
               "name": "OmniCC_Config",
               "title": "OmniCC Config",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OmniCD",
+      "description": "OmniCD tracks party and raid members' spell and item cooldowns in real time. Its customizable icons and extra bars can attach to popular unit frames, including Compact Raid Frame.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/OmniCD.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "OmniCD",
+          "url": "https://gitlab.com/tsoukie-3.3.5/omnicd/-/archive/main/omnicd-main.zip",
+          "updated": "2026-09-18",
+          "links": [
+            {
+              "label": "GitLab",
+              "url": "https://gitlab.com/tsoukie-3.3.5/omnicd"
+            }
+          ],
+          "folders": [
+            {
+              "name": "OmniCD",
+              "title": "OmniCD",
+              "version": "1.7",
               "interface": 30300
             }
           ]
@@ -11093,21 +11401,16 @@
       ]
     },
     {
-      "name": "PallyPower Improved",
-      "description": "Pally Power the must have for a Paladin, provides an interactive and easy to use interface that allows you to set your own blessings (Righteous Fury, Aura, Seal and Blessings) and automatically checks for missing buffs with an easy to read indicator.",
+      "name": "PallyPower-Improved-3.3.5",
+      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "PallyPower Improved",
+          "name": "PallyPower-Improved-3.3.5",
           "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/refs/heads/main.zip",
           "updated": "2026-08-06",
-          "links": [
-            {
-              "label": "Github",
-              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
-            }
-          ],
+          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
           "folders": [
             {
               "name": "PallyPower",
@@ -11781,13 +12084,13 @@
     {
       "name": "PlateBuffs",
       "description": "PlateBuffs displays people's buffs above their nameplates.",
-      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/PlateBuffs.png",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/PlateBuffs.jpg",
       "downloads": [
         {
           "source": "nom0re",
           "name": "PlateBuffs",
           "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
+          "updated": "2026-09-29",
           "links": [
             {
               "label": "Github",
@@ -11798,7 +12101,7 @@
             {
               "name": "PlateBuffs",
               "title": "PlateBuffs",
-              "version": "1.19.4 (r237)",
+              "version": "1.19.5 (r238)",
               "interface": 30300
             }
           ]
@@ -12613,6 +12916,33 @@
       ]
     },
     {
+      "name": "RaidSlackCheck",
+      "description": "RSC is a separate stand-alone addon of PhoenixStyle. Shows who uses potions in a raid and who doesn't, shows who has no flask or food buff, check buffs in combat after rebirth.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/RaidSlackCheck.jpg",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "RaidSlackCheck",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidSlackCheck.zip",
+          "updated": "2010-07-14",
+          "links": [
+            {
+              "label": "Warperia",
+              "url": "https://warperia.com/addon-wotlk/raidslackcheck/"
+            }
+          ],
+          "folders": [
+            {
+              "name": "RaidSlackCheck",
+              "title": "RaidSlackCheck",
+              "version": "1.112",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "RaidWatch2",
       "description": "RaidWatch ist ein Addon zur Verfolgung von Ereignissen während Bosskämpfen in Raids und 5-Mann Dungeons. Es gibt einen Überblick über wichtige Bosscooldowns, warnt über Ereignisse, die von den Teilnehmern Aufmerksamkeit erfordern und informiert über einige weitere Dinge.",
       "downloads": [
@@ -12722,8 +13052,28 @@
     },
     {
       "name": "RatingBuster",
-      "description": "RatingBuster rechnet Stats um und zeigt z. B. an, wie viel 40 Kritische Trefferwertung in Prozent ist. Es kann auch alle Stats auf einem Gegenstand zusammenfassen und bietet die Möglichkeit, Stats von zwei Gegenständen schnell zu vergleichen. Die Umrechnung berücksichtigt die eigene Klasse und gewählten Talente sowie die aktive Gestalt (Druide).",
+      "description": "This addon is an in-game representation of Class Loot Lists as tooltip. Kaliban's Class Loot List provides ratings for all raid loot with respect to it's suitability for different class/spec combinations.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/RaitingBuster.jpg",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "RatingBuster",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RatingBuster.zip",
+          "updated": "2026-09-28",
+          "links": [
+            {
+              "label": "Github",
+              "url": "https://github.com/Einherjarn/RatingBuster-3.3.5"
+            }
+          ],
+          "folders": [
+            {
+              "name": "RatingBuster",
+              "title": "RatingBuster",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "rising-gods",
           "name": "RatingBuster",
@@ -12828,6 +13178,33 @@
             {
               "name": "RazerNaga_XP",
               "title": "RazerNaga XP",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RecipeColor",
+      "description": "RecipeColor colors recipes your character already knows green in bags, banks, mail, trade, loot, and merchant frames. It also supports popular bag and UI addons including AdiBags, Bagnon, DragonUI, and ElvUI.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/RecipeColor.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "RecipeColor",
+          "url": "https://api.github.com/repos/Drakensangs/RecipeColor-WotLK/zipball/3.3",
+          "updated": "2026-09-05",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/Drakensangs/RecipeColor-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "RecipeColor",
+              "title": "RecipeColor",
+              "version": "3.3",
               "interface": 30300
             }
           ]
@@ -13072,6 +13449,33 @@
               "title": "SBF Options",
               "version": "3.1",
               "interface": 30200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SavedInstances",
+      "description": "SavedInstances tracks raid and instance lockouts across all your characters. Hover over its minimap or Data Broker icon to quickly see which characters are saved to which instances, making it a lightweight alternative to AmILockedOut.",
+      "image": "https://i.imgur.com/gBmDni5.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "SavedInstances",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SavedInstances.zip",
+          "updated": "2010-01-14",
+          "links": [
+            {
+              "label": "CurseForge",
+              "url": "https://www.curseforge.com/wow/addons/saved_instances/files/409339"
+            }
+          ],
+          "folders": [
+            {
+              "name": "SavedInstances",
+              "title": "SavedInstances",
+              "version": "v3.0.1 (r119)",
+              "interface": 30300
             }
           ]
         }
@@ -14032,7 +14436,7 @@
         {
           "source": "nom0re",
           "name": "Storyline",
-          "url": "https://github.com/shadovvs/WotLK-Storyline/releases/download/v1.0.1/WotLK-Backport-Storyline.7z",
+          "url": "https://api.github.com/repos/shadovvs/WotLK-Storyline/zipball/v1.0.1",
           "updated": "2018-01-08",
           "links": [
             {
@@ -14735,6 +15139,69 @@
       ]
     },
     {
+      "name": "TradeSkillMaster",
+      "description": "TradeSkillMaster is an all-in-one suite for the in-game economy, backported to WotLK 3.3.5a. It includes auction-house scanning and bulk posting, crafting and profit management, item groups and operations, mailing, banking, vendoring, and accounting.",
+      "image": "https://media.forgecdn.net/attachments/311/730/untitled.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "TradeSkillMaster",
+          "url": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport/archive/refs/heads/master.zip",
+          "updated": "2026-09-22",
+          "links": [
+            {
+              "label": "Github",
+              "url": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport"
+            }
+          ],
+          "folders": [
+            {
+              "name": "TradeSkillMaster",
+              "title": "TradeSkillMaster",
+              "version": "v4.14.66",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Accounting",
+              "title": "TradeSkillMaster_Accounting",
+              "version": "v4.14.66",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_AuctionDB",
+              "title": "TradeSkillMaster_AuctionDB",
+              "version": "v4.14.66-wrath",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Banking",
+              "title": "TradeSkillMaster_Banking",
+              "version": "v4.14.66",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Crafting",
+              "title": "TradeSkillMaster_Crafting",
+              "version": "v4.14.66",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Mailing",
+              "title": "TradeSkillMaster_Mailing",
+              "version": "v4.14.66",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Vendoring",
+              "title": "TradeSkillMaster_Vendoring",
+              "version": "v4.14.66",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Transcriptor-WOTLK",
       "description": "Event logging addon for 3.3.5a, suitable for boss encounters",
       "downloads": [
@@ -15225,6 +15692,65 @@
       "downloads": [
         {
           "source": "nom0re",
+          "name": "WeakAuras",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
+          "updated": "2026-09-14",
+          "links": [
+            {
+              "label": "GitHub latest",
+              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
+            },
+            {
+              "label": "GitHub 4.0.0",
+              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.0",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.0",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.0",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.0",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.0",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
           "name": "WeakAuras-WotLK",
           "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
           "updated": "2026-09-13",
@@ -15269,6 +15795,33 @@
               "name": "WeakAurasTemplates",
               "title": "WeakAuras Templates",
               "version": "5.22.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "What's Training?",
+      "description": "What's Training? adds a new spellbook tab that lists every trainable spell for your class. Spells are grouped into categories such as available now, missing requirements, coming soon, and not yet available, with the required level and total training cost shown at a glance.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WhatsTraining.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "What's Training?",
+          "url": "https://github.com/anhility/WhatsTraining_WotLK/archive/refs/heads/master.zip",
+          "updated": "2023-01-28",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/anhility/WhatsTraining_WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "WhatsTraining_WotLK",
+              "title": "What's Training? WotLK",
+              "version": "3.0.2",
               "interface": 30300
             }
           ]
