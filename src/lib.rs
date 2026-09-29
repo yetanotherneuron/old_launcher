@@ -25,7 +25,7 @@ mod transfer;
 mod update;
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
@@ -39,6 +39,9 @@ use crate::errors::Errors;
 
 /// Where the launcher's code lives, as `Cargo.toml` says.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+
+/// How long a refresh leaves the catalog alone after fetching it.
+const REFRESH_PAUSE: Duration = Duration::from_secs(10);
 
 /// The launcher's icon, rendered from `assets/old_launcher.svg` and decoded
 /// when building.
@@ -59,6 +62,9 @@ pub struct App {
     client: Result<reqwest::Client, String>,
     catalog: Catalog,
     refresh: catalog::Refresh,
+    /// When the catalog was last fetched, so a refresh doesn't fetch it
+    /// again right away.
+    refreshed: Option<Instant>,
     selected: Selected,
     addons: addons::State,
     setup: Option<setup::State>,
@@ -243,6 +249,7 @@ impl App {
             client,
             catalog,
             refresh: catalog::Refresh::Unavailable,
+            refreshed: None,
             selected: Selected::Nothing,
             addons: addons::State::new(),
             setup: None,
@@ -603,8 +610,8 @@ impl App {
                 Task::none()
             }
             Message::Refresh => {
-                log::info!("Scanning again on request");
-                self.rescan()
+                log::info!("Refreshing on request");
+                Task::batch([self.rescan(), self.refresh_catalog()])
             }
             Message::OpenRepository => {
                 log::info!("Opening {REPOSITORY} in the browser");
@@ -953,8 +960,21 @@ impl App {
         ])
     }
 
-    /// Fetches the published catalog, if there is one to fetch.
+    /// Fetches the published catalog, if there is one to fetch and it
+    /// wasn't fetched in the last [`REFRESH_PAUSE`].
     fn refresh_catalog(&mut self) -> Task<Message> {
+        if self.refresh == catalog::Refresh::Running {
+            return Task::none();
+        }
+        if let Some(since) = self
+            .refreshed
+            .map(|at| at.elapsed())
+            .filter(|since| *since < REFRESH_PAUSE)
+        {
+            log::debug!("The catalog was fetched {since:?} ago: not again yet");
+            return Task::none();
+        }
+
         let Some(location) = catalog::Location::configured() else {
             log::info!(
                 "No catalog location is configured: showing the {} addons built in",
@@ -966,6 +986,7 @@ impl App {
 
         log::info!("Refreshing the catalog from {location}");
         self.refresh = catalog::Refresh::Running;
+        self.refreshed = Some(Instant::now());
 
         Task::perform(location.load(self.client.clone()), Message::CatalogLoaded)
     }
@@ -1109,6 +1130,7 @@ mod tests {
             client: Ok(reqwest::Client::new()),
             catalog: Catalog::default(),
             refresh: catalog::Refresh::Unavailable,
+            refreshed: None,
             selected: Selected::Nothing,
             addons: addons::State::new(),
             setup: None,
@@ -1210,6 +1232,23 @@ mod tests {
             Some(Message::Quit)
         ));
         assert!(shortcut(press(keyboard::Modifiers::empty())).is_none());
+    }
+
+    #[test]
+    fn a_refresh_fetches_the_catalog_again_only_after_a_pause() {
+        let mut app = app(&[]);
+        app.refresh = catalog::Refresh::Idle;
+
+        // Just fetched: left alone.
+        app.refreshed = Some(Instant::now());
+        let _ = app.update(Message::Refresh);
+        assert_eq!(app.refresh, catalog::Refresh::Idle);
+
+        // Long enough ago: fetched again, which finds nothing to fetch from
+        // here.
+        app.refreshed = Instant::now().checked_sub(REFRESH_PAUSE);
+        let _ = app.update(Message::Refresh);
+        assert_eq!(app.refresh, catalog::Refresh::Unavailable);
     }
 
     #[test]

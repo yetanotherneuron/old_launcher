@@ -40,7 +40,7 @@ Each is a single file built from the latest `main`; nothing to install.
 
 ![Importing addons and saved settings exported on another computer](assets/screenshots/import.png)
 
-Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> rescan,
+Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> refresh,
 <kbd>Esc</kbd> close dialogs, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
 
 ## The catalog
