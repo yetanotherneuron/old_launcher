@@ -57,8 +57,10 @@ workflow:
 .cargo:
   extends: .ordered
   cache:
-    # Per job: clippy and the tests build different artifacts.
+    # Per job: clippy and the tests build different artifacts. Kept when
+    # the job fails too: what was compiled is still good.
     key: $CI_JOB_NAME
+    when: always
     paths:
       - .cargo/registry/index/
       - .cargo/registry/cache/
@@ -114,6 +116,7 @@ test-windows:
     CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: "-C link-arg=/DELAYLOAD:opengl32.dll -C link-arg=delayimp.lib"
   cache:
     key: $CI_JOB_NAME
+    when: always
     paths:
       - .cargo\registry\index\
       - .cargo\registry\cache\
