@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use iced::widget::{
     Row, TextInput, button, column, container, pick_list, row, space, stack, text, text_input,
 };
-use iced::{Center, Element, Event, Fill, Font, Function, Subscription, Task, event, padding};
+use iced::{Center, Element, Fill, Font, Function, Task, padding};
 
 use crate::action::Action;
 use crate::core::launch::DEFAULT_COMMAND;
@@ -183,14 +183,6 @@ impl State {
                 edited: self.edited,
             }),
         }
-    }
-
-    /// Tells when the launcher's window gets the focus back, so a realmlist
-    /// just edited elsewhere is read again.
-    pub fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|event, _status, _window| {
-            matches!(event, Event::Window(iced::window::Event::Focused)).then_some(Message::Focused)
-        })
     }
 
     /// The dialog, showing the `current` client of `config`; `installation`

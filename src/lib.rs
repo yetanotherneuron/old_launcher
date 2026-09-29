@@ -27,7 +27,9 @@ use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
     button, center, column, container, operation, row, scrollable, space, text, tooltip,
 };
-use iced::{Center, Element, Fill, Fit, Function, Subscription, Task, Theme, padding};
+use iced::{
+    Center, Element, Event, Fill, Fit, Function, Subscription, Task, Theme, event, padding, window,
+};
 
 use crate::catalog::Catalog;
 use crate::core::{Adoption, Config, Installation, Snapshot};
@@ -82,12 +84,14 @@ pub struct App {
     transfer: transfer::State,
     /// The clients dialog, while open.
     clients: Option<clients::State>,
-    /// The games started from the launcher, by client folder, until over.
+    /// The games started from the launcher or found running, by client
+    /// folder, until over.
     games: BTreeMap<PathBuf, Game>,
 }
 
-/// A game started from the launcher. It is set up (Proton downloaded, a
-/// prefix made, …) until its `Wow.exe` shows up, and over when that is gone.
+/// A game started from the launcher, or found running. Once started it is
+/// set up (Proton downloaded, a prefix made, …) until its `Wow.exe` shows
+/// up, and over when that is gone.
 struct Game {
     /// Whether its `Wow.exe` was seen, so it is past the setting up.
     started: bool,
@@ -149,10 +153,12 @@ pub enum Message {
     /// The command that started the game of this client folder exited, with
     /// this exit code if it had one, or failed to start.
     Exited(PathBuf, Result<Option<i32>, String>),
-    /// Time to look for the games started.
+    /// Time to look for the games started, and the selected client's.
     Watch,
     /// The client folders whose game is running.
     Watched(Result<Vec<PathBuf>, String>),
+    /// The launcher's window got the focus back.
+    Focused,
     /// The selected client folder was checked.
     Opened(PathBuf, Result<Installation, String>),
     /// A client folder was scanned.
@@ -514,7 +520,22 @@ impl App {
                 Task::none()
             }
             Message::Watch => {
-                let roots: Vec<PathBuf> = self.games.keys().cloned().collect();
+                // The selected client too, whose game may have been started
+                // elsewhere, or before the launcher was.
+                let selected = match &self.selected {
+                    Selected::Open { installation, .. } => Some(installation.root()),
+                    _ => None,
+                };
+                let mut roots: Vec<PathBuf> = self.games.keys().cloned().collect();
+                roots.extend(
+                    selected
+                        .filter(|root| !self.games.contains_key(*root))
+                        .map(Path::to_path_buf),
+                );
+
+                if roots.is_empty() {
+                    return Task::none();
+                }
 
                 Task::perform(
                     blocking(move || Ok(core::launch::running(&roots))),
@@ -522,6 +543,14 @@ impl App {
                 )
             }
             Message::Watched(Ok(running)) => {
+                for root in &running {
+                    self.games.entry(root.clone()).or_insert(Game {
+                        started: true,
+                        command: false,
+                        patience: 0,
+                    });
+                }
+
                 self.games.retain(|root, game| {
                     if running.contains(root) {
                         game.started = true;
@@ -545,6 +574,12 @@ impl App {
             }
             // The next look will do.
             Message::Watched(Err(_)) => Task::none(),
+            // Back from somewhere else, where a game may have started or a
+            // realmlist been edited.
+            Message::Focused => Task::batch([
+                self.update(Message::Watch),
+                self.update(Message::Clients(clients::Message::Focused)),
+            ]),
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
                     return Task::none();
@@ -556,7 +591,7 @@ impl App {
                             installation,
                             snapshot: None,
                         };
-                        self.rescan()
+                        Task::batch([self.rescan(), self.update(Message::Watch)])
                     }
                     Err(error) => {
                         self.errors
@@ -1048,17 +1083,14 @@ impl App {
         .into()
     }
 
-    /// Keyboard shortcuts (see [`shortcut`]), what the clients dialog listens
-    /// to while open, and a look for the games started every second while
-    /// there are some.
+    /// Keyboard shortcuts (see [`shortcut`]), the window getting the focus
+    /// back, and a look for the games every second while there are some.
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
-            self.clients
-                .as_ref()
-                .map_or_else(Subscription::none, |clients| {
-                    clients.subscription().map(Message::Clients)
-                }),
+            event::listen_with(|event, _status, _window| {
+                matches!(event, Event::Window(window::Event::Focused)).then_some(Message::Focused)
+            }),
             if self.games.is_empty() {
                 Subscription::none()
             } else {
@@ -1585,6 +1617,25 @@ mod tests {
             app.errors.messages(),
             ["World of Warcraft exited with status 3."]
         );
+    }
+
+    #[test]
+    fn a_game_already_running_is_found_and_followed() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = playable(installation);
+
+        // Nothing was started, but the selected client is looked at: when
+        // it opens, and when the launcher gets the focus back.
+        assert!(app.update(Message::Watch).units() > 0);
+        let _ = app.update(Message::Watched(Ok(vec![root])));
+        assert!(!play_button(&app, "Game running"));
+
+        let _ = app.update(Message::Watched(Ok(Vec::new())));
+        assert!(play_button(&app, "Play"));
+
+        app.selected = Selected::Nothing;
+        assert_eq!(app.update(Message::Watch).units(), 0, "nothing to look for");
     }
 
     #[test]
