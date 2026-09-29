@@ -218,15 +218,29 @@ mod tests {
         (directory, State::new(path, &error))
     }
 
+    /// A client folder as an absolute path, which is what a broken file
+    /// is searched for; Windows needs a drive for that.
+    fn games(name: &str) -> String {
+        if cfg!(windows) {
+            format!("C:/games/{name}")
+        } else {
+            format!("/games/{name}")
+        }
+    }
+
     #[test]
     fn the_screen_says_why_and_what_overwriting_loses() {
-        let (_directory, state) = broken("installations = [\"/games/wotlk\", \"/games/warmane\"\n");
+        let (_directory, state) = broken(&format!(
+            "installations = [\"{}\", \"{}\"\n",
+            games("wotlk"),
+            games("warmane")
+        ));
 
         let mut ui = simulator(state.view());
 
         assert!(ui.find(format!("{} ↗", state.path.display())).is_ok());
-        assert!(ui.find("• /games/wotlk").is_ok());
-        assert!(ui.find("• /games/warmane").is_ok());
+        assert!(ui.find(format!("• {}", games("wotlk"))).is_ok());
+        assert!(ui.find(format!("• {}", games("warmane"))).is_ok());
         assert!(state.error.contains("line 1"), "{}", state.error);
     }
 

@@ -125,7 +125,8 @@ test-windows:
     # rustup installs cargo into CARGO_HOME, not the user's profile.
     - $env:Path += ";$env:CARGO_HOME\bin"
   script:
-    - cargo test --workspace --locked
+    # Every failure at once: a run here takes a while to come by.
+    - cargo test --workspace --locked --no-fail-fast
 
 # The binaries people download. Each job's latest successful artifact on the
 # default branch is kept however old it gets (GitLab's "keep artifacts from

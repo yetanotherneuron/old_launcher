@@ -105,11 +105,14 @@ impl Confirm {
     /// The dialog asking for confirmation, with paths shown relative to the
     /// client's `root`.
     pub fn view<'a>(&'a self, root: &'a Path) -> Element<'a, Message> {
-        let relative = |file: &PathBuf| {
-            file.strip_prefix(root)
-                .unwrap_or(file)
-                .display()
-                .to_string()
+        // With the slashes the rest of the dialog uses, on Windows too.
+        let relative = |file: &PathBuf| match file.strip_prefix(root) {
+            Ok(relative) => relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+            Err(_) => file.display().to_string(),
         };
 
         let (title, explanation, items, action) = match self {

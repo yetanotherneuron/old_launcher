@@ -163,23 +163,36 @@ fn quoted(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// A client folder as an absolute path, which is what counts; Windows
+    /// needs a drive for that.
+    fn games(name: &str) -> PathBuf {
+        PathBuf::from(if cfg!(windows) {
+            format!("C:/games/{name}")
+        } else {
+            format!("/games/{name}")
+        })
+    }
+
     #[test]
     fn broken_configs_still_tell_which_clients_they_list() {
+        let wotlk = games("wotlk").display().to_string();
+
         // Valid TOML, wrong shape.
         assert_eq!(
-            clients_in("installations = \"/games/wotlk\"\nselected = \"/games/other\"\n"),
-            [PathBuf::from("/games/wotlk"), PathBuf::from("/games/other")]
+            clients_in(&format!(
+                "installations = \"{wotlk}\"\nselected = \"{}\"\n",
+                games("other").display()
+            )),
+            [games("wotlk"), games("other")]
         );
         // Not TOML anymore: an unclosed list, and an escaped quote.
         assert_eq!(
-            clients_in(
-                "installations = [\"/games/wotlk\", '/games/war mane'\nselected = \"/games/\\\"q\\\"\""
-            ),
-            [
-                PathBuf::from("/games/wotlk"),
-                PathBuf::from("/games/war mane"),
-                PathBuf::from("/games/\"q\""),
-            ]
+            clients_in(&format!(
+                "installations = [\"{wotlk}\", '{}'\nselected = \"{}\\\"q\\\"\"",
+                games("war mane").display(),
+                games("").display()
+            )),
+            [games("wotlk"), games("war mane"), games("\"q\"")]
         );
         // Relative paths and other strings are not client folders.
         assert!(clients_in("name = \"wotlk\"\ninstallations = [\"games\"]\n").is_empty());
