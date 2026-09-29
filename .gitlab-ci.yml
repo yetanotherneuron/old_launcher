@@ -1,7 +1,8 @@
 # Lints and tests every push, and every merge request. Pushes to the default
 # branch that pass also build the downloadable binaries, which the README
 # links to, publish the project page and keep the AUR package up to date.
-# A scheduled pipeline regenerates the catalog instead.
+# A scheduled pipeline regenerates the catalog instead, and commits it
+# without starting another: the launchers read it from the repository.
 #
 # The first run builds everything from scratch (iced and wgpu take a while);
 # later runs reuse each job's cached cargo registry, git checkouts and target
@@ -65,13 +66,10 @@ workflow:
       - .cargo/git/db/
       - target/
 
-# Every job but `index` and `pages`: not on a schedule, and not for a
-# catalog update, which nothing but the page depends on.
+# Every job but `index` and `pages`: not on a schedule.
 .push:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CATALOG_ONLY == "true"
       when: never
     - when: on_success
 
@@ -122,8 +120,6 @@ test-windows:
   stage: release
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
-    - if: $CATALOG_ONLY == "true"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   artifacts:
@@ -206,8 +202,6 @@ aur:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    - if: $CATALOG_ONLY == "true"
-      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
     - pacman -Syu --noconfirm --needed git openssh
@@ -236,13 +230,16 @@ aur:
 
 # The project page on GitLab Pages: the README, styled like the launcher,
 # with its icon, its version and a footer back to the repository, plus the
-# catalog the binaries refresh from. The address shows under Deploy > Pages.
+# description of what is published (release.json), which the binaries check
+# for a newer version. The address shows under Deploy > Pages.
 pages:
   extends: .ordered
   stage: release
   image:
     name: pandoc/core:3.11
     entrypoint: [""]
+  # The binaries, to describe them.
+  needs: [windows, linux-x86_64, linux-arm64]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -264,17 +261,22 @@ pages:
       --include-before-body pages/header.html
       --include-after-body footer.html
       --output public/index.html
-    - cp pages/style.css assets/old_launcher.svg index/wotlk.json public/
+    - cp pages/style.css assets/old_launcher.svg public/
     # The README's screenshots, at the same relative path.
     - mkdir -p public/assets
     - cp -r assets/screenshots public/assets/
+    # The version and each binary's address, checksum and size, for the
+    # launcher's update check.
+    - sh pages/release.sh "$version" > public/release.json
+    - cat public/release.json
   artifacts:
     paths:
       - public
 
 # Regenerates the catalog from the upstream sources and commits it when it
-# changed, for the page to publish. Run from a pipeline schedule (Build >
-# Pipeline schedules, say weekly, on the default branch).
+# changed, which publishes it: the launchers read it from the repository.
+# Run from a pipeline schedule (Build > Pipeline schedules, say weekly, on
+# the default branch).
 #
 # It needs two CI/CD variables: CI_PUSH_TOKEN, a project access token with
 # the `write_repository` scope (Settings > Access tokens; the Developer role
@@ -296,6 +298,8 @@ index:
     - git add index/wotlk.json
     - >-
       if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
-    - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog"
-    # The pipeline this starts publishes the page and nothing else.
-    - git push -o ci.variable="CATALOG_ONLY=true" "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+    # No pipeline for it: nothing built depends on the catalog, and the
+    # binaries' download links point at the newest successful pipeline,
+    # which must stay one that built them.
+    - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog [skip ci]"
+    - git push "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

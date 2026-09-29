@@ -12,8 +12,12 @@ pub use crate::core::catalog::{Catalog, Entry};
 
 use crate::describe;
 
-/// The published catalog, beside the project page.
-const PUBLISHED: &str = concat!(env!("CARGO_PKG_HOMEPAGE"), "wotlk.json");
+/// The published catalog: the repository's, as committed on its default
+/// branch, which a scheduled pipeline keeps up to date.
+const PUBLISHED: &str = concat!(
+    env!("CARGO_PKG_REPOSITORY"),
+    "/-/raw/main/index/wotlk.json"
+);
 
 /// Points the app at another catalog: an `http(s)://` URL or a file path.
 pub const OVERRIDE: &str = "OLD_LAUNCHER_INDEX";
@@ -241,10 +245,10 @@ mod tests {
     }
 
     #[test]
-    fn the_published_catalog_is_beside_the_page() {
+    fn the_published_catalog_is_the_repositorys() {
         assert_eq!(
             PUBLISHED,
-            "https://old-launcher-0d3217.gitlab.io/wotlk.json"
+            "https://gitlab.com/juxuanu/old_launcher/-/raw/main/index/wotlk.json"
         );
         assert!(Location::Url(PUBLISHED.to_owned()).is_published());
         assert!(!Location::Url("https://example.com/wotlk.json".into()).is_published());

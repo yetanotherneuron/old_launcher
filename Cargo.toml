@@ -17,6 +17,8 @@ dirs = { workspace = true }
 open = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [build-dependencies]
 winresource = { workspace = true }

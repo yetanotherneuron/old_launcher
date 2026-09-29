@@ -80,10 +80,11 @@ An addon's update date is the newest file date inside its archive, which for
 a repository snapshot is its last commit. locus313's zips are rebuilt daily,
 so for those it is the last commit touching the addon's folder.
 
-The app fetches the published catalog, which the project page serves and a
-weekly CI schedule regenerates, and keeps the last copy fetched in its cache
-directory, so the catalog shows instantly and offline from the second run on.
-A refresh asks the page whether the catalog changed before downloading it.
+The app fetches the published catalog, `index/wotlk.json` as committed on
+`main`, which a weekly CI schedule regenerates, and keeps the last copy
+fetched in its cache directory, so the catalog shows instantly and offline
+from the second run on. A refresh asks the repository whether the catalog
+changed before downloading it.
 `OLD_LAUNCHER_INDEX=<url or path>` at run time points the app at any other
 catalog, such as a local `index/wotlk.json` while working on the indexer.
 

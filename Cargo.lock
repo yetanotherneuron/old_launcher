@@ -2889,6 +2889,8 @@ dependencies = [
  "reqwest",
  "rfd",
  "rustls",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "winresource",
