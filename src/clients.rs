@@ -140,6 +140,7 @@ impl State {
         let _ = self.details.entry(root.to_path_buf()).or_insert(None);
 
         let root = root.to_path_buf();
+        log::info!("Reading what {} holds", root.display());
 
         Task::perform(
             blocking({
@@ -166,10 +167,29 @@ impl State {
                 Action::new(Instruction::Select(path), read)
             }
             Message::Read(path, result) => {
+                match &result {
+                    Ok(details) => log::info!(
+                        "{} holds {} in {}, and connects to {}",
+                        path.display(),
+                        size(details.size),
+                        match details.locales.as_slice() {
+                            [] => "no language".to_owned(),
+                            locales => locales.join(", "),
+                        },
+                        details
+                            .realmlist
+                            .as_ref()
+                            .and_then(|realmlist| realmlist.server.as_deref())
+                            .unwrap_or("no realmlist")
+                    ),
+                    Err(error) => log::warn!("Could not read {}: {error}", path.display()),
+                }
                 let _ = self.details.insert(path, Some(result));
                 Action::none()
             }
             Message::EditRealmlist(path) => {
+                log::info!("Opening {} in an editor", path.display());
+
                 // Windows has nothing set to open .wtf files with.
                 let opened = if cfg!(windows) {
                     open::with_detached(&path, "notepad")
@@ -190,6 +210,7 @@ impl State {
                     return Action::none();
                 };
                 let root = root.to_path_buf();
+                log::debug!("Reading the realmlist of {} again", root.display());
 
                 Action::task(Task::perform(
                     blocking({

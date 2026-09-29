@@ -103,16 +103,23 @@ impl State {
 
                 self.stage = Stage::Checking;
                 self.error = None;
+                log::info!("Checking {} for a 3.3.5a client", path.display());
                 Action::task(Task::perform(
                     blocking(move || Installation::open(path)),
                     Message::Checked,
                 ))
             }
             Message::Checked(Ok(installation)) => {
+                log::info!(
+                    "Adding the client at {}, version {}",
+                    installation.root().display(),
+                    installation.version()
+                );
                 self.stage = Stage::Editing;
                 Action::instruction(Instruction::Added(installation))
             }
             Message::Checked(Err(error)) => {
+                log::warn!("Not a usable client: {error}");
                 self.stage = Stage::Editing;
                 self.error = Some(error);
                 Action::none()

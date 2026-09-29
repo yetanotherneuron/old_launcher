@@ -192,14 +192,29 @@ impl App {
                     .join("config.toml")
             });
 
+        log::info!(
+            "Old Launcher {} starting, with the settings at {}",
+            update::VERSION,
+            config_path.display()
+        );
+
         let mut errors = Errors::default();
 
         let (config, recovery) = match Config::load(&config_path) {
-            Ok(config) => (config, None),
-            Err(error) => (
-                Config::default(),
-                Some(recovery::State::new(config_path.clone(), &error)),
-            ),
+            Ok(config) => {
+                log::info!(
+                    "The settings list {}",
+                    counted(config.installations.len(), "client")
+                );
+                (config, None)
+            }
+            Err(error) => {
+                log::warn!("The settings can't be read: {}", describe(&error));
+                (
+                    Config::default(),
+                    Some(recovery::State::new(config_path.clone(), &error)),
+                )
+            }
         };
 
         // A connection that never comes, or a server that stops sending,
@@ -264,6 +279,7 @@ impl App {
         let open = match last {
             Some(path) => self.open(path),
             None => {
+                log::info!("No client yet: asking for one");
                 self.setup = Some(setup::State::new(false));
                 operation::focus(setup::PATH)
             }
@@ -395,6 +411,7 @@ impl App {
                         let Some(removed) = current else {
                             return task;
                         };
+                        log::info!("Forgetting the client at {}", removed.display());
                         self.config.remove(&removed);
                         self.selected = Selected::Nothing;
                         self.recognize.clear();
@@ -415,6 +432,7 @@ impl App {
                         Task::batch([task, open, self.save()])
                     }
                     Some(clients::Instruction::Close { edited: true }) => {
+                        log::info!("The launch settings changed");
                         Task::batch([task, self.save()])
                     }
                     Some(clients::Instruction::Close { edited: false }) | None => task,
@@ -463,6 +481,7 @@ impl App {
             // Back from somewhere else, where a game may have started or a
             // realmlist been edited.
             Message::Focused => {
+                log::trace!("The window got the focus back");
                 let (installation, _) = self.selected.open();
                 let selected = installation.map(Installation::root);
 
@@ -478,6 +497,16 @@ impl App {
 
                 match result {
                     Ok(installation) => {
+                        log::info!(
+                            "Opened {}: version {}, {}",
+                            installation.root().display(),
+                            installation.version(),
+                            installation
+                                .locale()
+                                .map_or("no language folder".to_owned(), |locale| {
+                                    format!("language {locale}")
+                                })
+                        );
                         let watch = self
                             .game
                             .watch(Some(installation.root()))
@@ -510,6 +539,12 @@ impl App {
 
                 match result {
                     Ok(scanned) => {
+                        log::info!(
+                            "Scanned {}: {} in Interface/AddOns, {} with saved settings",
+                            root.display(),
+                            counted(scanned.addons.len(), "folder"),
+                            counted(scanned.saved_variables.iter().count(), "addon")
+                        );
                         *snapshot = Some(scanned);
                         self.propose();
 
@@ -553,6 +588,7 @@ impl App {
                     return Task::none();
                 };
                 let addons = installation.addons_directory();
+                log::info!("Opening {} in the file manager", addons.display());
 
                 // A fresh client has no AddOns folder until the first install.
                 let opened = std::fs::create_dir_all(&addons)
@@ -566,8 +602,12 @@ impl App {
 
                 Task::none()
             }
-            Message::Refresh => self.rescan(),
+            Message::Refresh => {
+                log::info!("Scanning again on request");
+                self.rescan()
+            }
             Message::OpenRepository => {
+                log::info!("Opening {REPOSITORY} in the browser");
                 if let Err(error) = open::that_detached(REPOSITORY) {
                     self.errors
                         .report(format!("Could not open {REPOSITORY}: {error}"));
@@ -576,6 +616,7 @@ impl App {
                 Task::none()
             }
             Message::OpenPage => {
+                log::info!("Opening {} in the browser", update::PAGE);
                 if let Err(error) = open::that_detached(update::PAGE) {
                     self.errors
                         .report(format!("Could not open {}: {error}", update::PAGE));
@@ -584,9 +625,11 @@ impl App {
                 Task::none()
             }
             Message::Saved(result) => {
-                if let Err(error) = result {
-                    self.errors
-                        .report(format!("Could not save the settings: {error}"));
+                match result {
+                    Ok(()) => log::debug!("Saved the settings"),
+                    Err(error) => self
+                        .errors
+                        .report(format!("Could not save the settings: {error}")),
                 }
 
                 Task::none()
@@ -913,6 +956,10 @@ impl App {
     /// Fetches the published catalog, if there is one to fetch.
     fn refresh_catalog(&mut self) -> Task<Message> {
         let Some(location) = catalog::Location::configured() else {
+            log::info!(
+                "No catalog location is configured: showing the {} addons built in",
+                self.catalog.entries.len()
+            );
             self.refresh = catalog::Refresh::Unavailable;
             return Task::none();
         };
@@ -937,6 +984,7 @@ impl App {
 
     /// Starts checking the client at `path`.
     fn open(&mut self, path: PathBuf) -> Task<Message> {
+        log::info!("Opening the client at {}", path.display());
         self.selected = Selected::Opening(path.clone());
         self.recognize.clear();
 
@@ -967,6 +1015,7 @@ impl App {
     fn save(&self) -> Task<Message> {
         let config = self.config.clone();
         let path = self.config_path.clone();
+        log::debug!("Saving the settings to {}", path.display());
 
         Task::perform(blocking(move || config.save(&path)), Message::Saved)
     }

@@ -168,4 +168,4 @@ SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored
 ```
 
-`RUST_LOG=old_launcher=info` makes the launcher say what it does on stderr.
+The launcher says what it does on stderr; `RUST_LOG=old_launcher=debug` says more.

@@ -45,6 +45,32 @@ pub enum Confirm {
 }
 
 impl Confirm {
+    /// What is about to happen, for the log.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Uninstall {
+                title,
+                folders,
+                data,
+                delete_data,
+                ..
+            } => format!(
+                "Uninstalling {title}: {}{}",
+                counted(folders.len(), "folder"),
+                if *delete_data {
+                    format!(", and {} of saved settings", counted(data.len(), "file"))
+                } else {
+                    String::new()
+                }
+            ),
+            Self::Repair { folder } => format!("Repairing {folder}"),
+            Self::Clean { title, files } => format!(
+                "Deleting the saved settings of {title}: {}",
+                counted(files.len(), "file")
+            ),
+        }
+    }
+
     /// What failed, when [`Confirm::run`] does.
     pub fn failure(&self) -> String {
         match self {

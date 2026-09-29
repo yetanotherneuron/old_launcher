@@ -10,27 +10,40 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PAGE: &str = env!("CARGO_PKG_HOMEPAGE");
 
 /// The published version, when it is newer than this build's. Nothing when
-/// it can't be told: the check is a courtesy, not something to report.
+/// it can't be told: the check is a courtesy, logged but not reported.
 pub async fn check(client: Result<reqwest::Client, String>) -> Option<String> {
-    let manifest = client
-        .ok()?
-        .get(format!("{REPOSITORY}/-/raw/main/Cargo.toml"))
+    match published(client).await {
+        Ok(published) if newer(&published, VERSION) => {
+            log::info!("Version {published} is published; this is {VERSION}");
+            Some(published)
+        }
+        Ok(published) => {
+            log::info!("No newer version: the repository declares {published}, this is {VERSION}");
+            None
+        }
+        Err(why) => {
+            log::info!("Could not check for a newer version: {why}");
+            None
+        }
+    }
+}
+
+/// The version the repository's manifest declares.
+async fn published(client: Result<reqwest::Client, String>) -> Result<String, String> {
+    let url = format!("{REPOSITORY}/-/raw/main/Cargo.toml");
+    log::debug!("Checking for a newer version at {url}");
+
+    let manifest = client?
+        .get(url)
         .send()
         .await
-        .ok()?
-        .error_for_status()
-        .ok()?
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|error| crate::describe(&error))?
         .text()
         .await
-        .ok()?;
-    let published = version_in(&manifest)?;
+        .map_err(|error| crate::describe(&error))?;
 
-    if newer(&published, VERSION) {
-        log::info!("Version {published} is published; this is {VERSION}");
-        Some(published)
-    } else {
-        None
-    }
+    version_in(&manifest).ok_or_else(|| "the manifest declares no version".to_owned())
 }
 
 /// The version a Cargo manifest declares: its first `version = "…"` line,

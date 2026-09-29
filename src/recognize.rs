@@ -65,6 +65,16 @@ impl State {
 
         if self.proposed.is_empty() {
             self.details = false;
+        } else {
+            log::info!(
+                "{} installed without the launcher match the catalog: {}",
+                crate::counted(self.proposed.len(), "addon"),
+                self.proposed
+                    .iter()
+                    .map(|adoption| adoption.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
     }
 
@@ -122,6 +132,10 @@ impl State {
                 ))
             }
             Message::Decline => {
+                log::info!(
+                    "Not recognizing {} for now",
+                    crate::counted(self.proposed.len(), "addon")
+                );
                 self.declined.extend(self.proposed.iter().map(key));
                 self.clear();
                 Action::none()
@@ -131,6 +145,7 @@ impl State {
 
                 match result {
                     Ok(adopted) => {
+                        log::info!("Recognized {}", crate::counted(adopted.len(), "addon"));
                         self.clear();
                         Action::instruction(Instruction::Recognized(adopted.len()))
                     }

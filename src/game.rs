@@ -120,6 +120,7 @@ impl State {
         if roots.is_empty() {
             return Task::none();
         }
+        log::trace!("Looking for the games of {roots:?}");
 
         Task::perform(
             blocking(move || Ok(launch::running(&roots))),
@@ -171,15 +172,22 @@ impl State {
             Message::Watch => self.watch(selected),
             Message::Watched(Ok(running)) => {
                 for root in &running {
-                    let _ = self.games.entry(root.clone()).or_insert(Game {
-                        started: true,
-                        command: false,
-                        patience: 0,
+                    let _ = self.games.entry(root.clone()).or_insert_with(|| {
+                        log::info!("Found the game of {} running", root.display());
+
+                        Game {
+                            started: true,
+                            command: false,
+                            patience: 0,
+                        }
                     });
                 }
 
                 self.games.retain(|root, game| {
                     if running.contains(root) {
+                        if !game.started {
+                            log::info!("The game of {} is running", root.display());
+                        }
                         game.started = true;
                         return true;
                     }
@@ -187,6 +195,7 @@ impl State {
                     // Gone once seen: the game is over, even if what started
                     // it lingers (Lutris' window, say).
                     if game.started {
+                        log::info!("The game of {} is over", root.display());
                         return false;
                     }
                     if game.command {
@@ -194,6 +203,12 @@ impl State {
                     }
 
                     game.patience = game.patience.saturating_sub(1);
+                    if game.patience == 0 {
+                        log::info!(
+                            "The game of {} never showed up after its command exited",
+                            root.display()
+                        );
+                    }
                     game.patience > 0
                 });
 

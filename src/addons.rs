@@ -206,7 +206,10 @@ impl State {
                 self.filter = Filter::default();
                 Action::task(to_top())
             }
-            Message::Reload => Action::instruction(Instruction::Reload),
+            Message::Reload => {
+                log::info!("Reloading the catalog on request");
+                Action::instruction(Instruction::Reload)
+            }
             Message::Install(key) => {
                 let Some(installation) = installation else {
                     return Action::none();
@@ -349,6 +352,7 @@ impl State {
                 let installation = installation.clone();
                 let failure = confirm.failure();
 
+                log::info!("{}", confirm.describe());
                 self.working = true;
 
                 Action::task(Task::perform(
@@ -361,8 +365,9 @@ impl State {
             Message::Done(result) => {
                 self.working = false;
 
-                if let Err(error) = result {
-                    errors.report(error);
+                match result {
+                    Ok(()) => log::info!("Done"),
+                    Err(error) => errors.report(error),
                 }
 
                 Action::instruction(Instruction::Changed)
