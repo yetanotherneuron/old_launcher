@@ -363,7 +363,16 @@ mod tests {
             }
         };
 
-        assert_eq!(running(&clients), std::slice::from_ref(&root));
+        // A process takes its new name a moment after it starts, so this
+        // looks a few times, as the launcher does every second.
+        let found = (0..100).find_map(|_| {
+            let found = running(&clients);
+            if found.is_empty() {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            (!found.is_empty()).then_some(found)
+        });
+        assert_eq!(found.as_deref(), Some(std::slice::from_ref(&root)));
 
         game.kill().unwrap();
         game.wait().unwrap();
