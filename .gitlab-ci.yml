@@ -126,11 +126,12 @@ linux-arm64:
     TARGET: aarch64-unknown-linux-gnu
     BINARY: old_launcher-linux-arm64
 
-# Publishes aur/PKGBUILD to the AUR as old-launcher-git whenever it changes
-# on the default branch, with its version set and its .SRCINFO generated.
-# To publish without changing it, run a pipeline for the default branch
-# with AUR_PUBLISH=true: from Build > Pipelines > Run pipeline, or with
-# `git push -o ci.variable=AUR_PUBLISH=true`.
+# Publishes aur/PKGBUILD to the AUR as old-launcher-git, with its version
+# set and its .SRCINFO generated, on every pipeline of the default branch
+# that gets this far. The version is that of the last commit changing the
+# PKGBUILD, so an unchanged PKGBUILD comes out the same and there is nothing
+# to push; a change is published by the next pipeline that passes, even if
+# the one it came with failed.
 #
 # It needs the CI/CD variable AUR_SSH_PRIVATE_KEY (type Variable, protected,
 # masked and hidden): the private half of an SSH key added to the AUR
@@ -142,17 +143,14 @@ aur:
   # Never stopped halfway through a push to the AUR.
   interruptible: false
   variables:
-    # The version counts every commit, so the whole history is needed.
+    # The version counts commits, so the whole history is needed.
     GIT_DEPTH: 0
     AUR_PACKAGE: old-launcher-git
     # aur.archlinux.org's Ed25519 host key, as the AUR publishes it:
     # SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
     AUR_HOST_KEY: "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN"
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $AUR_PUBLISH == "true"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - aur/PKGBUILD
   before_script:
     - pacman -Syu --noconfirm --needed git openssh
     - install -dm700 ~/.ssh
@@ -162,7 +160,8 @@ aur:
     - printf 'Host aur.archlinux.org\n  User aur\n  IdentityFile ~/.ssh/aur\n  IdentitiesOnly yes\n' > ~/.ssh/config
   script:
     - git clone "ssh://aur@aur.archlinux.org/$AUR_PACKAGE.git" aur-repository
-    - pkgver="r$(git rev-list --count HEAD).$(git rev-parse --short=7 HEAD)"
+    - packaged=$(git log -1 --format=%H -- aur/PKGBUILD)
+    - pkgver="r$(git rev-list --count "$packaged").$(git rev-parse --short=7 "$packaged")"
     - sed "s/^pkgver=.*/pkgver=$pkgver/" aur/PKGBUILD > aur-repository/PKGBUILD
     # makepkg refuses to run as root, even just to print the metadata, so
     # another user reads a copy: git refuses a clone its user doesn't own.
