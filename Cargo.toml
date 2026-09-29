@@ -78,6 +78,9 @@ sevenz-rust2 = { version = "0.23", default-features = false, features = ["util",
 rars = "0.9"
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
+# Lists running processes (on Linux and Windows alike), to tell whether a
+# client's game is running.
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 # Release binaries are what people download: as fast and small as the
 # compiler makes them, at the cost of slower release builds. Panics still

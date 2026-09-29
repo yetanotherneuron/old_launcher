@@ -2,10 +2,11 @@
 //! command the client is set up with (Wine, Proton through umu-launcher,
 //! Lutris, Steam, …), the way Steam runs a game's launch options.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use crate::{Error, Installation};
 
@@ -137,6 +138,96 @@ pub fn command(installation: &Installation, launch: &Launch) -> Result<Command, 
     Ok(command)
 }
 
+/// Which of the clients at `roots` have their game running, going by the
+/// processes named `Wow.exe`: on Windows the program itself, and under Wine
+/// or Proton a process named after it, whose command line is its Windows
+/// path and which works in its folder. A client's game is one started from
+/// the client folder or working in it, or else started from a folder of the
+/// same name (as a runner's own drive sees the client, say).
+pub fn running(roots: &[PathBuf]) -> Vec<PathBuf> {
+    // Every process is looked at, so none of their files stay open.
+    sysinfo::set_open_files_limit(0);
+
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().without_tasks(),
+    );
+
+    let games: Vec<Pid> = system
+        .processes()
+        .iter()
+        .filter(|(_, process)| process.name().eq_ignore_ascii_case("Wow.exe"))
+        .map(|(pid, _)| *pid)
+        .collect();
+
+    if games.is_empty() {
+        return Vec::new();
+    }
+
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&games),
+        true,
+        ProcessRefreshKind::nothing()
+            .without_tasks()
+            .with_exe(UpdateKind::Always)
+            .with_cwd(UpdateKind::Always)
+            .with_cmd(UpdateKind::Always),
+    );
+
+    roots
+        .iter()
+        .filter(|root| {
+            let name = root.file_name().map(|name| name.to_string_lossy());
+
+            games
+                .iter()
+                .filter_map(|pid| system.process(*pid))
+                .any(|game| {
+                    game.exe()
+                        .and_then(Path::parent)
+                        .is_some_and(|folder| same(folder, root))
+                        || game.cwd().is_some_and(|cwd| same(cwd, root))
+                        || game.cmd().first().is_some_and(|program| {
+                            folder(&program.to_string_lossy())
+                                .zip(name.as_deref())
+                                .is_some_and(|(folder, name)| folder.eq_ignore_ascii_case(name))
+                        })
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+/// Whether `a` and `b` are the same folder however they are spelled: with
+/// Windows' `\\?\` prefix or without, either slash, any case.
+fn same(a: &Path, b: &Path) -> bool {
+    let spelled = |path: &Path| {
+        path.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_owned()
+    };
+
+    spelled(a).eq_ignore_ascii_case(&spelled(b))
+}
+
+/// The name of the folder `Wow.exe` was started from, out of a command line
+/// such as `Z:\games\WoW\Wow.exe` or `"C:\Program Files\WoW\Wow.exe" -opengl`.
+fn folder(cmdline: &str) -> Option<&str> {
+    let program = cmdline.split('\0').next()?;
+    let end = program.to_ascii_lowercase().find("wow.exe")?;
+
+    program[..end]
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .map(|folder| folder.trim_start_matches('"'))
+        .filter(|folder| !folder.is_empty() && !folder.ends_with(':'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,6 +307,67 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn the_folder_a_game_was_started_from_is_on_its_command_line() {
+        assert_eq!(folder("Z:\\mnt\\games\\WoW\\Wow.exe"), Some("WoW"));
+        assert_eq!(
+            folder("\"C:\\Program Files\\World of Warcraft\\WoW.EXE\" -opengl"),
+            Some("World of Warcraft")
+        );
+        assert_eq!(folder("/mnt/games/WoW/Wow.exe\0-console\0"), Some("WoW"));
+        assert_eq!(folder("Wow.exe"), None);
+        assert_eq!(folder("Z:\\Wow.exe"), None);
+        assert_eq!(folder("C:\\windows\\system32\\services.exe"), None);
+    }
+
+    #[test]
+    fn a_folder_is_the_same_however_it_is_spelled() {
+        assert!(same(
+            Path::new(r"\\?\C:\Games\WoW"),
+            Path::new(r"c:\games\wow\")
+        ));
+        assert!(same(Path::new("/games/WoW/"), Path::new("/games/WoW")));
+        assert!(!same(Path::new("/games/WoW"), Path::new("/games/WoW2")));
+    }
+
+    /// Any program named `Wow.exe` looks like the game: here, `sleep`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_game_is_running_while_a_wow_exe_works_in_the_client_folder() {
+        use std::fs;
+
+        let directory = tempfile::tempdir().unwrap();
+        // The temporary folder's random name, so no real game matches it.
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let other = root.join("other");
+        fs::create_dir(&other).unwrap();
+        fs::copy("/bin/sleep", root.join("Wow.exe")).unwrap();
+        let clients = [root.clone(), other];
+
+        assert!(running(&clients).is_empty());
+
+        // Another test forking while the copy was open for writing makes
+        // it "busy" for a moment.
+        let mut game = loop {
+            match Command::new(root.join("Wow.exe"))
+                .arg("30")
+                .current_dir(&root)
+                .spawn()
+            {
+                Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                spawned => break spawned.unwrap(),
+            }
+        };
+
+        assert_eq!(running(&clients), std::slice::from_ref(&root));
+
+        game.kill().unwrap();
+        game.wait().unwrap();
+        assert!(running(&clients).is_empty());
     }
 
     /// Runs the real thing: `sh`, in the client folder, with the variables

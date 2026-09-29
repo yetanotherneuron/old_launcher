@@ -17,5 +17,6 @@ zip = { workspace = true }
 sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
 shlex = { workspace = true }
+sysinfo = { workspace = true }
 
 [dev-dependencies]

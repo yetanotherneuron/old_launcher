@@ -370,7 +370,6 @@ fn field<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Launch;
     use iced_test::{selector, simulator};
 
     const WOTLK: &str = "/games/wotlk";
@@ -536,6 +535,8 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn how_each_client_starts_is_typed_in() {
+        use crate::core::Launch;
+
         let mut state = State::default();
         let mut config = config();
         let root = Path::new(WOTLK);

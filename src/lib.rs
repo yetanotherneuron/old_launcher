@@ -19,8 +19,9 @@ mod style;
 mod testing;
 mod transfer;
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
@@ -81,8 +82,26 @@ pub struct App {
     transfer: transfer::State,
     /// The clients dialog, while open.
     clients: Option<clients::State>,
-    /// The clients whose game was started and hasn't exited yet.
-    running: BTreeSet<PathBuf>,
+    /// The games started from the launcher, by client folder, until over.
+    games: BTreeMap<PathBuf, Game>,
+}
+
+/// A game started from the launcher. It is set up (Proton downloaded, a
+/// prefix made, …) until its `Wow.exe` shows up, and over when that is gone.
+struct Game {
+    /// Whether its `Wow.exe` was seen, so it is past the setting up.
+    started: bool,
+    /// Whether the command that started it is still running.
+    command: bool,
+    /// How many more checks to wait for `Wow.exe` once the command exited
+    /// fine without it: Steam or Lutris take the game over and exit.
+    patience: u8,
+}
+
+impl Game {
+    /// Checks, a second apart, that `Wow.exe` gets to show up after the
+    /// command that started it exited.
+    const PATIENCE: u8 = 60;
 }
 
 /// The state of the client folder being shown.
@@ -127,9 +146,13 @@ pub enum Message {
     ManageClients,
     /// Start the game.
     Play,
-    /// The game started from this client folder exited, with this exit code
-    /// if it had one, or failed to start.
+    /// The command that started the game of this client folder exited, with
+    /// this exit code if it had one, or failed to start.
     Exited(PathBuf, Result<Option<i32>, String>),
+    /// Time to look for the games started.
+    Watch,
+    /// The client folders whose game is running.
+    Watched(Result<Vec<PathBuf>, String>),
     /// The selected client folder was checked.
     Opened(PathBuf, Result<Installation, String>),
     /// A client folder was scanned.
@@ -230,7 +253,7 @@ impl App {
             details: false,
             transfer: transfer::State::default(),
             clients: None,
-            running: BTreeSet::new(),
+            games: BTreeMap::new(),
         };
 
         let start = if app.recovery.is_some() {
@@ -435,13 +458,20 @@ impl App {
                 };
                 let root = installation.root().to_path_buf();
 
-                if self.running.contains(&root) {
+                if self.games.contains_key(&root) {
                     return Task::none();
                 }
 
                 match core::launch::command(installation, &self.config.launch(&root)) {
                     Ok(command) => {
-                        self.running.insert(root.clone());
+                        self.games.insert(
+                            root.clone(),
+                            Game {
+                                started: false,
+                                command: true,
+                                patience: Game::PATIENCE,
+                            },
+                        );
                         Task::perform(play(command), Message::Exited.with(root))
                     }
                     Err(error) => {
@@ -452,7 +482,15 @@ impl App {
                 }
             }
             Message::Exited(root, result) => {
-                self.running.remove(&root);
+                // A fine exit may leave the game running, or about to (see
+                // `Game::patience`): the watching tells.
+                if result == Ok(Some(0)) {
+                    if let Some(game) = self.games.get_mut(&root) {
+                        game.command = false;
+                    }
+                } else {
+                    self.games.remove(&root);
+                }
 
                 match result {
                     Ok(None | Some(0)) => {}
@@ -475,6 +513,38 @@ impl App {
 
                 Task::none()
             }
+            Message::Watch => {
+                let roots: Vec<PathBuf> = self.games.keys().cloned().collect();
+
+                Task::perform(
+                    blocking(move || Ok(core::launch::running(&roots))),
+                    Message::Watched,
+                )
+            }
+            Message::Watched(Ok(running)) => {
+                self.games.retain(|root, game| {
+                    if running.contains(root) {
+                        game.started = true;
+                        return true;
+                    }
+
+                    // Gone once seen: the game is over, even if what started
+                    // it lingers (Lutris' window, say).
+                    if game.started {
+                        return false;
+                    }
+                    if game.command {
+                        return true;
+                    }
+
+                    game.patience = game.patience.saturating_sub(1);
+                    game.patience > 0
+                });
+
+                Task::none()
+            }
+            // The next look will do.
+            Message::Watched(Err(_)) => Task::none(),
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
                     return Task::none();
@@ -696,10 +766,7 @@ impl App {
             return center(setup.view().map(Message::Setup)).padding(20).into();
         }
 
-        let running = self
-            .selected
-            .path()
-            .is_some_and(|path| self.running.contains(path));
+        let game = self.selected.path().and_then(|path| self.games.get(path));
 
         let title = button(text("Old Launcher").size(24).font(style::BOLD))
             .padding(0)
@@ -732,13 +799,20 @@ impl App {
             button("Manage clients…")
                 .style(button::secondary)
                 .on_press(Message::ManageClients),
-            button(text(if running { "Running" } else { "Play" }).font(style::BOLD))
-                .padding([6, 26])
-                .style(button::primary)
-                .on_press_maybe(
-                    (matches!(self.selected, Selected::Open { .. }) && !running)
-                        .then_some(Message::Play)
-                ),
+            button(
+                text(match game {
+                    None => "Play",
+                    Some(Game { started: false, .. }) => "Setting up…",
+                    Some(Game { started: true, .. }) => "Game running",
+                })
+                .font(style::BOLD)
+            )
+            .padding([6, 26])
+            .style(button::primary)
+            .on_press_maybe(
+                (matches!(self.selected, Selected::Open { .. }) && game.is_none())
+                    .then_some(Message::Play)
+            ),
         ]
         .spacing(10)
         .align_y(Center);
@@ -974,8 +1048,9 @@ impl App {
         .into()
     }
 
-    /// Keyboard shortcuts (see [`shortcut`]), and what the clients dialog
-    /// listens to while open.
+    /// Keyboard shortcuts (see [`shortcut`]), what the clients dialog listens
+    /// to while open, and a look for the games started every second while
+    /// there are some.
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
@@ -984,6 +1059,11 @@ impl App {
                 .map_or_else(Subscription::none, |clients| {
                     clients.subscription().map(Message::Clients)
                 }),
+            if self.games.is_empty() {
+                Subscription::none()
+            } else {
+                iced::time::every(Duration::from_secs(1)).map(|_| Message::Watch)
+            },
         ])
     }
 
@@ -1180,7 +1260,7 @@ mod tests {
             details: false,
             transfer: transfer::State::default(),
             clients: None,
-            running: BTreeSet::new(),
+            games: BTreeMap::new(),
         }
     }
 
@@ -1457,37 +1537,81 @@ mod tests {
         }
     }
 
-    #[test]
-    fn play_starts_the_client_once_and_says_why_it_stopped() {
-        let (_root, installation) = crate::testing::client(&[]);
-        let root = installation.root().to_path_buf();
-        let mut app = app(&[&root.display().to_string()]);
+    /// An app with the client at `root` open.
+    fn playable(installation: Installation) -> App {
+        let mut app = app(&[&installation.root().display().to_string()]);
         app.selected = Selected::Open {
-            snapshot: Some(installation.scan().unwrap()),
+            snapshot: None,
             installation,
         };
+        app
+    }
 
+    /// Whether the Play button, which must say `label`, can be pressed.
+    fn play_button(app: &App, label: &str) -> bool {
         let mut ui = simulator(app.view());
-        let _ = ui.click("Play").unwrap();
-        for message in ui.into_messages() {
-            let _ = app.update(message);
-        }
+        let _ = ui.click(label).unwrap();
+        ui.into_messages().count() > 0
+    }
 
-        assert!(app.running.contains(&root));
-        let mut ui = simulator(app.view());
-        let _ = ui.click("Running").unwrap();
-        assert_eq!(ui.into_messages().count(), 0, "it is already running");
+    #[test]
+    fn a_game_is_set_up_then_running_until_its_wow_exe_is_gone() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = playable(installation);
 
+        assert!(play_button(&app, "Play"));
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Watched(Ok(Vec::new())));
+        assert!(
+            !play_button(&app, "Setting up…"),
+            "no Wow.exe yet: Proton being set up, say"
+        );
+
+        let _ = app.update(Message::Watched(Ok(vec![root.clone()])));
+        assert!(!play_button(&app, "Game running"));
+
+        // wine or umu-run exit with the game, which then goes.
         let _ = app.update(Message::Exited(root.clone(), Ok(Some(0))));
-        assert!(app.running.is_empty());
+        assert!(!play_button(&app, "Game running"), "until it is gone");
+        let _ = app.update(Message::Watched(Ok(Vec::new())));
+        assert!(play_button(&app, "Play"));
         assert!(app.errors.messages().is_empty(), "a normal exit");
 
         let _ = app.update(Message::Play);
-        let _ = app.update(Message::Exited(root.clone(), Ok(Some(3))));
+        let _ = app.update(Message::Exited(root, Ok(Some(3))));
+        assert!(play_button(&app, "Play"), "over at once");
         assert_eq!(
             app.errors.messages(),
             ["World of Warcraft exited with status 3."]
         );
+    }
+
+    #[test]
+    fn a_game_handed_to_another_launcher_is_waited_for() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = playable(installation);
+
+        // `steam steam://rungameid/…` exits as soon as Steam has the game.
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Exited(root.clone(), Ok(Some(0))));
+        for _ in 1..Game::PATIENCE {
+            let _ = app.update(Message::Watched(Ok(Vec::new())));
+        }
+        assert!(!play_button(&app, "Setting up…"));
+        let _ = app.update(Message::Watched(Ok(vec![root.clone()])));
+        assert!(!play_button(&app, "Game running"));
+        let _ = app.update(Message::Watched(Ok(Vec::new())));
+        assert!(play_button(&app, "Play"));
+
+        // And when the game never shows up, the launcher stops waiting.
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Exited(root, Ok(Some(0))));
+        for _ in 0..Game::PATIENCE {
+            let _ = app.update(Message::Watched(Ok(Vec::new())));
+        }
+        assert!(play_button(&app, "Play"));
     }
 
     #[cfg(unix)]
@@ -1535,7 +1659,7 @@ mod tests {
             },
         );
         let _ = app.update(Message::Play);
-        assert!(app.running.is_empty(), "nothing was started");
+        assert!(app.games.is_empty(), "nothing was started");
 
         app.config.set_launch(&root, crate::core::Launch::default());
         let _ = app.update(Message::Play);
