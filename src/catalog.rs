@@ -14,10 +14,7 @@ use crate::describe;
 
 /// The published catalog: the repository's, as committed on its default
 /// branch, which a scheduled pipeline keeps up to date.
-const PUBLISHED: &str = concat!(
-    env!("CARGO_PKG_REPOSITORY"),
-    "/-/raw/main/index/wotlk.json"
-);
+const PUBLISHED: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/-/raw/main/index/wotlk.json");
 
 /// Points the app at another catalog: an `http(s)://` URL or a file path.
 pub const OVERRIDE: &str = "OLD_LAUNCHER_INDEX";
@@ -244,6 +241,77 @@ mod tests {
         );
     }
 
+    /// `version` with its first or last run of digits one higher, or
+    /// nothing when it has none.
+    fn bumped(version: &str, last: bool) -> Option<String> {
+        let digit = |c: char| c.is_ascii_digit();
+        let (start, end) = if last {
+            let end = version.rfind(digit)? + 1;
+            let start = version[..end]
+                .rfind(|c: char| !c.is_ascii_digit())
+                .map_or(0, |index| index + 1);
+            (start, end)
+        } else {
+            let start = version.find(digit)?;
+            let end = version[start..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map_or(version.len(), |index| start + index);
+            (start, end)
+        };
+        let number: u64 = version[start..end].parse().ok()?;
+
+        Some(format!(
+            "{}{}{}",
+            &version[..start],
+            number + 1,
+            &version[end..]
+        ))
+    }
+
+    /// Every shape of version the published catalog has compares with
+    /// itself, and reads as older than itself with any of its numbers
+    /// raised; a version without a number compares with nothing.
+    #[test]
+    fn every_version_shape_in_the_repository_catalog_compares() {
+        use std::cmp::Ordering;
+        use std::collections::BTreeSet;
+
+        use crate::core::toc::compare_versions;
+
+        let catalog = repository();
+        let versions: BTreeSet<&str> = catalog
+            .entries
+            .iter()
+            .flat_map(|entry| &entry.downloads)
+            .flat_map(|download| &download.folders)
+            .filter_map(|folder| folder.version.as_deref())
+            .collect();
+        assert!(versions.len() > 100, "{} versions", versions.len());
+
+        for version in versions {
+            assert_eq!(
+                compare_versions(version, version),
+                Some(Ordering::Equal),
+                "{version:?}"
+            );
+
+            for last in [false, true] {
+                match bumped(version, last) {
+                    Some(newer) => assert_eq!(
+                        compare_versions(&newer, version),
+                        Some(Ordering::Greater),
+                        "{newer:?} vs {version:?}"
+                    ),
+                    None => assert_eq!(
+                        compare_versions(version, "1.0"),
+                        None,
+                        "{version:?} has no number"
+                    ),
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_published_catalog_is_the_repositorys() {
         assert_eq!(
@@ -268,6 +336,12 @@ mod tests {
             Location::parse("index/wotlk.json"),
             Location::File("index/wotlk.json".into())
         );
+    }
+
+    /// An HTTP client, with the TLS provider the app installs at start.
+    fn client() -> reqwest::Client {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        reqwest::Client::new()
     }
 
     /// Serves `json` as the catalog, tagged `tag`, answering that it is
@@ -310,7 +384,7 @@ mod tests {
         let url = serve(json, "\"v1\"").await;
         let directory = tempfile::tempdir().unwrap();
         let cache = Cache::at(directory.path().to_path_buf());
-        let client = Ok(reqwest::Client::new());
+        let client = Ok(client());
 
         let fetched = Location::Url(url.clone())
             .fetch(client.clone(), None, Some(cache.clone()))
@@ -340,7 +414,7 @@ mod tests {
         let cache = Cache::at(directory.path().to_path_buf());
 
         let error = Location::Url(url)
-            .fetch(Ok(reqwest::Client::new()), None, Some(cache.clone()))
+            .fetch(Ok(client()), None, Some(cache.clone()))
             .await
             .unwrap_err();
 

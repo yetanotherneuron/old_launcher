@@ -5,7 +5,8 @@
 //! zip in its latest release (suites like ElvUI or Titan as one zip). The
 //! README's tables name and describe every folder. The job stamps the zips'
 //! files with the build date, so an addon's date is the last commit touching
-//! its folder instead (one GitHub API call each).
+//! its folder instead (one GitHub API call each), and the folder's commit
+//! log is the history of its changes.
 
 use old_launcher_core::catalog;
 use serde::Deserialize;
@@ -81,6 +82,7 @@ impl Source for Collection {
             // The README links some folders under another spelling
             // (`!Swatter` as `Swatter/`), so both are tried.
             let mut updated = None;
+            let mut changes = None;
 
             for path in [Some(folder.as_str()), row.map(|row| row.name.as_str())]
                 .into_iter()
@@ -91,6 +93,7 @@ impl Source for Collection {
 
                 if let Some(commit) = commits.first() {
                     updated = commit.commit.committer.date.get(..10).map(str::to_owned);
+                    changes = Some(format!("{REPOSITORY}/commits/main/{path}"));
                     break;
                 }
             }
@@ -101,6 +104,7 @@ impl Source for Collection {
                 download: asset.browser_download_url,
                 image: None,
                 page: Some(format!("{REPOSITORY}/tree/main/{folder}")),
+                changes,
                 links: Vec::new(),
                 updated: Updated::Given(updated),
                 require_wotlk: false,

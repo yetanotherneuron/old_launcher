@@ -45,10 +45,20 @@ pub struct State {
     working: bool,
 }
 
-/// Identifies a catalog entry across catalog refreshes: the folders it
-/// installs, which the catalog never gives two entries.
+/// Identifies a catalog entry across catalog refreshes: its
+/// [`key`](Entry::key), the folders it installs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Key(Vec<String>);
+pub struct Key(String);
+
+/// Where an entry installs from: the source the catalog lists first, or
+/// one the user picks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Choice {
+    /// The catalog's order: the newest first.
+    Auto,
+    /// This source, by id, first.
+    Source(String),
+}
 
 /// Archives bigger than this are not downloaded: no addon comes close, and
 /// a server claiming more must not have the launcher set aside the memory.
@@ -87,7 +97,8 @@ pub enum Stage {
 pub enum Failure {
     /// The user stopped it while downloading.
     Cancelled,
-    /// Every download failed, or the install did; this says how.
+    /// The download or the install failed; this says how, naming the
+    /// source.
     Failed(String),
 }
 
@@ -111,6 +122,8 @@ pub enum Message {
     OriginSelected(Origin),
     /// Sort the addons.
     OrderSelected(Order),
+    /// Install an entry from this source first, from now on.
+    SourceSelected(Key, Choice),
     /// Show everything again.
     ClearFilters,
     /// Fetch the published catalog again.
@@ -143,19 +156,25 @@ pub enum Instruction {
     Changed,
     /// The user wants a fresh catalog.
     Reload,
+    /// The user picked where the entry installs from: this source, or
+    /// none for the catalog's order. To remember, and to apply.
+    Prefer {
+        /// The entry.
+        key: Key,
+        /// The source id, or none.
+        source: Option<String>,
+    },
 }
 
 impl Key {
     /// The key of `entry`.
     pub fn of(entry: &Entry) -> Self {
-        let mut folders: Vec<String> = entry
-            .folders()
-            .iter()
-            .map(|folder| folder.name.to_lowercase())
-            .collect();
-        folders.sort();
+        Self(entry.key())
+    }
 
-        Self(folders)
+    /// The key as the settings name it.
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -201,6 +220,14 @@ impl State {
                 self.filter.order = order;
                 Action::task(to_top())
             }
+            Message::SourceSelected(key, choice) => {
+                let source = match choice {
+                    Choice::Auto => None,
+                    Choice::Source(source) => Some(source),
+                };
+
+                Action::instruction(Instruction::Prefer { key, source })
+            }
             Message::ClearFilters => {
                 self.query.clear();
                 self.filter = Filter::default();
@@ -238,21 +265,12 @@ impl State {
                     })
                     .unwrap_or_default();
 
-                let downloads: Vec<(String, Download)> = entry
-                    .downloads
-                    .iter()
-                    .map(|download| {
-                        let source = catalog
-                            .source(&download.source)
-                            .map_or_else(|| download.source.clone(), |source| source.name.clone());
-
-                        (source, download.clone())
-                    })
-                    .collect();
-                let first = downloads
-                    .first()
-                    .map(|(source, _)| source.clone())
-                    .unwrap_or_default();
+                let Some(download) = entry.preferred().cloned() else {
+                    return Action::none();
+                };
+                let source = catalog
+                    .source(&download.source)
+                    .map_or_else(|| download.source.clone(), |source| source.name.clone());
                 let cancel = Arc::new(AtomicBool::new(false));
 
                 log::info!(
@@ -264,7 +282,8 @@ impl State {
                 let task = Task::sip(
                     install(
                         client.clone(),
-                        downloads,
+                        source.clone(),
+                        download,
                         installation.clone(),
                         replacing,
                         Arc::clone(&cancel),
@@ -278,7 +297,7 @@ impl State {
                     Job {
                         name: entry.name.clone(),
                         stage: Stage::Downloading {
-                            source: first,
+                            source,
                             received: 0,
                             total: None,
                         },
@@ -469,14 +488,6 @@ impl State {
         .width(Fill.max(180))
         .ellipsis(text::Ellipsis::End);
 
-        let reload = match refresh {
-            catalog::Refresh::Idle => button("Reload")
-                .style(button::secondary)
-                .padding(10)
-                .on_press(Message::Reload),
-            catalog::Refresh::Running => button("Refreshing…").style(button::secondary).padding(10),
-        };
-
         let toolbar = row![
             // Twice the room of a dropdown when space is short.
             text_input("Search addons…", &self.query)
@@ -488,7 +499,6 @@ impl State {
             origin,
             order,
         ]
-        .push(reload)
         .spacing(8)
         .align_y(Center);
 
@@ -505,7 +515,7 @@ impl State {
                 } else {
                     "Select a client to see its addons."
                 },
-                false,
+                None,
             )
         } else if self.filter.status == Status::LeftoverData {
             self.leftovers(leftovers, filtered)
@@ -513,23 +523,23 @@ impl State {
             let shown = library.shown(&query, &self.filter);
 
             if shown.is_empty() {
-                empty(
-                    match self.filter.status {
-                        _ if filtered => "No addon matches.",
-                        Status::All => match refresh {
-                            catalog::Refresh::Running => "Fetching the catalog…",
-                            catalog::Refresh::Idle => {
-                                "No catalog yet: check the connection and press Reload."
-                            }
-                        },
-                        Status::Installed => "No addons installed yet.",
-                        Status::Updatable => "Every installed addon is at the catalog's version.",
-                        Status::NotInstalled => "Every addon in the catalog is installed.",
-                        Status::Attention => "Every installed addon loads fine.",
-                        Status::LeftoverData => "No leftover data.",
+                let (message, action) = match self.filter.status {
+                    _ if filtered => ("No addon matches.", Some(CLEAR)),
+                    Status::All => match refresh {
+                        catalog::Refresh::Running => ("Fetching the list of addons…", None),
+                        catalog::Refresh::Idle => (
+                            "No addons listed yet: check the connection and try again.",
+                            Some(("Try again", Message::Reload)),
+                        ),
                     },
-                    filtered,
-                )
+                    Status::Installed => ("No addons installed yet.", None),
+                    Status::Updatable => ("Every installed addon is up to date.", None),
+                    Status::NotInstalled => ("Every addon available is installed.", None),
+                    Status::Attention => ("Every installed addon loads fine.", None),
+                    Status::LeftoverData => ("No leftover data.", None),
+                };
+
+                empty(message, action)
             } else {
                 scrollable(
                     column(
@@ -571,7 +581,7 @@ impl State {
                 } else {
                     "No leftover data."
                 },
-                filtered,
+                filtered.then_some(CLEAR),
             );
         }
 
@@ -640,16 +650,20 @@ impl State {
     }
 }
 
-/// A centered `message` for an empty list, with a way back to everything
-/// when the list is empty because of a search or filter (`clear`).
-fn empty<'a>(message: &'a str, clear: bool) -> Element<'a, Message> {
+/// The way back to everything, for a list empty because of a search or
+/// filter: what [`empty`] offers then.
+const CLEAR: (&str, Message) = ("Clear filters", Message::ClearFilters);
+
+/// A centered `message` for an empty list, with a button offering a way
+/// out (`action`: its label, and what pressing it sends) when there is one.
+fn empty<'a>(message: &'a str, action: Option<(&'a str, Message)>) -> Element<'a, Message> {
     center(
         column![text(message).style(text::secondary)]
-            .push(clear.then(|| {
-                button("Clear filters")
-                    .style(button::secondary)
-                    .on_press(Message::ClearFilters)
-            }))
+            .push(
+                action.map(|(label, message)| {
+                    button(label).style(button::secondary).on_press(message)
+                }),
+            )
             .spacing(12)
             .align_x(Center),
     )
@@ -667,100 +681,92 @@ fn to_top() -> Task<Message> {
     operation::snap_to(LIST, RelativeOffset::START, Animation::Instant)
 }
 
-/// Installs into `installation` from the first of `downloads` (source name,
-/// download) that works, falling back to the next when one fails to download
-/// or install, and reports progress. Setting `cancel` stops it while it is
+/// Installs `download`, from the source named `source`, into
+/// `installation`, replacing the folders in `replacing`, and reports
+/// progress. Nothing else is tried when it fails: the failure names the
+/// source and says what went wrong. Setting `cancel` stops it while it is
 /// still downloading.
 fn install(
     client: reqwest::Client,
-    downloads: Vec<(String, Download)>,
+    source: String,
+    download: Download,
     installation: Installation,
     replacing: Vec<String>,
     cancel: Arc<AtomicBool>,
 ) -> impl Straw<Vec<String>, Stage, Failure> {
     sipper(async move |mut progress| {
-        let mut failures = Vec::new();
+        let attempt = async {
+            let response = client
+                .get(&download.url)
+                .send()
+                .await
+                .and_then(reqwest::Response::error_for_status)
+                .map_err(|error| Failure::Failed(describe(&error)))?;
 
-        for (source, download) in downloads {
-            let attempt = async {
-                let response = client
-                    .get(&download.url)
-                    .send()
-                    .await
-                    .and_then(reqwest::Response::error_for_status)
-                    .map_err(|error| Failure::Failed(describe(&error)))?;
+            let total = response.content_length();
+            if let Some(total) = total.filter(|total| *total > LARGEST_ARCHIVE) {
+                return Err(Failure::Failed(format!(
+                    "the archive is {}, more than the launcher downloads",
+                    crate::size(total)
+                )));
+            }
 
-                let total = response.content_length();
-                if let Some(total) = total.filter(|total| *total > LARGEST_ARCHIVE) {
-                    return Err(Failure::Failed(format!(
-                        "the archive is {}, more than the launcher downloads",
-                        crate::size(total)
-                    )));
-                }
+            let mut archive = Vec::with_capacity(total.unwrap_or_default() as usize);
+            let mut reported = 0;
+            let mut chunks = response.bytes_stream();
 
-                let mut archive = Vec::with_capacity(total.unwrap_or_default() as usize);
-                let mut reported = 0;
-                let mut chunks = response.bytes_stream();
+            progress
+                .send(Stage::Downloading {
+                    source: source.clone(),
+                    received: 0,
+                    total,
+                })
+                .await;
 
-                progress
-                    .send(Stage::Downloading {
-                        source: source.clone(),
-                        received: 0,
-                        total,
-                    })
-                    .await;
-
-                while let Some(chunk) = chunks.next().await {
-                    if cancel.load(Ordering::Relaxed) {
-                        return Err(Failure::Cancelled);
-                    }
-
-                    archive.extend_from_slice(
-                        &chunk.map_err(|error| Failure::Failed(describe(&error)))?,
-                    );
-                    if archive.len() as u64 > LARGEST_ARCHIVE {
-                        return Err(Failure::Failed(format!(
-                            "the archive is more than {}, which the launcher doesn't download",
-                            crate::size(LARGEST_ARCHIVE)
-                        )));
-                    }
-
-                    // Reporting every chunk would redraw the UI thousands of times.
-                    if archive.len() - reported >= 64 * 1024 {
-                        reported = archive.len();
-                        progress
-                            .send(Stage::Downloading {
-                                source: source.clone(),
-                                received: reported as u64,
-                                total,
-                            })
-                            .await;
-                    }
-                }
-
+            while let Some(chunk) = chunks.next().await {
                 if cancel.load(Ordering::Relaxed) {
                     return Err(Failure::Cancelled);
                 }
 
-                progress.send(Stage::Installing).await;
+                archive
+                    .extend_from_slice(&chunk.map_err(|error| Failure::Failed(describe(&error)))?);
+                if archive.len() as u64 > LARGEST_ARCHIVE {
+                    return Err(Failure::Failed(format!(
+                        "the archive is more than {}, which the launcher doesn't download",
+                        crate::size(LARGEST_ARCHIVE)
+                    )));
+                }
 
-                let installation = installation.clone();
-                let replacing = replacing.clone();
-                let marker = download.marker();
-
-                blocking(move || installation.install(&archive, &marker, &replacing))
-                    .await
-                    .map_err(Failure::Failed)
-            };
-
-            match attempt.await {
-                Ok(folders) => return Ok(folders),
-                Err(Failure::Cancelled) => return Err(Failure::Cancelled),
-                Err(Failure::Failed(error)) => failures.push(format!("{source}: {error}")),
+                // Reporting every chunk would redraw the UI thousands of times.
+                if archive.len() - reported >= 64 * 1024 {
+                    reported = archive.len();
+                    progress
+                        .send(Stage::Downloading {
+                            source: source.clone(),
+                            received: reported as u64,
+                            total,
+                        })
+                        .await;
+                }
             }
-        }
 
-        Err(Failure::Failed(failures.join("; ")))
+            if cancel.load(Ordering::Relaxed) {
+                return Err(Failure::Cancelled);
+            }
+
+            progress.send(Stage::Installing).await;
+
+            let marker = download.marker();
+
+            blocking(move || installation.install(&archive, &marker, &replacing))
+                .await
+                .map_err(Failure::Failed)
+        };
+
+        attempt.await.map_err(|failure| match failure {
+            Failure::Failed(error) => Failure::Failed(format!("{source}: {error}")),
+            Failure::Cancelled => Failure::Cancelled,
+        })
     })
 }
 

@@ -1,5 +1,7 @@
 //! Addon `.toc` metadata files.
 
+use std::cmp::Ordering;
+
 /// The metadata header (`## Key: Value` lines) of an addon's `.toc` file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Toc {
@@ -124,6 +126,102 @@ pub fn made_for(interface: u32) -> Option<String> {
         (0, _) => "an unknown game version".to_owned(),
         _ => "a newer game version".to_owned(),
     })
+}
+
+/// Compares two `.toc` versions, when they have the same shape: the same
+/// text around their numbers, a leading `v` aside. `r736` and `r720`
+/// compare, as do `9.9.1-335` and `9.8.0-335`, `1.19.5 (r240)` and
+/// `1.19.5 (r238)`, `3.3e` and `3.3f`, and dotted numbers of different
+/// lengths (`2.0.1` is newer than `2.0`). Versions of different shapes
+/// don't compare: `r736` and `1.2`, a lone number and dotted ones, or
+/// `1.0-beta` and `1.0`. Neither do versions without a number.
+pub fn compare_versions(a: &str, b: &str) -> Option<Ordering> {
+    let a = a.trim();
+    let b = b.trim();
+
+    if a.eq_ignore_ascii_case(b) {
+        return Some(Ordering::Equal);
+    }
+
+    compare_parts(strip_v(a), strip_v(b))
+}
+
+/// `version` without a leading `v` or `v.`, when a number follows it.
+fn strip_v(version: &str) -> &str {
+    ["v.", "V.", "v", "V"]
+        .into_iter()
+        .find_map(|prefix| {
+            version
+                .strip_prefix(prefix)
+                .filter(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+        })
+        .unwrap_or(version)
+}
+
+/// Compares the text before the first numbers, then the numbers, then
+/// whatever follows them, the same way.
+fn compare_parts(a: &str, b: &str) -> Option<Ordering> {
+    let (prefix_a, numbers_a, rest_a) = parts(a)?;
+    let (prefix_b, numbers_b, rest_b) = parts(b)?;
+
+    if !prefix_a.eq_ignore_ascii_case(prefix_b) {
+        return None;
+    }
+
+    // A lone number counts builds or revisions: not the shape of dotted
+    // numbers, however many.
+    if (numbers_a.len() == 1) != (numbers_b.len() == 1) {
+        return None;
+    }
+
+    let length = numbers_a.len().max(numbers_b.len());
+    let padded = |numbers: &[u64]| -> Vec<u64> {
+        numbers
+            .iter()
+            .copied()
+            .chain(std::iter::repeat(0))
+            .take(length)
+            .collect()
+    };
+
+    match padded(&numbers_a).cmp(&padded(&numbers_b)) {
+        Ordering::Equal if rest_a.eq_ignore_ascii_case(rest_b) => Some(Ordering::Equal),
+        Ordering::Equal if rest_a.is_empty() || rest_b.is_empty() => None,
+        // A patch letter: `3.3e`, then `3.3f`.
+        Ordering::Equal if patch_letter(rest_a) && patch_letter(rest_b) => Some(rest_a.cmp(rest_b)),
+        Ordering::Equal => compare_parts(rest_a, rest_b),
+        ordering => Some(ordering),
+    }
+}
+
+/// Whether `rest`, what follows a version's numbers, is one lowercase
+/// letter.
+fn patch_letter(rest: &str) -> bool {
+    rest.len() == 1 && rest.bytes().all(|byte| byte.is_ascii_lowercase())
+}
+
+/// `version` split at its first run of numbers: the text before, the
+/// numbers (`1.2.3`, `1-2`: each after a single separator), and the text
+/// after. Nothing when there is no number, or one too big.
+fn parts(version: &str) -> Option<(&str, Vec<u64>, &str)> {
+    let start = version.find(|c: char| c.is_ascii_digit())?;
+    let (prefix, mut rest) = version.split_at(start);
+    let mut numbers = Vec::new();
+
+    loop {
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
+        numbers.push(rest[..end].parse().ok()?);
+        rest = &rest[end..];
+
+        match rest.strip_prefix(['.', '-', '_']) {
+            Some(next) if next.starts_with(|c: char| c.is_ascii_digit()) => rest = next,
+            _ => break,
+        }
+    }
+
+    Some((prefix, numbers, rest))
 }
 
 /// Removes the client's UI escape sequences (colors, textures, hyperlinks)
@@ -260,6 +358,160 @@ mod tests {
         assert_eq!(named(120001), "Midnight");
         assert_eq!(named(130000), "a newer game version");
         assert_eq!(named(300), "an unknown game version");
+    }
+
+    /// One pair per shape of version the catalog has, the newer first.
+    #[test]
+    fn versions_of_the_same_shape_compare_by_their_numbers() {
+        use Ordering::{Equal, Greater, Less};
+
+        for (a, b, expected) in [
+            // Dotted numbers, however many, with or without a `v`.
+            ("0.0.21", "0.0.20", Greater),
+            ("1.3.2", "1.2", Greater),
+            ("2.0", "2.0.1", Less),
+            ("0.1", "0.1.0", Equal),
+            ("0.2.0.5", "0.2.0.4", Greater),
+            ("1.0", "1.0", Equal),
+            (" 1.0 ", "1.0", Equal),
+            ("v0.6.2", "v0.6.1", Greater),
+            ("v3.2.21", "3.2.20", Greater),
+            ("V1.2", "v1.2", Equal),
+            ("v0.8", "v0.7", Greater),
+            ("v3.2.0.799", "v3.2.0.798", Greater),
+            ("v.1.26", "v.1.25", Greater),
+            ("v.1.26", "1.25", Greater),
+            // Lone numbers: builds and revisions.
+            ("263", "262", Greater),
+            ("r113", "r112", Greater),
+            ("r736", "r720", Greater),
+            ("r26-release", "r25-release", Greater),
+            ("r26", "r25-release", Greater),
+            ("r280-beta", "r279-beta", Greater),
+            ("r629 (Revision: 629)", "r628 (Revision: 628)", Greater),
+            ("b1.9056.2", "b1.9056.1", Greater),
+            ("beta4.11", "beta4.10", Greater),
+            // Numbers after a dash or underscore.
+            ("9.9.1-335", "9.8.0-335", Greater),
+            ("2.2.6-152", "2.2.6-151", Greater),
+            ("3.0-57", "3.0-56", Greater),
+            ("30300-2", "30300-1", Greater),
+            ("3.3.5-1.0.8", "3.3.5-1.0.7", Greater),
+            ("1.0.1-3.3.5a", "1.0.0-3.3.5a", Greater),
+            ("1.0.2010-09-18", "1.0.2010-09-17", Greater),
+            ("3.3.5_16r-PA", "3.3.5_15r-PA", Greater),
+            ("2024-01-05", "2023-12-31", Greater),
+            // A patch letter, or a number after a letter.
+            ("3.3f", "3.3e", Greater),
+            ("11.2.5c", "11.2.5b", Greater),
+            ("11.2.6", "11.2.5b", Greater),
+            ("0.5b", "0.4b", Greater),
+            ("v1.10.20a", "v1.10.19a", Greater),
+            ("30400r11", "30400r10", Greater),
+            ("2.3r163", "2.3r162", Greater),
+            ("3.34c10", "3.34c9", Greater),
+            ("5.0b9", "5.0b8", Greater),
+            ("0.9.8p2", "0.9.8p1", Greater),
+            ("11.b3", "11.b2", Greater),
+            ("3x05", "3x04", Greater),
+            ("3.0.1W", "3.0.0W", Greater),
+            // A revision, stage or name after the numbers.
+            ("1.18.2 (r232)", "1.18.2 (r231)", Greater),
+            ("1.19.5 (r238)", "1.19.5 (r238)", Equal),
+            ("3.0 (r226)", "3.0 (r225)", Greater),
+            ("1.9 r250", "1.9 r249", Greater),
+            ("v3.0.2 (r119)", "v3.0.1 (r119)", Greater),
+            ("1.5.4beta (r177)", "1.5.4beta (r176)", Greater),
+            ("5.13.3 (R40)", "5.13.3 (R39)", Greater),
+            (
+                "4.3.8.30300 - Revision 387",
+                "4.3.8.30300 - Revision 386",
+                Greater,
+            ),
+            ("3.3.5 (3.0.132)", "3.3.5 (3.0.131)", Greater),
+            ("3.3.5 release 2", "3.3.5 release 1", Greater),
+            ("3.1.0 Beta 2", "3.1.0 Beta 1", Greater),
+            ("1.1.1 Alpha 3", "1.1.1 Alpha 2", Greater),
+            ("2.16.0-beta2", "2.16.0-beta1", Greater),
+            ("v1.0-beta-13", "v1.0-beta-12", Greater),
+            ("1.1-Release", "1.0-Release", Greater),
+            ("3.1.16 - Release", "3.1.15 - Release", Greater),
+            ("1.7.9_release", "1.7.8_release", Greater),
+            ("10.1.14_alpha", "10.1.13_alpha", Greater),
+            ("2.9.7-beta", "2.9.6-beta", Greater),
+            ("2.16-Ascension", "2.15-Ascension", Greater),
+            ("v4.14.67-wrath", "v4.14.66-wrath", Greater),
+            ("v2.9.3-PA", "v2.9.2-PA", Greater),
+            (
+                "5.9.4961 (WhackyWallaby)",
+                "5.9.4960 (WhackyWallaby)",
+                Greater,
+            ),
+            ("5.6.4425 (KangaII)", "5.6.4424 (KangaII)", Greater),
+            ("5.07.22 (Lite)", "5.07.21 (Lite)", Greater),
+            ("3.1.17 (<%codename%>)", "3.1.16 (<%codename%>)", Greater),
+            ("v1.7.35 (MLMods.net)", "v1.7.34 (MLMods.net)", Greater),
+            ("Release 1.01", "Release 1.00", Greater),
+            (
+                "asc-1.0.9 (v1.0.3 base)",
+                "asc-1.0.8 (v1.0.3 base)",
+                Greater,
+            ),
+            (
+                "TriviaBot 2.5.5 for WoW 3.3 // WoWQuiz 2.0 (WoWQuiz500)",
+                "TriviaBot 2.5.4 for WoW 3.3 // WoWQuiz 2.0 (WoWQuiz500)",
+                Greater,
+            ),
+            // `git describe`: the commit count decides.
+            ("4.4.2-15-gabcdef0", "4.4.2-12-g94f3b58", Greater),
+            ("v2.1.6-11-g50f5ae7", "v2.1.6-10-g50f5ae7", Greater),
+            ("v2.01-15-gfc58e9f", "v2.01-14-gfc58e9f", Greater),
+            (
+                "v4.0.0-beta11-32-gb39172e",
+                "v4.0.0-beta11-31-gb39172e",
+                Greater,
+            ),
+        ] {
+            assert_eq!(compare_versions(a, b), Some(expected), "{a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn versions_of_different_shapes_do_not_compare() {
+        for (a, b) in [
+            // Different scaffolding around the numbers.
+            ("r736", "1.2"),
+            ("r112", "112"),
+            ("b1.9056.1", "1.9056.1"),
+            ("beta4.10", "4.10"),
+            ("Release 1.00", "1.00"),
+            ("asc-1.0.8 (v1.0.3 base)", "1.0.8"),
+            // A lone number against dotted ones.
+            ("262", "1.2"),
+            ("30300-1", "30300"),
+            // Stages and names that can't be ordered.
+            ("1.0-Release", "1.0-Beta"),
+            ("2.16.0-beta1", "2.16.0"),
+            ("2.9.6-beta", "2.9.6"),
+            ("11.2.5b", "11.2.5"),
+            ("3.3.002b", "3.3.002"),
+            ("3.0.0W", "3.0.0S"),
+            ("5.9.4960 (WhackyWallaby)", "5.9.4960 (KangaII)"),
+            ("5.07.21 (Lite)", "5.07.21"),
+            ("v3.0.1 (r119)", "3.0.1"),
+            // Commits, and hashes on their own.
+            ("4.4.2-12-gabcdef0", "4.4.2-12-g94f3b58"),
+            ("49d3d7e", "a1b2c3d"),
+            // No number at all.
+            ("GIT", "1.0"),
+            ("wowi:revision", "1.0"),
+            ("$project-version$", "1.0"),
+            ("beta", "alpha"),
+            ("", "1.0"),
+            ("99999999999999999999", "1"),
+        ] {
+            assert_eq!(compare_versions(a, b), None, "{a} vs {b}");
+        }
     }
 
     #[test]

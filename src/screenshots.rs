@@ -79,7 +79,7 @@ fn screenshots() {
         "Questie",
         "WeakAuras-WotLK",
         "Omen Thread Meter",
-        "PitBull Unit Frames 4.0",
+        "Prat",
     ] {
         let entry = entry(name);
         let download = &entry.downloads[0];
@@ -141,7 +141,7 @@ fn screenshots() {
     let shoot = |app: &App, name: &str| {
         let mut ui = iced_test::simulator::Simulator::with_size(
             iced::Settings::default(),
-            (1100.0, 780.0),
+            (1200.0, 780.0),
             app.view(),
         );
         let _ = ui

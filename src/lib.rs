@@ -180,8 +180,9 @@ pub enum Message {
 
 impl App {
     /// The smallest window everything still fits in: the toolbar's search
-    /// field and dropdowns side by side, and a card's buttons beside its name.
-    pub const MIN_SIZE: iced::Size = iced::Size::new(900.0, 600.0);
+    /// field and dropdowns side by side, and a card's source picker, links
+    /// and buttons beside its name and badges.
+    pub const MIN_SIZE: iced::Size = iced::Size::new(1200.0, 600.0);
 
     /// Starts the launcher: loads the config, opens the last client, and
     /// shows the built-in catalog while fetching the published one. A config
@@ -243,11 +244,12 @@ impl App {
         // The catalog fetched last time shows right away, and a fresh one is
         // fetched in a moment. Another catalog, when asked for, comes alone.
         let cache = catalog::Cache::default_location();
-        let (catalog, tag) = if catalog::Location::configured().is_published() {
+        let (mut catalog, tag) = if catalog::Location::configured().is_published() {
             cache.read().unwrap_or_default()
         } else {
             (Catalog::default(), None)
         };
+        catalog.prefer(&config.sources);
         if catalog.entries.is_empty() {
             log::info!("No catalog fetched yet");
         } else {
@@ -377,11 +379,13 @@ impl App {
                     Some(recovery::Instruction::Loaded(config)) => {
                         self.recovery = None;
                         self.config = config;
+                        self.catalog.prefer(&self.config.sources);
                         Task::batch([task, self.start()])
                     }
                     Some(recovery::Instruction::Overwrite) => {
                         self.recovery = None;
                         self.config = Config::default();
+                        self.catalog.prefer(&self.config.sources);
                         Task::batch([task, self.save(), self.start()])
                     }
                     Some(recovery::Instruction::Quit) => iced::exit(),
@@ -404,6 +408,16 @@ impl App {
                     Some(addons::Instruction::Changed) => Task::batch([task, self.rescan()]),
                     Some(addons::Instruction::Reload) => {
                         Task::batch([task, self.refresh_catalog()])
+                    }
+                    Some(addons::Instruction::Prefer { key, source }) => {
+                        log::info!(
+                            "Installing {} from {} from now on",
+                            key.as_str(),
+                            source.as_deref().unwrap_or("the newest source")
+                        );
+                        self.config.set_source(key.as_str(), source);
+                        self.catalog.prefer(&self.config.sources);
+                        Task::batch([task, self.save()])
                     }
                     None => task,
                 }
@@ -590,22 +604,23 @@ impl App {
                     Ok(catalog::Fetched::Unchanged) => {
                         log::info!("The catalog is unchanged");
                     }
-                    Ok(catalog::Fetched::Changed { catalog, tag }) => {
+                    Ok(catalog::Fetched::Changed { mut catalog, tag }) => {
                         log::info!(
                             "Refreshed the catalog: {}",
                             counted(catalog.entries.len(), "addon")
                         );
+                        catalog.prefer(&self.config.sources);
                         self.catalog = catalog;
                         self.tag = tag;
                         self.propose();
                     }
                     Err(error) => {
                         self.errors.report(if self.catalog.entries.is_empty() {
-                            format!("Could not fetch the catalog: {error}")
+                            format!("Could not fetch the list of addons: {error}")
                         } else {
                             format!(
-                                "Could not refresh the catalog, showing the last one fetched: \
-                                 {error}"
+                                "Could not refresh the list of addons, showing the last one \
+                                 fetched: {error}"
                             )
                         });
                     }
@@ -847,7 +862,10 @@ impl App {
             Selected::Failed(path) => text(format!("{} is not a usable client.", path.display()))
                 .style(text::danger)
                 .into(),
-            Selected::Open { installation, .. } => row![style::badge(
+            Selected::Open {
+                installation,
+                snapshot,
+            } => row![style::badge(
                 installation.version().to_string(),
                 style::Tone::Primary
             )]
@@ -864,11 +882,21 @@ impl App {
                     .ellipsis(text::Ellipsis::Middle)
                     .width(Fill),
             )
+            // Until the first scan, the cards can't say what is installed.
             .push(
-                button("Refresh")
-                    .style(button::text)
-                    .on_press(Message::Refresh),
+                snapshot
+                    .is_none()
+                    .then(|| text("Reading the addons…").size(13).style(text::secondary)),
             )
+            .push(style::tip(
+                match self.refresh {
+                    catalog::Refresh::Idle => button("Refresh")
+                        .style(button::text)
+                        .on_press(Message::Refresh),
+                    catalog::Refresh::Running => button("Refreshing…").style(button::text),
+                },
+                "Shortcut: F5",
+            ))
             .push(
                 button("Open AddOns folder")
                     .style(button::text)
@@ -1281,6 +1309,55 @@ mod tests {
         assert_eq!(app.refresh, catalog::Refresh::Running);
     }
 
+    /// A catalog listing ACP from two sources, the newest first.
+    fn two_sources() -> Catalog {
+        Catalog::parse(
+            br#"{ "version": 2,
+                  "sources": [
+                    { "id": "test", "name": "Test Source", "homepage": "https://example.com" },
+                    { "id": "other", "name": "Other Source", "homepage": "https://example.org" }
+                  ],
+                  "entries": [{ "name": "ACP", "downloads": [
+                    { "source": "test", "name": "ACP", "url": "https://example.com/ACP.zip",
+                      "folders": [{ "name": "ACP" }] },
+                    { "source": "other", "name": "ACP", "url": "https://example.org/ACP.zip",
+                      "folders": [{ "name": "ACP" }] }
+                  ] }] }"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_source_picked_for_an_addon_is_saved_and_survives_a_refresh() {
+        let mut app = app(&[]);
+        app.catalog = two_sources();
+        let key = addons::Key::of(&app.catalog.entries[0]);
+        let first = |app: &App| app.catalog.entries[0].preferred().unwrap().source.clone();
+
+        let _ = app.update(Message::Addons(addons::Message::SourceSelected(
+            key.clone(),
+            addons::Choice::Source("other".into()),
+        )));
+        assert_eq!(
+            app.config.sources.get("acp").map(String::as_str),
+            Some("other")
+        );
+        assert_eq!(first(&app), "other");
+
+        let _ = app.update(Message::CatalogLoaded(Ok(catalog::Fetched::Changed {
+            catalog: two_sources(),
+            tag: None,
+        })));
+        assert_eq!(first(&app), "other", "kept across refreshes");
+
+        let _ = app.update(Message::Addons(addons::Message::SourceSelected(
+            key,
+            addons::Choice::Auto,
+        )));
+        assert!(app.config.sources.is_empty());
+        assert_eq!(first(&app), "test");
+    }
+
     #[test]
     fn the_title_links_to_the_repository_and_shows_the_version() {
         let app = app(&[]);
@@ -1363,6 +1440,7 @@ mod tests {
         };
 
         let mut ui = simulator(app.view());
+        assert!(ui.find("Reading the addons…").is_ok());
         let _ = ui.click("Export…");
         assert_eq!(ui.into_messages().count(), 0, "still reading the client");
 
@@ -1371,6 +1449,7 @@ mod tests {
             installation,
         };
         let mut ui = simulator(app.view());
+        assert!(ui.find("Reading the addons…").is_err());
         let _ = ui.click("Export…").unwrap();
         assert!(matches!(
             ui.into_messages().next(),
@@ -1496,6 +1575,21 @@ mod tests {
                 "{button} ends inside the window: {bounds:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_refresh_button_names_its_shortcut_on_hover() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let app = opened(installation);
+
+        let mut ui = simulator(app.view());
+        let button = ui.find("Refresh").unwrap().bounds().center();
+        ui.point_at(button);
+        let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: button,
+        })]);
+
+        assert!(ui.find("Shortcut: F5").is_ok());
     }
 
     /// Whether the Play button, which must say `label`, can be pressed.
@@ -1642,8 +1736,8 @@ mod tests {
         let mut ui = simulator(app.view());
         assert!(
             ui.find(
-                "ACP was installed without the launcher and matches the catalog. Recognize \
-                 it, so it shows as installed and can be updated from here?"
+                "ACP was installed without the launcher and is available here too. \
+                 Recognize it, so it shows as installed and can be updated from here?"
             )
             .is_ok()
         );

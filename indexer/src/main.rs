@@ -6,7 +6,7 @@
 mod fetch;
 mod source;
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use clap::Parser;
 use old_launcher_core::catalog::Contents;
-use old_launcher_core::{Catalog, Toc, catalog};
+use old_launcher_core::{Catalog, Toc, catalog, toc};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -116,36 +116,29 @@ async fn main() -> anyhow::Result<()> {
         let done = inspected.len() + skipped.len() + 1;
 
         let reason = match contents {
-            Ok(contents) if contents.folders.is_empty() => "the archive holds no addon".to_owned(),
-            Ok(contents)
-                if listing.require_wotlk
-                    && !contents
-                        .folders
-                        .iter()
-                        .any(|folder| folder.interface == Some(Toc::WOTLK_INTERFACE)) =>
-            {
-                "no folder declares the 3.3.5a interface".to_owned()
-            }
-            Ok(contents) => {
-                println!(
-                    "[{done}/{total}] {}: {} folders",
-                    listing.name,
-                    contents.folders.len()
-                );
-                let updated = match &listing.updated {
-                    Updated::FromArchive => contents.updated.clone(),
-                    Updated::Given(date) => date.clone(),
-                };
+            Ok(contents) => match left_out(&listing, &contents) {
+                Some(reason) => reason,
+                None => {
+                    println!(
+                        "[{done}/{total}] {}: {} folders",
+                        listing.name,
+                        contents.folders.len()
+                    );
+                    let updated = match &listing.updated {
+                        Updated::FromArchive => contents.updated.clone(),
+                        Updated::Given(date) => date.clone(),
+                    };
 
-                inspected.push(Inspected {
-                    priority,
-                    source,
-                    listing,
-                    contents,
-                    updated,
-                });
-                continue;
-            }
+                    inspected.push(Inspected {
+                        priority,
+                        source,
+                        listing,
+                        contents,
+                        updated,
+                    });
+                    continue;
+                }
+            },
             Err(error) => format!("{error:#}"),
         };
 
@@ -190,18 +183,8 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_default();
             let image = listings.iter().find_map(|item| item.listing.image.clone());
 
-            // The most recently updated download is installed first; undated
-            // ones come last.
-            listings.sort_by_key(|item| {
-                (
-                    item.updated.is_none(),
-                    Reverse(item.updated.clone()),
-                    item.priority,
-                )
-            });
-
             let mut urls = HashSet::new();
-            let downloads = listings
+            let downloads = order(listings)
                 .into_iter()
                 .filter(|item| urls.insert(item.listing.download.clone()))
                 .map(|item| catalog::Download {
@@ -210,6 +193,7 @@ async fn main() -> anyhow::Result<()> {
                     url: item.listing.download,
                     updated: item.updated,
                     page: item.listing.page,
+                    changes: item.listing.changes,
                     links: item
                         .listing
                         .links
@@ -236,6 +220,7 @@ async fn main() -> anyhow::Result<()> {
                 description,
                 image,
                 downloads,
+                preferred: None,
             }
         })
         .collect();
@@ -296,9 +281,243 @@ async fn gather(
     Ok((info, listed))
 }
 
+/// Why `listing`, whose archive holds `contents`, stays out of the catalog,
+/// if it does: the archive holds no addon; a folder declares a later
+/// expansion's interface (40000 on), which a 3.3.5a client can't load;
+/// or the source isn't curated for 3.3.5a and no folder declares its
+/// interface. Other WotLK numbers (30200, or a typo like 33000) pass: the
+/// card says what they were made for.
+fn left_out(listing: &Listing, contents: &Contents) -> Option<String> {
+    if contents.folders.is_empty() {
+        return Some("the archive holds no addon".to_owned());
+    }
+
+    let later = contents.folders.iter().find_map(|folder| {
+        folder
+            .interface
+            .filter(|interface| interface / 10_000 > Toc::WOTLK_INTERFACE / 10_000)
+    });
+    if let Some(interface) = later {
+        return Some(format!(
+            "a folder declares a later expansion's interface, {interface}"
+        ));
+    }
+
+    let wotlk = contents
+        .folders
+        .iter()
+        .any(|folder| folder.interface == Some(Toc::WOTLK_INTERFACE));
+    if listing.require_wotlk && !wotlk {
+        return Some("no folder declares the 3.3.5a interface".to_owned());
+    }
+
+    None
+}
+
 /// Downloads the archive at `url` and looks into it.
 async fn contents(client: &reqwest::Client, url: &str) -> anyhow::Result<Contents> {
     let archive = fetch(client, url).await?;
 
     Ok(tokio::task::spawn_blocking(move || Contents::inspect(&archive)).await??)
+}
+
+/// Orders an addon's listings as the launcher tries them: those made for
+/// 3.3.5a, as a folder's `.toc` declares, before the rest (a source that
+/// isn't curated for it may list another game's version), and each group
+/// newest first (see [`newest_first`]).
+fn order(mut listings: Vec<Inspected>) -> Vec<Inspected> {
+    let (wotlk, others): (Vec<_>, Vec<_>) = listings.drain(..).partition(|item| {
+        item.contents
+            .folders
+            .iter()
+            .any(|folder| folder.interface == Some(Toc::WOTLK_INTERFACE))
+    });
+
+    let mut ordered = newest_first(wotlk);
+    ordered.extend(newest_first(others));
+
+    ordered
+}
+
+/// Orders listings newest first: the most recently updated one, unless
+/// another's version compares with its own and is newer; then the same
+/// again among the rest. Ties go by the sources' order of preference, and
+/// undated listings come last.
+fn newest_first(mut listings: Vec<Inspected>) -> Vec<Inspected> {
+    listings.sort_by_key(|item| {
+        (
+            item.updated.is_none(),
+            Reverse(item.updated.clone()),
+            item.priority,
+        )
+    });
+
+    let mut ordered = Vec::with_capacity(listings.len());
+
+    while !listings.is_empty() {
+        let mut best = 0;
+
+        for candidate in 1..listings.len() {
+            if compare(&listings[candidate], &listings[best]) == Some(Ordering::Greater) {
+                best = candidate;
+            }
+        }
+
+        ordered.push(listings.remove(best));
+    }
+
+    ordered
+}
+
+/// How `a`'s version compares with `b`'s, going by the first folder (by
+/// name) both install with a version; nothing when the versions don't
+/// compare (see [`toc::compare_versions`]).
+fn compare(a: &Inspected, b: &Inspected) -> Option<Ordering> {
+    let mut folders: Vec<&catalog::Folder> = a.contents.folders.iter().collect();
+    folders.sort_by_cached_key(|folder| folder.name.to_lowercase());
+
+    folders.into_iter().find_map(|folder| {
+        let version = folder.version.as_deref()?;
+        let other = b
+            .contents
+            .folders
+            .iter()
+            .find(|other| other.name.eq_ignore_ascii_case(&folder.name))?
+            .version
+            .as_deref()?;
+
+        Some(toc::compare_versions(version, other))
+    })?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A listing of one folder at `version`, from the source of that
+    /// `priority`, updated on `updated`.
+    fn inspected(priority: usize, version: &str, updated: Option<&str>) -> Inspected {
+        Inspected {
+            priority,
+            source: format!("source-{priority}"),
+            listing: Listing {
+                name: version.to_owned(),
+                description: String::new(),
+                download: format!("https://example.com/{priority}.zip"),
+                image: None,
+                page: None,
+                changes: None,
+                links: Vec::new(),
+                updated: Updated::FromArchive,
+                require_wotlk: false,
+            },
+            contents: Contents {
+                folders: vec![catalog::Folder {
+                    name: "Addon".into(),
+                    title: None,
+                    version: Some(version.to_owned()),
+                    interface: Some(Toc::WOTLK_INTERFACE),
+                }],
+                updated: None,
+            },
+            updated: updated.map(str::to_owned),
+        }
+    }
+
+    /// An archive of one folder per interface given.
+    fn folders(interfaces: &[Option<u32>]) -> Contents {
+        Contents {
+            folders: interfaces
+                .iter()
+                .enumerate()
+                .map(|(index, interface)| catalog::Folder {
+                    name: format!("Folder{index}"),
+                    title: None,
+                    version: None,
+                    interface: *interface,
+                })
+                .collect(),
+            updated: None,
+        }
+    }
+
+    #[test]
+    fn listings_for_later_expansions_stay_out() {
+        let curated = inspected(0, "1.0", None).listing;
+        let mut uncurated = curated.clone();
+        uncurated.require_wotlk = true;
+
+        assert_eq!(left_out(&curated, &folders(&[Some(30300)])), None);
+        assert_eq!(
+            left_out(&curated, &folders(&[Some(30200)])),
+            None,
+            "an older patch"
+        );
+        assert_eq!(left_out(&curated, &folders(&[Some(33000)])), None, "a typo");
+        assert_eq!(left_out(&curated, &folders(&[None])), None, "unknown");
+        assert_eq!(
+            left_out(&curated, &folders(&[Some(30300), Some(40000)])).as_deref(),
+            Some("a folder declares a later expansion's interface, 40000")
+        );
+        assert_eq!(
+            left_out(&curated, &folders(&[])).as_deref(),
+            Some("the archive holds no addon")
+        );
+        assert_eq!(
+            left_out(&uncurated, &folders(&[Some(30200)])).as_deref(),
+            Some("no folder declares the 3.3.5a interface")
+        );
+        assert_eq!(left_out(&uncurated, &folders(&[Some(30300), None])), None);
+    }
+
+    #[test]
+    fn versions_made_for_another_game_come_last_whatever_their_number() {
+        // BindPad as Rising Gods lists it: 2.3.3, but for Cataclysm.
+        let mut cataclysm = inspected(0, "2.3.3", Some("2026-01-01"));
+        cataclysm.contents.folders[0].interface = Some(40000);
+        let mut unknown = inspected(1, "2.4.0", Some("2026-01-01"));
+        unknown.contents.folders[0].interface = None;
+
+        let ordered = order(vec![
+            cataclysm,
+            unknown,
+            inspected(2, "2.2.4", Some("2023-08-26")),
+        ]);
+        let versions: Vec<&str> = ordered
+            .iter()
+            .map(|item| item.listing.name.as_str())
+            .collect();
+
+        assert_eq!(versions, ["2.2.4", "2.4.0", "2.3.3"]);
+    }
+
+    #[test]
+    fn the_newest_version_comes_first_and_the_date_places_the_rest() {
+        let ordered = order(vec![
+            inspected(0, "1.0", Some("2026-01-01")),
+            inspected(1, "2.0", Some("2025-01-01")),
+            inspected(2, "r5", Some("2025-06-01")),
+            inspected(3, "1.5", None),
+        ]);
+        let versions: Vec<&str> = ordered
+            .iter()
+            .map(|item| item.listing.name.as_str())
+            .collect();
+
+        // 2.0 beats the freshest, 1.0, by version, and so does the undated
+        // 1.5; r5 compares with none of them, so its date places it.
+        assert_eq!(versions, ["2.0", "1.5", "1.0", "r5"]);
+    }
+
+    #[test]
+    fn same_versions_go_by_date_then_preference() {
+        let ordered = order(vec![
+            inspected(1, "1.0", Some("2025-01-01")),
+            inspected(0, "1.0", Some("2025-01-01")),
+            inspected(2, "1.0", Some("2026-01-01")),
+        ]);
+        let sources: Vec<&str> = ordered.iter().map(|item| item.source.as_str()).collect();
+
+        assert_eq!(sources, ["source-2", "source-0", "source-1"]);
+    }
 }

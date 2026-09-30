@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::sync::LazyLock;
 
@@ -123,7 +124,7 @@ fn installing_needs_an_open_client() {
     let _ = ui.click("Install").unwrap();
     assert!(matches!(
         ui.into_messages().next(),
-        Some(Message::Install(Key(folders))) if folders == ["acp"]
+        Some(Message::Install(Key(key))) if key == "acp"
     ));
 }
 
@@ -133,15 +134,16 @@ fn without_a_catalog_the_list_says_what_is_going_on() {
     let catalog = Catalog::default();
 
     let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Running));
-    assert!(ui.find("Fetching the catalog…").is_ok());
+    assert!(ui.find("Fetching the list of addons…").is_ok());
     drop(ui);
 
     let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
     assert!(
-        ui.find("No catalog yet: check the connection and press Reload.")
+        ui.find("No addons listed yet: check the connection and try again.")
             .is_ok()
     );
-    assert!(ui.find("Reload").is_ok());
+    let _ = ui.click("Try again").unwrap();
+    assert!(matches!(ui.into_messages().next(), Some(Message::Reload)));
 }
 
 #[test]
@@ -683,7 +685,7 @@ fn addons_from_entries_the_catalog_dropped_keep_their_source() {
         Some(&snapshot),
         catalog::Refresh::Idle,
     ));
-    assert!(ui.find("No longer in the catalog").is_ok());
+    assert!(ui.find("No longer available").is_ok());
     let _ = ui.click("NoM0Re ↗").unwrap();
 
     assert!(matches!(
@@ -960,6 +962,7 @@ fn download(source: &str, url: String) -> (String, Download) {
         url,
         updated: None,
         page: None,
+        changes: None,
         links: Vec::new(),
         folders: Vec::new(),
     };
@@ -968,18 +971,16 @@ fn download(source: &str, url: String) -> (String, Download) {
 }
 
 #[tokio::test]
-async fn failing_downloads_fall_back_to_the_next_source() {
-    let server = serve(vec![("/gone.zip", None), ("/acp.zip", Some(acp_zip()))]).await;
+async fn a_download_installs_and_marks_the_folders_with_its_source() {
+    let server = serve(vec![("/acp.zip", Some(acp_zip()))]).await;
     let (_root, installation) = testing::client(&[]);
-    let downloads = vec![
-        download("Broken", format!("{server}/gone.zip")),
-        download("Working", format!("{server}/acp.zip")),
-    ];
-    let working = downloads[1].1.marker();
+    let (source, download) = download("Working", format!("{server}/acp.zip"));
+    let marker = download.marker();
 
     let folders = install(
         client(),
-        downloads,
+        source,
+        download,
         installation.clone(),
         Vec::new(),
         Arc::default(),
@@ -988,60 +989,56 @@ async fn failing_downloads_fall_back_to_the_next_source() {
     .unwrap();
 
     assert_eq!(folders, ["ACP"]);
-    let snapshot = installation.scan().unwrap();
-    assert_eq!(
-        snapshot.addons[0].marker,
-        Some(working),
-        "marked as installed from the one that worked"
-    );
+    assert_eq!(installation.scan().unwrap().addons[0].marker, Some(marker));
 }
 
+/// A failed download or install names its source and installs nothing;
+/// no other source is tried in its place.
 #[tokio::test]
-async fn when_every_source_fails_each_reason_is_given() {
+async fn a_failed_download_names_its_source_and_installs_nothing() {
     let server = serve(vec![("/html.zip", Some(b"<html>".to_vec()))]).await;
     let (_root, installation) = testing::client(&[]);
-    let downloads = vec![
-        download("Missing", format!("{server}/gone.zip")),
-        download("Page", format!("{server}/html.zip")),
-    ];
+    let attempt = |source: &str, file: &str| {
+        let (source, download) = download(source, format!("{server}/{file}"));
 
-    let error = install(
-        client(),
-        downloads,
-        installation.clone(),
-        Vec::new(),
-        Arc::default(),
-    )
-    .await
-    .unwrap_err();
+        install(
+            client(),
+            source,
+            download,
+            installation.clone(),
+            Vec::new(),
+            Arc::default(),
+        )
+    };
 
-    let Failure::Failed(reasons) = &error else {
-        panic!("{error}");
+    let missing = attempt("Missing", "gone.zip").await.unwrap_err();
+    let page = attempt("Page", "html.zip").await.unwrap_err();
+
+    let Failure::Failed(reason) = &missing else {
+        panic!("{missing}");
     };
     assert!(
-        reasons.contains("Missing: ") && reasons.contains("404"),
-        "{error}"
+        reason.starts_with("Missing: ") && reason.contains("404"),
+        "{missing}"
     );
-    assert!(
-        reasons.contains("Page: unrecognized archive format"),
-        "{error}"
+    assert_eq!(
+        page,
+        Failure::Failed("Page: unrecognized archive format".into())
     );
     assert!(installation.scan().unwrap().addons.is_empty());
 }
 
 #[tokio::test]
-async fn a_stopped_download_installs_nothing_and_tries_no_other_source() {
+async fn a_stopped_download_installs_nothing() {
     let server = serve(vec![("/acp.zip", Some(acp_zip()))]).await;
     let (_root, installation) = testing::client(&[]);
-    let downloads = vec![
-        download("First", format!("{server}/acp.zip")),
-        download("Second", format!("{server}/acp.zip")),
-    ];
+    let (source, download) = download("First", format!("{server}/acp.zip"));
     let cancel = Arc::new(AtomicBool::new(true));
 
     let error = install(
         client(),
-        downloads,
+        source,
+        download,
         installation.clone(),
         Vec::new(),
         cancel,
@@ -1101,7 +1098,7 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
     // Offered as an update, and pressing it starts one.
     let mut ui = open(&state, &catalog, &installation, &snapshot);
     assert!(ui.find("Update available").is_ok());
-    let _ = ui.click("Update").unwrap();
+    let _ = ui.click("Update to 2.0").unwrap();
     for message in ui.into_messages() {
         let _ = state.update(
             message,
@@ -1124,7 +1121,8 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
         .collect();
     let folders = install(
         client(),
-        vec![("Test Source".to_owned(), entry.downloads[0].clone())],
+        "Test Source".to_owned(),
+        entry.downloads[0].clone(),
         installation.clone(),
         replacing,
         Arc::default(),
@@ -1160,6 +1158,268 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
     assert!(ui.find("Reinstall").is_ok());
 }
 
+/// Version 1.0 is installed and the catalog offers 2.0: the card says both,
+/// the button says which it brings and, on hover, where from and what is
+/// tried when that fails, the badge says the same versions and source, and
+/// the source's history of changes is a click away. Another entry, not
+/// installed, says the catalog's version and nothing else.
+#[test]
+fn an_update_says_both_versions_and_links_to_what_changed() {
+    let catalog = Catalog::parse(
+        br#"{ "version": 2,
+              "sources": [
+                { "id": "test", "name": "Test Source", "homepage": "https://example.com" },
+                { "id": "other", "name": "Other Source", "homepage": "https://example.org" }
+              ],
+              "entries": [
+                { "name": "Addon Control Panel",
+                  "downloads": [
+                    { "source": "test", "name": "ACP", "url": "https://example.com/ACP.zip",
+                      "updated": "2026-05-06", "changes": "https://example.com/ACP/commits",
+                      "folders": [{ "name": "ACP", "version": "2.0" }] },
+                    { "source": "other", "name": "ACP", "url": "https://example.org/ACP.zip",
+                      "folders": [{ "name": "ACP", "version": "2.0" }] }
+                  ] },
+                { "name": "Omen",
+                  "downloads": [{ "source": "test", "name": "Omen", "url": "https://example.com/Omen.zip",
+                                  "changes": "https://example.com/Omen/commits",
+                                  "folders": [{ "name": "Omen", "version": "3.1" }] }] }
+              ] }"#,
+    )
+    .unwrap();
+    let (_root, installation) = testing::client_with(&[(
+        "Interface/AddOns/ACP/ACP.toc",
+        "## Title: ACP\n## Version: 1.0\n",
+    )]);
+    catalog.entries[0].downloads[0]
+        .marker()
+        .write(&installation.addons_directory().join("ACP"))
+        .unwrap();
+    let snapshot = installation.scan().unwrap();
+    let state = State::new();
+
+    // Without a client, both are catalog versions, and nothing has changed.
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    assert!(ui.find("Version 2.0").is_ok());
+    assert!(ui.find("Version 3.1").is_ok());
+    assert!(ui.find("Changes ↗").is_err());
+    drop(ui);
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Installed 1.0 · New version 2.0 available").is_ok());
+    assert!(ui.find("Update to 2.0").is_ok());
+    assert!(
+        ui.find("Version 3.1").is_ok(),
+        "not installed: the catalog's"
+    );
+    assert!(ui.find("Version 2.0").is_err(), "said as an update instead");
+    let badge = ui.find("Update available").unwrap().bounds().center();
+    ui.point_at(badge);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: badge,
+    })]);
+    assert!(
+        ui.find("Installed 1.0; 2.0 is available from Test Source, updated 2026-05-06.")
+            .is_ok()
+    );
+    // The button says where it downloads from, and what is tried after.
+    let button = ui.find("Update to 2.0").unwrap().bounds().center();
+    ui.point_at(button);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: button,
+    })]);
+    assert!(ui.find("From Test Source, updated 2026-05-06.").is_ok());
+    let _ = ui.click("Changes ↗").unwrap();
+
+    assert!(matches!(
+        ui.into_messages().next(),
+        Some(Message::OpenLink(url)) if url == "https://example.com/ACP/commits"
+    ));
+}
+
+/// ACP comes from two sources, the newest first, and the older one is
+/// installed. The card offers to pick a source; the pick is reported to
+/// remember, and once applied it is what installs and what updates are
+/// measured against.
+#[test]
+fn a_source_can_be_picked_per_addon() {
+    let mut catalog = Catalog::parse(
+        br#"{ "version": 2,
+              "sources": [
+                { "id": "test", "name": "Test Source", "homepage": "https://example.com" },
+                { "id": "other", "name": "Other Source", "homepage": "https://example.org" }
+              ],
+              "entries": [{ "name": "Addon Control Panel",
+                            "downloads": [
+                              { "source": "test", "name": "ACP", "url": "https://example.com/ACP.zip",
+                                "updated": "2026-05-06", "folders": [{ "name": "ACP", "version": "2.0" }] },
+                              { "source": "other", "name": "ACP", "url": "https://example.org/ACP.zip",
+                                "updated": "2020-01-01", "folders": [{ "name": "ACP", "version": "1.0" }] }
+                            ] }] }"#,
+    )
+    .unwrap();
+    let (_root, installation) = testing::client_with(&[(
+        "Interface/AddOns/ACP/ACP.toc",
+        "## Title: ACP\n## Version: 1.0\n",
+    )]);
+    catalog.entries[0].downloads[1]
+        .marker()
+        .write(&installation.addons_directory().join("ACP"))
+        .unwrap();
+    let snapshot = installation.scan().unwrap();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Installed 1.0 · New version 2.0 available").is_ok());
+    let _ = ui.click("Auto (Test Source)").unwrap();
+    let _ = ui.click("Other Source").unwrap();
+    let messages: Vec<Message> = ui.into_messages().collect();
+    let instructions: Vec<Instruction> = messages
+        .into_iter()
+        .filter_map(|message| {
+            state
+                .update(
+                    message,
+                    &catalog,
+                    Ok(&client()),
+                    Some(&installation),
+                    Some(&snapshot),
+                    &mut errors,
+                )
+                .instruction
+        })
+        .collect();
+    assert!(matches!(
+        instructions.as_slice(),
+        [Instruction::Prefer { key, source: Some(source) }] if key.as_str() == "acp" && source == "other"
+    ));
+
+    // What the launcher does with the pick.
+    catalog.prefer(&BTreeMap::from([("acp".to_owned(), "other".to_owned())]));
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Version 1.0").is_ok(), "current, from that source");
+    assert!(ui.find("Update available").is_err());
+    assert!(ui.find("Updated 2020-01-01").is_ok());
+    assert!(
+        ui.find("Test Source ↗").is_ok(),
+        "every source still linked"
+    );
+    let button = ui.find("Reinstall").unwrap().bounds().center();
+    ui.point_at(button);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: button,
+    })]);
+    assert!(ui.find("From Other Source, updated 2020-01-01.").is_ok());
+    let _ = ui.click("Reinstall").unwrap();
+    for message in ui.into_messages() {
+        let _ = state.update(
+            message,
+            &catalog,
+            Ok(&client()),
+            Some(&installation),
+            Some(&snapshot),
+            &mut errors,
+        );
+    }
+
+    let job = &state.jobs[&Key::of(&catalog.entries[0])];
+    assert!(
+        matches!(&job.stage, Stage::Downloading { source, .. } if source == "Other Source"),
+        "installs from the source picked first"
+    );
+}
+
+/// At the smallest window, a card with everything its heading can hold (a
+/// long name, two badges, the source picker, the changes link and the
+/// three buttons) keeps the name and the buttons on one line.
+#[test]
+fn a_full_heading_fits_on_one_line_at_the_smallest_window() {
+    let catalog = Catalog::parse(
+        br#"{ "version": 2,
+              "sources": [
+                { "id": "test", "name": "Test Source", "homepage": "https://example.com" },
+                { "id": "other", "name": "Bunny67 on GitHub", "homepage": "https://example.org" }
+              ],
+              "entries": [{ "name": "PitBull Unit Frames 4.0",
+                            "downloads": [
+                              { "source": "other", "name": "PitBull4", "url": "https://example.org/PitBull4.zip",
+                                "updated": "2026-05-06", "changes": "https://example.org/PitBull4/commits",
+                                "folders": [{ "name": "PitBull4", "version": "v4.2.0-beta12" }] },
+                              { "source": "test", "name": "PitBull4", "url": "https://example.com/PitBull4.zip",
+                                "folders": [{ "name": "PitBull4", "version": "v4.1.0" }] }
+                            ] }] }"#,
+    )
+    .unwrap();
+    let (_root, installation) = testing::client_with(&[(
+        "Interface/AddOns/PitBull4/PitBull4.toc",
+        "## Title: PitBull4\n## Version: v4.1.0\n",
+    )]);
+    catalog.entries[0].downloads[1]
+        .marker()
+        .write(&installation.addons_directory().join("PitBull4"))
+        .unwrap();
+    let mut app = crate::tests::opened(installation);
+    app.catalog = catalog;
+
+    let mut ui = simulator::Simulator::with_size(
+        iced::Settings::default(),
+        crate::App::MIN_SIZE,
+        app.view(),
+    );
+    let name = ui.find("PitBull Unit Frames 4.0").unwrap().bounds();
+    let update = ui.find("Update to v4.2.0-beta12").unwrap().bounds();
+    let trash = ui
+        .find(Id::from(card::uninstall_id("PitBull Unit Frames 4.0")))
+        .unwrap()
+        .bounds();
+
+    assert!(
+        (name.center_y() - update.center_y()).abs() < 4.0,
+        "the name and the buttons share a line: {name:?} against {update:?}"
+    );
+    assert!(
+        trash.x + trash.width <= crate::App::MIN_SIZE.width,
+        "the buttons end inside the window: {trash:?}"
+    );
+}
+
+/// Version 3.0 is installed and the catalog only has 2.0: no update, and
+/// the card says the installed one is ahead.
+#[test]
+fn an_installed_version_ahead_of_the_catalog_says_so() {
+    let catalog = Catalog::parse(
+        br#"{ "version": 2,
+              "sources": [{ "id": "test", "name": "Test Source", "homepage": "https://example.com" }],
+              "entries": [{ "name": "Addon Control Panel",
+                            "downloads": [{ "source": "test", "name": "ACP", "url": "https://example.com/ACP.zip",
+                                            "changes": "https://example.com/ACP/commits",
+                                            "folders": [{ "name": "ACP", "version": "2.0" }] }] }] }"#,
+    )
+    .unwrap();
+    let (_root, installation) = testing::client_with(&[(
+        "Interface/AddOns/ACP/ACP.toc",
+        "## Title: ACP\n## Version: 3.0\n",
+    )]);
+    catalog.entries[0].downloads[0]
+        .marker()
+        .write(&installation.addons_directory().join("ACP"))
+        .unwrap();
+    let snapshot = installation.scan().unwrap();
+    let state = State::new();
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+
+    assert!(
+        ui.find("Installed 3.0 · Your version is newer than the 2.0 available to download")
+            .is_ok()
+    );
+    assert!(ui.find("Update available").is_err());
+    assert!(ui.find("Changes ↗").is_err(), "nothing to update to");
+    assert!(ui.find("Reinstall").is_ok());
+}
+
 /// Installs one catalog entry of every archive shape into the client at
 /// `$OLD_LAUNCHER_TEST_CLIENT`, checks the result, and uninstalls again.
 /// Entries with folders the client already has are skipped, so the client's
@@ -1171,12 +1431,11 @@ async fn catalog_entries_install_into_a_real_client() {
     let installation = Installation::open(root).unwrap();
     let catalog = catalog::repository();
 
-    // A repository zip, a branch snapshot, a rar, a 7z and a bare
-    // repository link, plus one from another source.
+    // A repository zip, a branch snapshot, a release archive and a bare
+    // repository link, plus one from each other kind of source.
     for (source, name) in [
         ("nom0re", "Addon Control Panel"),
         ("nom0re", "Skada vs. Details!"),
-        ("nom0re", "Gatherer+"),
         ("nom0re", "Storyline"),
         ("nom0re", "CartoMapper"),
         ("rising-gods", "Quartz"),
@@ -1207,7 +1466,8 @@ async fn catalog_entries_install_into_a_real_client() {
 
         let folders = install(
             client(),
-            vec![(source.to_owned(), download.clone())],
+            source.to_owned(),
+            download.clone(),
             installation.clone(),
             Vec::new(),
             Arc::default(),

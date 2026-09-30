@@ -1,12 +1,13 @@
 //! What the launcher lists for a client: every catalog entry, installed or
 //! not, and the addons installed without the catalog.
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 
 use crate::Snapshot;
 use crate::catalog::{Catalog, Entry};
 use crate::search::Query;
 use crate::snapshot::Group;
+use crate::toc;
 
 /// The addons listed for a client.
 #[derive(Debug, Clone)]
@@ -34,6 +35,18 @@ pub enum Item<'a> {
     /// [`Library::groups`]: installed without the launcher, or from an entry
     /// the catalog no longer lists.
     Manual(usize),
+}
+
+/// The installed version of a folder against the catalog's, when they
+/// differ; see [`Library::update`] and [`Library::ahead`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Versions<'a> {
+    /// The installed folder, as named on disk.
+    pub folder: &'a str,
+    /// The version installed.
+    pub installed: &'a str,
+    /// The version the catalog offers.
+    pub offered: &'a str,
 }
 
 /// Which items to show, and in what order.
@@ -154,40 +167,79 @@ impl<'a> Library<'a> {
         }
     }
 
-    /// When `item` was last updated, for catalog entries that know.
+    /// When `item` was last updated, for catalog entries that know: the
+    /// date of the download installed first.
     pub fn updated(&self, item: Item<'a>) -> Option<&'a str> {
         match item {
-            Item::Entry { entry, .. } => entry.downloads.first()?.updated.as_deref(),
+            Item::Entry { entry, .. } => entry.preferred()?.updated.as_deref(),
             Item::Manual(_) => None,
         }
     }
 
-    /// Whether the catalog offers another version of the installed `item`:
-    /// one of the folders its preferred download installs declares a `.toc`
-    /// version other than the installed folder's. Folders without a version
-    /// on either side say nothing.
+    /// Whether the catalog offers another version of the installed `item`;
+    /// see [`Library::update`].
     pub fn update_available(&self, item: Item<'a>) -> bool {
+        self.update(item).is_some()
+    }
+
+    /// The newer version the catalog offers for the installed `item`, if
+    /// any: the first folder its preferred download installs whose `.toc`
+    /// version is newer than the installed folder's, or differs from it
+    /// without comparing (see [`toc::compare_versions`]). Folders without a
+    /// version on either side say nothing.
+    pub fn update(&self, item: Item<'a>) -> Option<Versions<'a>> {
+        self.versions(item)
+            .into_iter()
+            .find_map(|(versions, ordering)| {
+                matches!(ordering, Some(Ordering::Greater) | None).then_some(versions)
+            })
+    }
+
+    /// The version installed for `item` that is newer than the catalog's,
+    /// if any: the first folder whose installed `.toc` version compares
+    /// newer than the one the preferred download installs.
+    pub fn ahead(&self, item: Item<'a>) -> Option<Versions<'a>> {
+        self.versions(item)
+            .into_iter()
+            .find_map(|(versions, ordering)| (ordering == Some(Ordering::Less)).then_some(versions))
+    }
+
+    /// The folders of the installed `item` whose `.toc` version differs from
+    /// the one its preferred download installs, in the catalog's order, each
+    /// with how the catalog's compares with the installed one.
+    fn versions(&self, item: Item<'a>) -> Vec<(Versions<'a>, Option<Ordering>)> {
         let Item::Entry {
             entry,
             installed: Some(index),
         } = item
         else {
-            return false;
+            return Vec::new();
         };
         let group = &self.groups[index];
 
-        entry.folders().iter().any(|offered| {
-            let installed = group
-                .addons
-                .iter()
-                .find(|addon| addon.name.eq_ignore_ascii_case(&offered.name))
-                .and_then(|addon| addon.toc.as_ref()?.version.as_deref());
+        entry
+            .folders()
+            .iter()
+            .filter_map(|offered| {
+                let addon = group
+                    .addons
+                    .iter()
+                    .copied()
+                    .find(|addon| addon.name.eq_ignore_ascii_case(&offered.name))?;
+                let installed = addon.toc.as_ref()?.version.as_deref()?;
+                let offered = offered.version.as_deref()?;
+                let ordering = toc::compare_versions(offered, installed);
 
-            match (offered.version.as_deref(), installed) {
-                (Some(offered), Some(installed)) => offered != installed,
-                _ => false,
-            }
-        })
+                (ordering != Some(Ordering::Equal)).then_some((
+                    Versions {
+                        folder: &addon.name,
+                        installed,
+                        offered,
+                    },
+                    ordering,
+                ))
+            })
+            .collect()
     }
 
     /// Whether `item` is installed but the client cannot load it properly.
@@ -328,12 +380,14 @@ mod tests {
             name: name.into(),
             description: format!("{name} does things"),
             image: None,
+            preferred: None,
             downloads: vec![Download {
                 source: source.into(),
                 name: name.into(),
                 url: format!("https://example.com/{name}.zip"),
                 updated: updated.map(str::to_owned),
                 page: None,
+                changes: None,
                 links: Vec::new(),
                 folders: folders
                     .iter()
@@ -506,6 +560,115 @@ mod tests {
         assert_eq!(counts[0], (Status::All, 6));
         assert_eq!(counts[2], (Status::Updatable, 1));
         assert_eq!(counts[5], (Status::LeftoverData, 0));
+        assert_eq!(
+            library.update(library.items[0]),
+            Some(Versions {
+                folder: "Skada",
+                installed: "1.0",
+                offered: "2.0",
+            })
+        );
+        assert_eq!(library.update(library.items[1]), None, "not installed");
+    }
+
+    #[test]
+    fn an_installed_version_newer_than_the_catalogs_is_ahead_not_behind() {
+        let mut catalog = catalog();
+        catalog.entries[0].downloads[0].folders[0].version = Some("1.0".into());
+        let mut snapshot = snapshot(&catalog);
+        // What the catalog offers as an update, and what is installed ahead
+        // of it.
+        let compared = |snapshot: &Snapshot| -> (Option<String>, Option<String>) {
+            let library = Library::new(&catalog, Some(snapshot));
+            let item = library.items[0];
+
+            (
+                library
+                    .update(item)
+                    .map(|versions| versions.offered.to_owned()),
+                library
+                    .ahead(item)
+                    .map(|versions| versions.installed.to_owned()),
+            )
+        };
+
+        // Ahead of the catalog: nothing to update to, and said so.
+        snapshot.addons[0].toc.as_mut().unwrap().version = Some("2.0".into());
+        assert_eq!(compared(&snapshot), (None, Some("2.0".into())));
+
+        // A version of another shape can't be told apart: offered.
+        snapshot.addons[0].toc.as_mut().unwrap().version = Some("r5".into());
+        assert_eq!(compared(&snapshot), (Some("1.0".into()), None));
+
+        // The same: neither.
+        snapshot.addons[0].toc.as_mut().unwrap().version = Some("1.0".into());
+        assert_eq!(compared(&snapshot), (None, None));
+    }
+
+    /// ACP as the catalog has it: Rising Gods' 3.3.4 first, the newest,
+    /// then locus313's 3.2.0.118, which is installed. Preferring locus313
+    /// makes the installed copy current.
+    #[test]
+    fn a_preferred_source_is_what_updates_are_measured_against() {
+        use std::collections::BTreeMap;
+
+        let mut acp = entry("ACP", "rising-gods", Some("2010-08-02"), &["ACP"]);
+        acp.downloads[0].folders[0].version = Some("3.3.4".into());
+        let mut locus = entry("ACP", "locus313", Some("2026-09-27"), &["ACP"])
+            .downloads
+            .remove(0);
+        locus.folders[0].version = Some("3.2.0.118".into());
+        acp.downloads.push(locus);
+        let mut catalog = Catalog {
+            version: Catalog::VERSION,
+            sources: Vec::new(),
+            entries: vec![acp],
+        };
+        let mut installed = addon("ACP", None);
+        installed.marker = Some(catalog.entries[0].downloads[1].marker());
+        installed.toc.as_mut().unwrap().version = Some("3.2.0.118".into());
+        let snapshot = Snapshot {
+            addons: vec![installed],
+            ..Snapshot::default()
+        };
+
+        let library = Library::new(&catalog, Some(&snapshot));
+        let item = library.items[0];
+        assert_eq!(
+            library.update(item).map(|versions| versions.offered),
+            Some("3.3.4")
+        );
+        assert_eq!(library.updated(item), Some("2010-08-02"));
+
+        catalog.prefer(&BTreeMap::from([("acp".to_owned(), "locus313".to_owned())]));
+        let library = Library::new(&catalog, Some(&snapshot));
+        let item = library.items[0];
+        assert_eq!(library.update(item), None);
+        assert_eq!(library.ahead(item), None);
+        assert_eq!(library.updated(item), Some("2026-09-27"));
+    }
+
+    #[test]
+    fn an_update_names_the_first_folder_whose_version_differs() {
+        let mut catalog = catalog();
+        catalog.entries[0].downloads[0].folders[0].version = Some("1.0".into());
+        catalog.entries[0].downloads[0].folders[1].version = Some("1.1".into());
+        let mut snapshot = snapshot(&catalog);
+        // Skada itself is at the catalog's version; SkadaStorage is behind,
+        // and spelled differently on disk.
+        snapshot.addons[0].toc.as_mut().unwrap().version = Some("1.0".into());
+        snapshot.addons[1].name = "skadastorage".into();
+        snapshot.addons[1].toc.as_mut().unwrap().version = Some("1.0".into());
+        let library = Library::new(&catalog, Some(&snapshot));
+
+        assert_eq!(
+            library.update(library.items[0]),
+            Some(Versions {
+                folder: "skadastorage",
+                installed: "1.0",
+                offered: "1.1",
+            })
+        );
     }
 
     #[test]

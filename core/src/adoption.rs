@@ -145,6 +145,7 @@ mod tests {
             url: format!("https://example.com/{source}.zip"),
             updated: None,
             page: None,
+            changes: None,
             links: Vec::new(),
             folders: folders
                 .iter()
@@ -164,6 +165,7 @@ mod tests {
             description: String::new(),
             image: None,
             downloads,
+            preferred: None,
         }
     }
 

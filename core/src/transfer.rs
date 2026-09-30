@@ -369,12 +369,14 @@ mod tests {
             name: name.into(),
             description: String::new(),
             image: None,
+            preferred: None,
             downloads: vec![Download {
                 source: source.into(),
                 name: name.into(),
                 url: format!("https://example.com/{name}.zip"),
                 updated: None,
                 page: None,
+                changes: None,
                 links: Vec::new(),
                 folders: folders
                     .iter()

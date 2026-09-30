@@ -128,6 +128,7 @@ fn parse(index: &[u8]) -> anyhow::Result<Vec<Listing>> {
                 .map(|image| raw_url(image.trim())),
             // The collection has no page per addon; its links are upstream's.
             page: None,
+            changes: changes_url(raw.primary_download.trim()),
             links: raw
                 .source
                 .into_iter()
@@ -156,6 +157,38 @@ fn download_url(url: &str) -> String {
     } else {
         url.to_owned()
     }
+}
+
+/// Where the history of a download from GitHub is: the commit log of a
+/// branch snapshot, or of a file kept in a repository (the collection's own
+/// zips), or the list of releases of a release. Nothing for downloads from
+/// elsewhere.
+fn changes_url(url: &str) -> Option<String> {
+    let path = url
+        .strip_prefix("https://github.com/")?
+        .trim_end_matches('/');
+    let mut parts = path.splitn(3, '/');
+    let owner = parts.next()?;
+    let repository = parts.next()?;
+    let repository = repository.strip_suffix(".git").unwrap_or(repository);
+    let rest = parts.next().unwrap_or_default();
+
+    let history = if rest.is_empty() || rest.starts_with("archive/") {
+        match rest
+            .strip_prefix("archive/refs/heads/")
+            .and_then(|branch| branch.strip_suffix(".zip"))
+        {
+            Some(branch) => format!("commits/{branch}"),
+            None => "commits".to_owned(),
+        }
+    } else if rest.starts_with("releases") {
+        "releases".to_owned()
+    } else {
+        let file = rest.strip_prefix("raw/")?;
+        format!("commits/{file}")
+    };
+
+    Some(format!("https://github.com/{owner}/{repository}/{history}"))
 }
 
 /// Turns a GitHub `blob` page URL into the raw file it shows.
@@ -200,6 +233,11 @@ mod tests {
             )
         );
         assert_eq!(listings[0].links[0].label, "Curseforge");
+        assert_eq!(
+            listings[0].changes.as_deref(),
+            Some("https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ACP.zip"),
+            "the history of the zip in the collection"
+        );
     }
 
     #[test]
@@ -210,7 +248,45 @@ mod tests {
 
         assert_eq!(listings[0].description, "");
         assert_eq!(listings[0].image, None);
+        assert_eq!(listings[0].changes, None);
         assert!(listings[0].links.is_empty());
+    }
+
+    #[test]
+    fn downloads_from_github_have_a_history_page() {
+        let history = |url| changes_url(url).unwrap_or_default();
+
+        assert_eq!(
+            history("https://github.com/Zendevve/CartoMapper"),
+            "https://github.com/Zendevve/CartoMapper/commits"
+        );
+        assert_eq!(
+            history("https://github.com/owner/repo.git/"),
+            "https://github.com/owner/repo/commits"
+        );
+        assert_eq!(
+            history("https://github.com/bkader/Dominos/archive/refs/heads/main.zip"),
+            "https://github.com/bkader/Dominos/commits/main"
+        );
+        assert_eq!(
+            history("https://github.com/o/r/archive/HEAD.zip"),
+            "https://github.com/o/r/commits"
+        );
+        assert_eq!(
+            history("https://github.com/Stradios/Emblem-of-Gold/releases/latest"),
+            "https://github.com/Stradios/Emblem-of-Gold/releases"
+        );
+        assert_eq!(
+            history("https://github.com/o/r/releases/download/v1/r.zip"),
+            "https://github.com/o/r/releases"
+        );
+        assert_eq!(
+            changes_url(
+                "https://gitlab.com/Tsoukie/clique-3.3.5/-/archive/main/clique-3.3.5-main.zip"
+            ),
+            None
+        );
+        assert_eq!(changes_url("https://github.com/o"), None);
     }
 
     #[test]

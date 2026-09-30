@@ -24,6 +24,11 @@ pub struct Config {
     /// here start with the defaults.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub launch: BTreeMap<PathBuf, Launch>,
+    /// The source the user picked for an addon, by the addon's key (see
+    /// [`Entry::key`](crate::catalog::Entry::key)). Addons missing here
+    /// install from the source the catalog lists first.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, String>,
 }
 
 impl Config {
@@ -72,6 +77,19 @@ impl Config {
             self.launch.remove(root);
         } else {
             self.launch.insert(root.to_path_buf(), launch);
+        }
+    }
+
+    /// Sets the source picked for the addon with `key`, or none, to follow
+    /// the catalog's order again.
+    pub fn set_source(&mut self, key: &str, source: Option<String>) {
+        match source {
+            Some(source) => {
+                let _ = self.sources.insert(key.to_owned(), source);
+            }
+            None => {
+                let _ = self.sources.remove(key);
+            }
         }
     }
 
@@ -207,6 +225,7 @@ mod tests {
             installations: vec!["/games/wotlk".into(), "/games/war mane".into()],
             selected: Some("/games/war mane".into()),
             launch: BTreeMap::new(),
+            sources: BTreeMap::new(),
         };
         config.set_launch(
             Path::new("/games/war mane"),
@@ -215,11 +234,30 @@ mod tests {
                 command: "umu-run %command%".into(),
             },
         );
+        config.set_source("acp", Some("locus313".into()));
+        config.set_source("skada/skadastorage", Some("nom0re".into()));
 
         config.save(&path).unwrap();
 
         assert_eq!(Config::load(&path).unwrap(), config);
         assert_eq!(config.launch(Path::new("/games/wotlk")), Launch::default());
+    }
+
+    #[test]
+    fn a_picked_source_is_kept_until_unset() {
+        let mut config = Config::default();
+        config.set_source("acp", Some("locus313".into()));
+        config.set_source("acp", Some("nom0re".into()));
+
+        assert_eq!(
+            config.sources.get("acp").map(String::as_str),
+            Some("nom0re")
+        );
+
+        config.set_source("acp", None);
+        config.set_source("never", None);
+
+        assert!(config.sources.is_empty());
     }
 
     #[test]
@@ -233,9 +271,10 @@ mod tests {
         assert_eq!(config.installations, [PathBuf::from("/games/wotlk")]);
         assert!(config.launch.is_empty());
         config.save(&path).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
         assert!(
-            !fs::read_to_string(&path).unwrap().contains("launch"),
-            "nothing to write"
+            !written.contains("launch") && !written.contains("sources"),
+            "nothing to write: {written}"
         );
     }
 
@@ -245,6 +284,7 @@ mod tests {
             installations: vec!["/games/wotlk".into(), "/games/warmane".into()],
             selected: Some("/games/wotlk".into()),
             launch: BTreeMap::new(),
+            sources: BTreeMap::new(),
         };
         let custom = Launch {
             env: String::new(),

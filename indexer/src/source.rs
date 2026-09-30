@@ -32,6 +32,9 @@ pub struct Listing {
     pub image: Option<String>,
     /// The addon's own page at the source, if it has one.
     pub page: Option<String>,
+    /// The history of its changes at the source (a commit log, a list of
+    /// releases), if the source keeps one.
+    pub changes: Option<String>,
     /// Other pages about the addon.
     pub links: Vec<catalog::Link>,
     /// Where the addon's last-update date comes from.

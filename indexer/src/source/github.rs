@@ -97,6 +97,10 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
                     name: repository.name,
                     description: repository.description.unwrap_or_default().trim().to_owned(),
                     image: None,
+                    changes: Some(format!(
+                        "{}/commits/{}",
+                        repository.html_url, repository.default_branch
+                    )),
                     page: Some(repository.html_url),
                     links: Vec::new(),
                     // A branch snapshot's files carry the last commit's date.

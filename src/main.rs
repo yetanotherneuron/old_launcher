@@ -14,7 +14,7 @@ pub fn main() -> iced::Result {
 
     #[allow(unused_mut)]
     let mut window = window::Settings {
-        size: Size::new(1100.0, 780.0),
+        size: Size::new(1200.0, 780.0),
         min_size: Some(App::MIN_SIZE),
         icon: old_launcher::icon(),
         ..window::Settings::default()

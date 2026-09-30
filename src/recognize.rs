@@ -163,13 +163,13 @@ impl State {
         let proposal = match self.proposed.as_slice() {
             [] => return None,
             [one] => format!(
-                "{} was installed without the launcher and matches the catalog. Recognize \
-                 it, so it shows as installed and can be updated from here?",
+                "{} was installed without the launcher and is available here too. \
+                 Recognize it, so it shows as installed and can be updated from here?",
                 one.name
             ),
             all => format!(
-                "{} addons installed without the launcher match the catalog. Recognize \
-                 them, so they show as installed and can be updated from here?",
+                "{} addons installed without the launcher are available here too. \
+                 Recognize them, so they show as installed and can be updated from here?",
                 all.len()
             ),
         };
@@ -228,11 +228,11 @@ impl State {
                 column![
                     text("Addons to recognize").size(20).font(style::BOLD),
                     text(
-                        "These folders in Interface/AddOns match a catalog entry exactly. \
-                         Recognizing them lists them as installed from that entry, so they \
-                         can be updated, reinstalled and uninstalled like any other. Their \
-                         files stay as they are: each folder only gets a small \
-                         .old_launcher.toml file recording where it comes from."
+                        "These folders in Interface/AddOns are exactly what one of the addons \
+                         available here installs. Recognizing them lists them as installed \
+                         from it, so they can be updated, reinstalled and uninstalled like \
+                         any other. Their files stay as they are: each folder only gets a \
+                         small .old_launcher.toml file recording where it comes from."
                     )
                     .style(text::secondary),
                     container(
@@ -315,8 +315,8 @@ mod tests {
         let mut ui = simulator(state.banner().expect("a proposal"));
         assert!(
             ui.find(
-                "Addon Control Panel was installed without the launcher and matches the \
-                 catalog. Recognize it, so it shows as installed and can be updated from here?"
+                "Addon Control Panel was installed without the launcher and is available here \
+                 too. Recognize it, so it shows as installed and can be updated from here?"
             )
             .is_ok()
         );

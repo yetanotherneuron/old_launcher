@@ -279,12 +279,7 @@ impl State {
             .collect();
 
         let sections = column![]
-            .push(section(
-                "Installs from the catalog",
-                &install,
-                "Nothing to install.",
-                None,
-            ))
+            .push(section("To install", &install, "Nothing to install.", None))
             .push(section(
                 "Already here, left as they are",
                 &titles(&plan.present),
@@ -292,7 +287,7 @@ impl State {
                 Some(text::secondary),
             ))
             .push(section(
-                "No longer in the catalog, so not installed",
+                "No longer available, so not installed",
                 &titles(&plan.unavailable),
                 "",
                 Some(text::warning),
@@ -427,12 +422,14 @@ mod tests {
             name: name.into(),
             description: String::new(),
             image: None,
+            preferred: None,
             downloads: vec![Download {
                 source: "test".into(),
                 name: name.into(),
                 url: format!("https://example.com/{name}.zip"),
                 updated: None,
                 page: None,
+                changes: None,
                 links: Vec::new(),
                 folders: Vec::new(),
             }],
@@ -491,7 +488,7 @@ mod tests {
 
         for line in [
             "Import old_launcher-addons.zip?",
-            "Installs from the catalog (1)",
+            "To install (1)",
             "Skada",
             "Already here, left as they are (1)",
             "Installed by hand on the other computer: install these yourself (1)",
@@ -502,7 +499,7 @@ mod tests {
             assert!(ui.find(line).is_ok(), "{line}");
         }
         assert!(
-            ui.find("No longer in the catalog, so not installed (0)")
+            ui.find("No longer available, so not installed (0)")
                 .is_err(),
             "empty sections are left out"
         );

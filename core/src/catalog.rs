@@ -6,6 +6,7 @@
 //! from different sources, and is published as one JSON document. The app
 //! only reads it.
 
+use std::collections::BTreeMap;
 use std::fs;
 
 use serde::{Deserialize, Serialize};
@@ -46,9 +47,14 @@ pub struct Entry {
     /// A screenshot, if a source has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// Where to get it, the preferred download first. They all install the
-    /// same folders; installing falls back down the list when one fails.
+    /// Where to get it, the newest first. They all install the same
+    /// folders; the first is installed, unless the user picks another.
     pub downloads: Vec<Download>,
+    /// The source the user prefers for it, if they picked one: its download
+    /// goes first. Not published; [`Catalog::prefer`] sets it from the
+    /// user's settings.
+    #[serde(skip)]
+    pub preferred: Option<String>,
 }
 
 /// One source's download of an addon.
@@ -66,6 +72,10 @@ pub struct Download {
     /// The addon's own page at the source, if it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<String>,
+    /// The history of its changes at the source (a commit log, a list of
+    /// releases), if the source keeps one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<String>,
     /// Other pages about the addon (original author, CurseForge, …).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<Link>,
@@ -156,14 +166,68 @@ impl Catalog {
     pub fn source(&self, id: &str) -> Option<&Source> {
         self.sources.iter().find(|source| source.id == id)
     }
+
+    /// Notes the source the user prefers for each entry, from their
+    /// settings: `sources`, by [`Entry::key`]. Entries not in it follow the
+    /// catalog's order again.
+    pub fn prefer(&mut self, sources: &BTreeMap<String, String>) {
+        for entry in &mut self.entries {
+            entry.preferred = sources.get(&entry.key()).cloned();
+        }
+    }
 }
 
 impl Entry {
+    /// What identifies the entry across catalog refreshes, and names it in
+    /// the user's settings: the folders it installs, which the catalog never
+    /// gives two entries, lowercase and sorted, joined by `/`, which no
+    /// folder name holds.
+    pub fn key(&self) -> String {
+        let mut folders: Vec<String> = self
+            .downloads
+            .first()
+            .map_or(&[][..], |download| download.folders.as_slice())
+            .iter()
+            .map(|folder| folder.name.to_lowercase())
+            .collect();
+        folders.sort();
+        folders.dedup();
+
+        folders.join("/")
+    }
+
+    /// The download of the source the user picked, when they picked one
+    /// and the source still lists the entry.
+    fn picked(&self) -> Option<&Download> {
+        self.preferred.as_deref().and_then(|source| {
+            self.downloads
+                .iter()
+                .find(|download| download.source == source)
+        })
+    }
+
+    /// The download installed first, which also describes the entry: the
+    /// picked source's, or else the first, the newest.
+    pub fn preferred(&self) -> Option<&Download> {
+        self.picked().or_else(|| self.downloads.first())
+    }
+
+    /// Every download, the preferred one first, then the rest as the
+    /// catalog orders them.
+    pub fn ranked(&self) -> impl Iterator<Item = &Download> {
+        let first = self.preferred();
+
+        first.into_iter().chain(
+            self.downloads
+                .iter()
+                .filter(move |download| first.is_none_or(|first| !std::ptr::eq(*download, first))),
+        )
+    }
+
     /// The folders installing it puts in `Interface/AddOns`, as the
     /// preferred download describes them.
     pub fn folders(&self) -> &[Folder] {
-        self.downloads
-            .first()
+        self.preferred()
             .map_or(&[], |download| download.folders.as_slice())
     }
 
@@ -228,6 +292,7 @@ mod tests {
             url: format!("https://example.com/{source}/{name}.zip"),
             updated: None,
             page: None,
+            changes: None,
             links: Vec::new(),
             folders: folders
                 .iter()
@@ -247,7 +312,53 @@ mod tests {
             description: String::new(),
             image: None,
             downloads,
+            preferred: None,
         }
+    }
+
+    #[test]
+    fn a_preferred_source_goes_first_and_describes_the_entry() {
+        let mut acp = entry(
+            "ACP",
+            vec![
+                download("rising-gods", "ACP", &["ACP"]),
+                download("locus313", "ACP", &["ACP"]),
+            ],
+        );
+        acp.downloads[1].folders[0].version = Some("3.2".into());
+        let mut catalog = Catalog {
+            version: Catalog::VERSION,
+            sources: Vec::new(),
+            entries: vec![acp],
+        };
+        let ranked = |catalog: &Catalog| -> Vec<String> {
+            catalog.entries[0]
+                .ranked()
+                .map(|download| download.source.clone())
+                .collect()
+        };
+        let preferred = |catalog: &Catalog| catalog.entries[0].preferred().unwrap().source.clone();
+
+        assert_eq!(catalog.entries[0].key(), "acp");
+        assert_eq!(preferred(&catalog), "rising-gods");
+        assert_eq!(ranked(&catalog), ["rising-gods", "locus313"]);
+        assert_eq!(catalog.entries[0].folders()[0].version, None);
+
+        catalog.prefer(&BTreeMap::from([("acp".to_owned(), "locus313".to_owned())]));
+        assert_eq!(preferred(&catalog), "locus313");
+        assert_eq!(ranked(&catalog), ["locus313", "rising-gods"]);
+        assert_eq!(
+            catalog.entries[0].folders()[0].version.as_deref(),
+            Some("3.2")
+        );
+
+        // A source that stopped listing it: the catalog's order again.
+        catalog.prefer(&BTreeMap::from([("acp".to_owned(), "gone".to_owned())]));
+        assert_eq!(preferred(&catalog), "rising-gods");
+        assert_eq!(ranked(&catalog), ["rising-gods", "locus313"]);
+
+        catalog.prefer(&BTreeMap::new());
+        assert_eq!(catalog.entries[0].preferred, None);
     }
 
     #[test]
@@ -275,6 +386,8 @@ mod tests {
 
     #[test]
     fn published_catalogs_read_back_identically() {
+        let mut acp = download("a", "ACP", &["ACP"]);
+        acp.changes = Some("https://example.com/a/ACP/commits".into());
         let catalog = Catalog {
             version: Catalog::VERSION,
             sources: vec![Source {
@@ -290,13 +403,18 @@ mod tests {
                         download("a", "Skada", &["Skada", "SkadaStorage"]),
                     ],
                 ),
-                entry("ACP", vec![download("a", "ACP", &["ACP"])]),
+                entry("ACP", vec![acp]),
             ],
         };
 
         let published = Catalog::parse(catalog.to_json().unwrap().as_bytes()).unwrap();
 
         assert_eq!(published.entries[0].name, "ACP");
+        assert_eq!(
+            published.entries[0].downloads[0].changes.as_deref(),
+            Some("https://example.com/a/ACP/commits")
+        );
+        assert_eq!(published.entries[1].key(), "skada/skadastorage");
         assert_eq!(published.entries[1].folders()[0].name, "Skada");
         // Download order is a preference, not sorted away.
         assert_eq!(published.entries[1].downloads[0].source, "b");

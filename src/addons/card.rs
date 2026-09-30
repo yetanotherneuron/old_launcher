@@ -1,13 +1,13 @@
 //! One addon in the list: a catalog entry, installed or not, or folders
 //! installed without the catalog.
 
-use iced::widget::{button, column, container, progress_bar, row, text, tooltip};
+use iced::widget::{button, column, container, pick_list, progress_bar, row, text, tooltip};
 use iced::{Center, Element, Fill, Fit};
 
 use super::confirm::{self, Confirm};
-use super::{Key, Message, Stage, State};
-use crate::catalog::Catalog;
-use crate::core::library::{Item, Library};
+use super::{Choice, Key, Message, Stage, State};
+use crate::catalog::{Catalog, Entry};
+use crate::core::library::{Item, Library, Versions};
 use crate::core::toc;
 use crate::core::{Addon, Snapshot, Toc};
 use crate::size;
@@ -32,7 +32,7 @@ impl State {
         let title = library.name(item).to_owned();
         let key = entry.map(Key::of);
         let job = key.as_ref().and_then(|key| self.jobs.get(key));
-        let update = library.update_available(item);
+        let update = library.update(item);
 
         let main = group.and_then(|group| group.addons.first().copied());
         let toc = main.and_then(|addon| addon.toc.as_ref());
@@ -54,13 +54,13 @@ impl State {
             .align_y(Center);
 
         match (entry, group) {
-            (Some(_), Some(_)) => {
+            (Some(entry), Some(_)) => {
                 badges = badges.push(style::badge("Installed", Tone::Success));
 
-                if update {
+                if let Some(update) = update {
                     badges = badges.push(style::tip(
                         style::badge("Update available", Tone::Warning),
-                        "The catalog has another version than the one installed.",
+                        update_hint(update, main, entry, catalog),
                     ));
                 }
             }
@@ -77,7 +77,7 @@ impl State {
                             ),
                             None => style::badge(marker.source.clone(), Tone::Primary),
                         })
-                        .push(style::badge("No longer in the catalog", Tone::Warning));
+                        .push(style::badge("No longer available", Tone::Warning));
                 }
                 None => badges = badges.push(style::badge("Installed manually", Tone::Primary)),
             },
@@ -133,6 +133,53 @@ impl State {
             badges = badges.push(style::badge("Load on demand", Tone::Success));
         }
 
+        // Where to install from, when there is a choice: the source the
+        // catalog lists first, or one in particular.
+        let picker = entry.zip(key.clone()).and_then(|(entry, key)| {
+            let mut choices = vec![Choice::Auto];
+            for download in &entry.downloads {
+                let choice = Choice::Source(download.source.clone());
+                if !choices.contains(&choice) {
+                    choices.push(choice);
+                }
+            }
+            if choices.len() < 3 {
+                return None;
+            }
+
+            let name = |id: &str| {
+                catalog
+                    .source(id)
+                    .map_or_else(|| id.to_owned(), |source| source.name.clone())
+            };
+            let auto = entry
+                .downloads
+                .first()
+                .map(|download| name(&download.source))
+                .unwrap_or_default();
+            let chosen = match &entry.preferred {
+                Some(source)
+                    if entry
+                        .downloads
+                        .iter()
+                        .any(|download| &download.source == source) =>
+                {
+                    Choice::Source(source.clone())
+                }
+                _ => Choice::Auto,
+            };
+
+            Some(style::tip(
+                pick_list(Some(chosen), choices, move |choice| match choice {
+                    Choice::Auto => format!("Auto ({auto})"),
+                    Choice::Source(id) => name(id),
+                })
+                .on_select(move |choice| Message::SourceSelected(key.clone(), choice)),
+                "Where it installs from: the newest, or the source picked. Nothing else is \
+                 tried when that fails.",
+            ))
+        });
+
         let install: Option<Element<'a, Message>> =
             key.map(|key| match job.map(|job| &job.stage) {
                 Some(Stage::Downloading {
@@ -166,18 +213,39 @@ impl State {
                 }
                 Some(Stage::Installing) => text("Installing…").style(text::secondary).into(),
                 Some(Stage::Cancelling) => text("Cancelling…").style(text::secondary).into(),
-                None => button(match (group.is_some(), update) {
-                    (true, true) => "Update",
-                    (true, false) => "Reinstall",
-                    (false, _) => "Install",
-                })
-                .style(if group.is_some() && !update {
-                    button::secondary
-                } else {
-                    button::primary
-                })
-                .on_press_maybe(can_install.then_some(Message::Install(key)))
-                .into(),
+                None => {
+                    let label = match (group.is_some(), update) {
+                        (true, Some(update)) => format!("Update to {}", update.offered),
+                        (true, None) => "Reinstall".to_owned(),
+                        (false, _) => "Install".to_owned(),
+                    };
+                    let install = button(text(label))
+                        .style(if group.is_some() && update.is_none() {
+                            button::secondary
+                        } else {
+                            button::primary
+                        })
+                        .on_press_maybe(can_install.then_some(Message::Install(key)));
+
+                    // Where the download comes from; the key exists only
+                    // for an entry, so this always has one.
+                    match entry {
+                        Some(entry) => style::tip(install, source_hint(entry, catalog)),
+                        None => install.into(),
+                    }
+                }
+            });
+
+        // What changed, beside the button that brings it: when the source
+        // keeps a history of the version an update brings.
+        let changes = update
+            .and(entry)
+            .and_then(|entry| entry.preferred()?.changes.as_deref())
+            .map(|url| {
+                button(text("Changes ↗").size(13))
+                    .style(button::text)
+                    .padding(0)
+                    .on_press(Message::OpenLink(url.to_owned()))
             });
 
         let repair = broken.first().map(|addon| {
@@ -248,6 +316,8 @@ impl State {
 
         let heading = row![badges.width(Fill).wrap().vertical_spacing(6)]
             .push(repair)
+            .push(picker)
+            .push(changes)
             .push(install)
             .push(manage)
             .spacing(10)
@@ -259,9 +329,45 @@ impl State {
             .or_else(|| toc.and_then(|toc| toc.notes.as_deref()))
             .map(|description| text(description).size(14).style(text::secondary));
 
-        let details: Vec<String> = [
-            toc.and_then(|toc| toc.version.as_ref())
+        // Both versions when the catalog's differs from the installed one,
+        // the installed one otherwise, or the catalog's for an entry not
+        // installed yet.
+        let ahead = update.is_none().then(|| library.ahead(item)).flatten();
+        // The folder, when it isn't the one the card describes.
+        let named = |versions: Versions<'_>| {
+            if main.is_some_and(|addon| addon.name == versions.folder) {
+                String::new()
+            } else {
+                format!(" ({})", versions.folder)
+            }
+        };
+        let version = match (update, ahead, toc, entry) {
+            (Some(update), _, _, _) => Some(format!(
+                "Installed {} · New version {} available{}",
+                update.installed,
+                update.offered,
+                named(update)
+            )),
+            (None, Some(ahead), _, _) => Some(format!(
+                "Installed {} · Your version is newer than the {} available to download{}",
+                ahead.installed,
+                ahead.offered,
+                named(ahead)
+            )),
+            (None, None, Some(toc), _) => toc
+                .version
+                .as_ref()
                 .map(|version| format!("Version {version}")),
+            (None, None, None, Some(entry)) if group.is_none() => entry
+                .folders()
+                .first()
+                .and_then(|folder| folder.version.as_ref())
+                .map(|version| format!("Version {version}")),
+            (None, None, None, _) => None,
+        };
+
+        let details: Vec<String> = [
+            version,
             toc.and_then(|toc| toc.author.as_ref())
                 .map(|author| format!("by {author}")),
         ]
@@ -290,8 +396,7 @@ impl State {
                 // installing tries them: the most recently updated first. A
                 // source listing the addon twice names each listing.
                 let pills: Vec<(String, &str)> = entry
-                    .downloads
-                    .iter()
+                    .ranked()
                     .filter_map(|download| {
                         let source = catalog.source(&download.source)?;
                         let page = download.page.as_deref().unwrap_or(&source.homepage);
@@ -311,8 +416,7 @@ impl State {
                     .collect();
 
                 let updated = entry
-                    .downloads
-                    .first()
+                    .preferred()
                     .and_then(|download| download.updated.as_deref())
                     .map(|updated| {
                         text(format!("Updated {updated}"))
@@ -408,7 +512,7 @@ impl State {
                         }
                         None => style::tip(
                             text(dependency).size(13).style(text::warning),
-                            "Not in the catalog: install it yourself.",
+                            "Not available here: install it yourself.",
                         ),
                     }
                 }))
@@ -455,6 +559,54 @@ fn folder_list<'a>(folders: &[String]) -> Element<'a, Message> {
         tooltip::Position::Bottom,
     )
     .into()
+}
+
+/// What an "Update available" badge means: the version installed against
+/// the one the catalog offers, and where that one comes from. The folder is
+/// named when it isn't `main`, the one the card describes.
+fn update_hint(
+    update: Versions<'_>,
+    main: Option<&Addon>,
+    entry: &Entry,
+    catalog: &Catalog,
+) -> String {
+    let download = entry.preferred();
+    let source = download
+        .and_then(|download| catalog.source(&download.source))
+        .map(|source| format!(" from {}", source.name))
+        .unwrap_or_default();
+    let updated = download
+        .and_then(|download| download.updated.as_deref())
+        .map(|updated| format!(", updated {updated}"))
+        .unwrap_or_default();
+    let versions = format!(
+        "{}; {} is available{source}{updated}.",
+        update.installed, update.offered
+    );
+
+    if main.is_some_and(|main| main.name == update.folder) {
+        format!("Installed {versions}")
+    } else {
+        format!("{}: installed {versions}", update.folder)
+    }
+}
+
+/// Where the install button's download comes from: the source, and when
+/// its copy was updated. Nothing else is tried when it fails.
+fn source_hint(entry: &Entry, catalog: &Catalog) -> String {
+    let Some(download) = entry.preferred() else {
+        return String::new();
+    };
+    let source = catalog
+        .source(&download.source)
+        .map_or_else(|| download.source.clone(), |source| source.name.clone());
+    let updated = download
+        .updated
+        .as_deref()
+        .map(|updated| format!(", updated {updated}"))
+        .unwrap_or_default();
+
+    format!("From {source}{updated}.")
 }
 
 /// What a "Made for …" badge means, for folders declaring the interface
