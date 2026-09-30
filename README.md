@@ -1,7 +1,6 @@
 # Old Launcher
 
-A launcher and addon manager for World of Warcraft 3.3.5a clients, built
-with [iced](https://github.com/iced-rs/iced).
+A launcher and addon manager for World of Warcraft 3.3.5a clients.
 
 **[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
 **[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
@@ -57,16 +56,16 @@ every week:
 - [Rising Gods](https://addons.rising-gods.de/addons), a server's collection
   (descriptions in German).
 
-When several of them offer the same addon, the newest version is installed,
-and the addon's card lets you pick another source instead. The card links
-to its page at every source that has it.
+When several of them offer the same addon, the newest version is installed;
+you can also pick another source instead.
 
 ## Good to know
 
 - Outside your client folders, the launcher writes only its settings file,
-  `~/.config/old_launcher/config.toml` (the platform's config directory
-  elsewhere), and a copy of the addon list in your cache directory, so the
-  list shows at once and offline.
+  `~/.config/old_launcher/config.toml` on Linux and
+  `%APPDATA%\old_launcher\config.toml` on Windows, and a copy of the addon
+  list in `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`, so the
+  list doesn't need to be downloaded every time you open the launcher.
 - Every addon folder it installs gets a small `.old_launcher.toml` file
   saying where it came from. The game ignores it; the launcher uses it to
   tell what can be updated.

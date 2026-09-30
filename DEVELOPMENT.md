@@ -44,9 +44,10 @@ so for those it is the last commit touching the addon's folder.
 
 The app fetches the published catalog, `index/wotlk.json` as committed on
 `main`, which a weekly CI schedule regenerates, and keeps the last copy
-fetched in its cache directory, so the catalog shows instantly and offline
-from the second run on. A refresh asks the repository whether the catalog
-changed before downloading it.
+fetched in `~/.cache/old_launcher` (`%LOCALAPPDATA%\old_launcher` on
+Windows), so the catalog shows instantly and offline from the second run
+on. A refresh asks the repository whether the catalog changed before
+downloading it.
 `OLD_LAUNCHER_INDEX=<url or path>` at run time points the app at any other
 catalog, such as a local `index/wotlk.json` while working on the indexer.
 
@@ -110,8 +111,8 @@ the quoted path to `Wow.exe` (`wine %command%` when there is no command).
 
 The only file outside the clients lists the client folders, how each one
 starts and the sources picked per addon:
-`~/.config/old_launcher/config.toml` (the platform config directory
-elsewhere), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
+`~/.config/old_launcher/config.toml` (`%APPDATA%\old_launcher\config.toml`
+on Windows), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
 launcher does nothing else until you choose: it shows why, where the file
 is, and which client folders overwriting it would forget, and offers to
 edit it (then read it again), quit, or overwrite it with new settings.
@@ -124,9 +125,10 @@ edit it (then read it again), quit, or overwrite it with new settings.
   is filtered from). Unit-tested against temporary directories.
 - `indexer/`: the CLI that builds `index/wotlk.json` from the upstream
   sources.
-- `src/`: the iced app. `lib.rs` is the shell, with one TEA cell per screen
-  (`setup`, `clients`, and `addons` with its cards and confirmation
-  dialogs). Screens are tested with `iced_test::simulator`.
+- `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
+  shell, with one TEA cell per screen (`setup`, `clients`, and `addons`
+  with its cards and confirmation dialogs). Screens are tested with
+  `iced_test::simulator`.
 - `docs/plans/`: work planned but not started.
 
 Nothing outside tests may panic on purpose: the workspace denies `unwrap`,
