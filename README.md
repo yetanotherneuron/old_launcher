@@ -8,17 +8,14 @@ A launcher and addon manager for World of Warcraft 3.3.5a clients.
 [Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
 · [Arch Linux (AUR)](https://aur.archlinux.org/packages/old-launcher-git)
 
-Each is a single file built from the latest `main`; nothing to install.
+It's a portable program: nothing to install, just run it.
 
-- **Linux** (64-bit, any distribution from 2018 on): make the file
-  executable, then run it: `chmod +x old_launcher-linux-x86_64` (or
-  `old_launcher-linux-arm64`).
 - **Windows** (64-bit, Windows 10 or newer): run `old_launcher.exe`. It isn't
   signed, so Windows may warn about an unknown publisher: choose *More info*,
   then *Run anyway*.
-- **Arch Linux**: install
-  [`old-launcher-git`](https://aur.archlinux.org/packages/old-launcher-git)
-  from the AUR, which adds it to your applications menu.
+- **Linux** (64-bit, any distribution from 2018 or later, because of glibc):
+  make the file executable (`chmod +x` on it), then run it. Or install it
+  from the [AUR](https://aur.archlinux.org/packages/old-launcher-git).
 
 ## What it does
 
