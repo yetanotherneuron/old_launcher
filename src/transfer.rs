@@ -298,6 +298,10 @@ impl State {
                 "",
                 Some(text::warning),
             ))
+            .push(files(
+                "Saved settings already here, replaced",
+                &plan.replaced,
+            ))
             .spacing(12);
 
         let files = import.files.len();
@@ -309,13 +313,16 @@ impl State {
                 if files == 1 { "file" } else { "files" }
             )
         };
-        let replaces = (!plan.replaced.is_empty()).then(|| {
-            text(format!(
-                "{} of them replace files already here, and the settings they hold.",
-                plan.replaced.len()
-            ))
-            .style(text::warning)
-        });
+        let replaces = match plan.replaced.len() {
+            0 => None,
+            1 => Some(
+                "1 of them replaces a file already here, and the settings it holds.".to_owned(),
+            ),
+            replaced => Some(format!(
+                "{replaced} of them replace files already here, and the settings they hold."
+            )),
+        }
+        .map(|replaces| text(replaces).style(text::warning));
 
         Some(
             container(
@@ -383,16 +390,40 @@ fn section<'a, Message: 'a>(
         body = body.style(tone);
     }
 
+    Some(column![heading(title, names.len()), body].spacing(4).into())
+}
+
+/// A titled list of data `files`, one per line, relative to the client
+/// folder; left out when there are none.
+fn files<'a, Message: 'a>(title: &'a str, files: &[PathBuf]) -> Option<Element<'a, Message>> {
+    if files.is_empty() {
+        return None;
+    }
+
+    let lines = column(files.iter().map(|file| {
+        // With the slashes the other dialogs use, on Windows too.
+        let path = file
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        text(path).size(13).style(text::warning).into()
+    }))
+    .spacing(2);
+
     Some(
-        column![
-            text(format!("{title} ({})", names.len()))
-                .size(14)
-                .font(style::BOLD),
-            body,
-        ]
-        .spacing(4)
-        .into(),
+        column![heading(title, files.len()), lines]
+            .spacing(4)
+            .into(),
     )
+}
+
+/// A section's title, with how many items it lists.
+fn heading<'a>(title: &str, count: usize) -> iced::widget::Text<'a> {
+    text(format!("{title} ({count})"))
+        .size(14)
+        .font(style::BOLD)
 }
 
 #[cfg(test)]
@@ -494,7 +525,9 @@ mod tests {
             "Installed by hand on the other computer: install these yourself (1)",
             "Mine",
             "Restores 2 saved settings files.",
-            "1 of them replace files already here, and the settings they hold.",
+            "Saved settings already here, replaced (1)",
+            "WTF/Account/ME/SavedVariables/Omen.lua",
+            "1 of them replaces a file already here, and the settings it holds.",
         ] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
@@ -503,6 +536,56 @@ mod tests {
                 .is_err(),
             "empty sections are left out"
         );
+    }
+
+    #[test]
+    fn every_saved_settings_file_an_import_replaces_is_listed() {
+        let (import, mut plan) = reviewed();
+        plan.replaced = vec![
+            PathBuf::from("WTF/Account/ME/SavedVariables/Omen.lua"),
+            [
+                "WTF",
+                "Account",
+                "ME",
+                "Icecrown",
+                "Arthas",
+                "SavedVariables",
+                "Skada.lua",
+            ]
+            .iter()
+            .collect(),
+        ];
+        let mut state = State::default();
+        let _ = update(&mut state, Message::Read(Ok((import, plan))));
+
+        let dialog = state.view().expect("the dialog is open");
+        let mut ui = simulator(dialog);
+
+        for line in [
+            "Saved settings already here, replaced (2)",
+            "WTF/Account/ME/SavedVariables/Omen.lua",
+            "WTF/Account/ME/Icecrown/Arthas/SavedVariables/Skada.lua",
+            "2 of them replace files already here, and the settings they hold.",
+        ] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
+    }
+
+    #[test]
+    fn an_import_replacing_nothing_lists_nothing_replaced() {
+        let (import, mut plan) = reviewed();
+        plan.replaced.clear();
+        let mut state = State::default();
+        let _ = update(&mut state, Message::Read(Ok((import, plan))));
+
+        let dialog = state.view().expect("the dialog is open");
+        let mut ui = simulator(dialog);
+
+        assert!(
+            ui.find("Saved settings already here, replaced (0)")
+                .is_err()
+        );
+        assert!(ui.find("Restores 2 saved settings files.").is_ok());
     }
 
     #[test]

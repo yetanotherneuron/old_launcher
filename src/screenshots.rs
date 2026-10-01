@@ -200,9 +200,10 @@ fn screenshots() {
         present: vec![listed("Bartender4"), listed("Details"), listed("Questie")],
         unavailable: Vec::new(),
         manual: vec![listed("MyTweaks")],
-        replaced: vec![PathBuf::from(
-            "WTF/Account/PLAYER/SavedVariables/Bartender4.lua",
-        )],
+        replaced: vec![
+            PathBuf::from("WTF/Account/PLAYER/SavedVariables/Bartender4.lua"),
+            PathBuf::from("WTF/Account/PLAYER/Icecrown/Arthas/SavedVariables/Bartender4.lua"),
+        ],
     };
     let _ = app.update(Message::Addons(addons::Message::StatusSelected(
         Status::All,
