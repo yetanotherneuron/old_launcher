@@ -292,17 +292,22 @@
       ]
     },
     {
-      "name": "AddFriend-3.3.5a",
-      "description": "AddFriend is a simple addon that adds an \"Add Friend\" and \"Invite Guild\" option to the context menu of player options.",
+      "name": "AddFriend",
+      "description": "AddFriend is a simple addon that adds an Add Friend or Add Guild option to the context menu of player options.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/AddFriend.jpeg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "AddFriend-3.3.5a",
+          "name": "AddFriend",
           "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/refs/heads/main.zip",
           "updated": "2024-07-07",
-          "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
+          "links": [
+            {
+              "label": "Curseforge",
+              "url": "https://www.curseforge.com/wow/addons/addfriend"
+            }
+          ],
           "folders": [
             {
               "name": "AddFriend",
@@ -3177,10 +3182,26 @@
       ]
     },
     {
-      "name": "Cell",
-      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
+      "name": "Cell-WotLK",
+      "description": "A World of Warcraft raid frame addon.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
+          "updated": "2026-09-27",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -3193,22 +3214,6 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -5629,7 +5634,7 @@
           "source": "nom0re",
           "name": "DialogUI",
           "url": "https://github.com/ghbset/DialogUI-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-06-16",
+          "updated": "2026-09-27",
           "changes": "https://github.com/ghbset/DialogUI-WotLK/commits/main",
           "links": [
             {
@@ -5858,7 +5863,7 @@
           "source": "nom0re",
           "name": "DragonUI",
           "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-09-30",
+          "updated": "2026-10-04",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -11088,6 +11093,34 @@
       ]
     },
     {
+      "name": "OmniInventory",
+      "description": "OmniInventory combines your bags, bank, and guild bank in one searchable interface with category, list, and grid views. It also supports offline character inventories, sorting, item overlays, automatic junk selling, and repairs.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/OmniInventory.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "OmniInventory",
+          "url": "https://github.com/Zendevve/OmniInventory/archive/HEAD.zip",
+          "updated": "2026-08-05",
+          "changes": "https://github.com/Zendevve/OmniInventory/commits",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/Zendevve/OmniInventory"
+            }
+          ],
+          "folders": [
+            {
+              "name": "OmniInventory",
+              "title": "OmniInventory",
+              "version": "2.1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "OneBag",
       "description": "OneBag fügt alle Taschen zu einer zusammen.",
       "downloads": [
@@ -12183,7 +12216,7 @@
           "source": "nom0re",
           "name": "Questie",
           "url": "https://github.com/Aldori15/Questie/archive/refs/heads/335.zip",
-          "updated": "2026-09-28",
+          "updated": "2026-10-02",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
             {
@@ -12194,8 +12227,8 @@
           "folders": [
             {
               "name": "Questie-335",
-              "title": "Questie-335 v9.9.1-335",
-              "version": "9.9.1-335",
+              "title": "Questie-335 v9.9.4-335",
+              "version": "9.9.4-335",
               "interface": 30300
             }
           ]
@@ -12893,14 +12926,14 @@
           "source": "github-khalgh",
           "name": "RefinedBlizzPlates-WotLK",
           "url": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
+          "updated": "2026-10-03",
           "page": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK",
           "changes": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/commits/main",
           "folders": [
             {
               "name": "!!RefinedBlizzPlates",
               "title": "RefinedBlizzPlates",
-              "version": "1.11.3",
+              "version": "1.11.4",
               "interface": 30300
             }
           ]
@@ -13766,6 +13799,34 @@
             {
               "name": "SnowfallKeyPress",
               "title": "SnowfallKeyPress",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Soulstone",
+      "description": "Move your setup to another character, realm or server: action bars (all 120 slots, both specs), character macros, keybindings (incl. Bartender4), talents and glyphs. Includes talent templates with Wowhead import/export, a visual preview and an automatic backup before every restore.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Soulstone1.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Soulstone",
+          "url": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases/latest/download/Soulstone.zip",
+          "updated": "2026-09-30",
+          "changes": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/pabhoz/Soulstone-WoW-Addon"
+            }
+          ],
+          "folders": [
+            {
+              "name": "Soulstone",
+              "title": "Soulstone",
+              "version": "1.0.0",
               "interface": 30300
             }
           ]
@@ -14754,7 +14815,7 @@
           "source": "nom0re",
           "name": "TradeSkillMaster",
           "url": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport/archive/refs/heads/master.zip",
-          "updated": "2026-09-22",
+          "updated": "2026-10-02",
           "changes": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport/commits/master",
           "links": [
             {
@@ -15311,20 +15372,11 @@
       "downloads": [
         {
           "source": "nom0re",
-          "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-09-14",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
-          "links": [
-            {
-              "label": "GitHub latest",
-              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
-            },
-            {
-              "label": "GitHub 4.0.0",
-              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
-            }
-          ],
+          "name": "WeakAuras-WotLK",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
+          "updated": "2026-10-01",
+          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
           "folders": [
             {
               "name": "APIDocumentation",
@@ -15371,11 +15423,20 @@
         },
         {
           "source": "nom0re",
-          "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-09-13",
-          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
+          "name": "WeakAuras",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
+          "updated": "2026-10-01",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
+          "links": [
+            {
+              "label": "GitHub latest",
+              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
+            },
+            {
+              "label": "GitHub 4.0.0",
+              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
+            }
+          ],
           "folders": [
             {
               "name": "APIDocumentation",
@@ -15847,7 +15908,7 @@
           "source": "nom0re",
           "name": "Zygor Guides",
           "url": "https://github.com/ErebusAres/ZygorGuidesRemaster-3.3.5a_WOTLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-25",
+          "updated": "2026-10-04",
           "changes": "https://github.com/ErebusAres/ZygorGuidesRemaster-3.3.5a_WOTLK/commits/main",
           "links": [
             {
@@ -15859,7 +15920,7 @@
             {
               "name": "ZygorGuidesViewerRM",
               "title": "Zygor Guides Viewer Remastered",
-              "version": "3.0.253",
+              "version": "3.0.254",
               "interface": 30300
             }
           ]
