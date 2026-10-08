@@ -124,6 +124,20 @@ measured against. Installing never falls back to another source, picked or
 not: what the card says is what gets installed, and a failed download is
 reported in the banner with the source named.
 
+**Downloads from GitHub** sign in when they can, since GitHub limits
+anonymous downloads, raw files included, with limits it doesn't publish.
+The launcher stores no token. It takes `GH_TOKEN`, or else `GITHUB_TOKEN`,
+from its environment, as the GitHub CLI does; or else, when the settings'
+checkbox is ticked (`github_cli` in the settings file), it runs
+`gh auth token` in the background, at start and whenever the settings open.
+The token stays in memory. reqwest drops `Authorization` whenever a redirect
+changes host, and every GitHub download redirects, so signed-in downloads
+follow redirects themselves (`github::Signed::get`). They send the token to
+github.com, api.github.com, codeload.github.com and
+raw.githubusercontent.com only, never to signed release links or other
+hosts. When GitHub answers 429, or 403 with no requests left, the banner
+says GitHub is limiting downloads, and how to sign in when they weren't.
+
 **Play** starts `Wow.exe` from the client folder on Windows. Elsewhere it
 runs the client's command with `sh`, the way Steam runs launch options: the
 environment variables are set and exported first, and `%command%` becomes
@@ -131,7 +145,8 @@ the quoted path to `Wow.exe` (`wine %command%` when there is no command).
 `~` and `$HOME` expand as in a terminal.
 
 The only file outside the clients lists the client folders, how each one
-starts and the sources picked per addon:
+starts, the sources picked per addon and whether to use the GitHub CLI's
+login:
 `~/.config/old_launcher/config.toml` (`%APPDATA%\old_launcher\config.toml`
 on Windows), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
 launcher does nothing else until you choose: it shows why, where the file
@@ -147,9 +162,9 @@ edit it (then read it again), quit, or overwrite it with new settings.
 - `indexer/`: the CLI that builds `index/wotlk.json` from the upstream
   sources.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
-  shell, with one TEA cell per screen (`setup`, `clients`, and `addons`
-  with its cards and confirmation dialogs). Screens are tested with
-  `iced_test::simulator`.
+  shell, with one TEA cell per screen (`setup`, `clients`, `settings`, and
+  `addons` with its cards and confirmation dialogs), and `github.rs` signs
+  downloads in to GitHub. Screens are tested with `iced_test::simulator`.
 - `docs/plans/`: work planned but not started.
 
 Nothing outside tests may panic on purpose: the workspace denies `unwrap`,
@@ -167,6 +182,9 @@ cargo test --workspace
 # (entries whose folders the client already has are skipped):
 OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
     cargo test --lib addons -- --ignored
+# Downloads one file of each kind from GitHub, signed in with GH_TOKEN,
+# GITHUB_TOKEN or the GitHub CLI's login:
+cargo test --lib github -- --ignored
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored

@@ -68,6 +68,9 @@ you can also pick another source instead.
 - Every addon folder it installs gets a small `.old_launcher.toml` file
   saying where it came from. The game ignores it; the launcher uses it to
   tell what can be updated.
+- Downloads from GitHub, which limits anonymous ones, can sign in with
+  `GH_TOKEN`, `GITHUB_TOKEN` or your GitHub CLI login. The launcher never
+  stores a token.
 
 Developers: see
 [DEVELOPMENT.md](https://gitlab.com/juxuanu/old_launcher/-/blob/main/DEVELOPMENT.md).

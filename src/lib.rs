@@ -13,10 +13,12 @@ mod catalog;
 mod clients;
 mod errors;
 mod game;
+mod github;
 mod recognize;
 mod recovery;
 #[cfg(test)]
 mod screenshots;
+mod settings;
 mod setup;
 mod style;
 #[cfg(test)]
@@ -60,6 +62,12 @@ pub struct App {
     config: Config,
     /// What downloads go through, or why there is nothing to download with.
     client: Result<reqwest::Client, String>,
+    /// The same, but following no redirects by itself, for downloads signed
+    /// in to GitHub to follow them and sign only GitHub's hosts.
+    direct: Option<reqwest::Client>,
+    /// How downloads from GitHub sign in, if they do.
+    github: github::Login,
+    settings: settings::State,
     catalog: Catalog,
     refresh: catalog::Refresh,
     /// When the catalog was last fetched, so a refresh doesn't fetch it
@@ -142,6 +150,12 @@ pub enum Message {
     Recognize(recognize::Message),
     /// Something happened to a game.
     Game(game::Message),
+    /// An interaction with the settings dialog.
+    Settings(settings::Message),
+    /// Open the settings dialog.
+    OpenSettings,
+    /// The GitHub CLI answered with its login, or why there is none.
+    SignedIn(github::Login),
     /// Open the clients dialog.
     ManageClients,
     /// Start the game.
@@ -228,18 +242,15 @@ impl App {
             }
         };
 
-        // A connection that never comes, or a server that stops sending,
-        // ends the request rather than hanging the catalog refresh or a
-        // download forever. A slow but flowing download is fine.
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("old_launcher/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(15))
-            .read_timeout(Duration::from_secs(60))
-            .build()
-            .map_err(|error| describe(&error));
+        let client = http_client().build().map_err(|error| describe(&error));
         if let Err(error) = &client {
             errors.report(addons::unavailable(error));
         }
+        // Without it, downloads stay anonymous.
+        let direct = http_client()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .ok();
 
         // The catalog fetched last time shows right away, and a fresh one is
         // fetched in a moment. Another catalog, when asked for, comes alone.
@@ -263,6 +274,9 @@ impl App {
             config_path,
             config,
             client,
+            direct,
+            github: github::Login::Anonymous,
+            settings: settings::State::default(),
             catalog,
             refresh: catalog::Refresh::Idle,
             refreshed: None,
@@ -314,6 +328,7 @@ impl App {
             self.refresh_catalog(),
             open,
             Task::perform(update::check(self.client.clone()), Message::UpdateChecked),
+            self.sign_in(),
         ])
     }
 
@@ -479,6 +494,36 @@ impl App {
                 .clients
                 .open(self.selected.path())
                 .map(Message::Clients),
+            Message::Settings(message) => {
+                let action = self.settings.update(message);
+                let task = action.task.map(Message::Settings);
+
+                match action.instruction {
+                    Some(settings::Instruction::UseCli(use_cli)) => {
+                        log::info!(
+                            "{} the GitHub CLI's login",
+                            if use_cli { "Using" } else { "Not using" }
+                        );
+                        self.config.github_cli = use_cli;
+                        Task::batch([task, self.save(), self.sign_in()])
+                    }
+                    None => task,
+                }
+            }
+            // The GitHub CLI may have logged in or out since it was asked.
+            Message::OpenSettings => {
+                self.settings.open();
+                self.sign_in()
+            }
+            Message::SignedIn(login) => {
+                // Unless the box was unticked meanwhile.
+                if self.config.github_cli
+                    && matches!(self.github, github::Login::Asking | github::Login::Cli(_))
+                {
+                    self.signed_in(login);
+                }
+                Task::none()
+            }
             Message::Recognize(message) => {
                 let (installation, _) = self.selected.open();
                 let action = self
@@ -741,6 +786,8 @@ impl App {
             Message::Escape => {
                 if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
+                } else if self.settings.is_open() {
+                    self.update(Message::Settings(settings::Message::Close))
                 } else if self.clients.is_open() {
                     self.update(Message::Clients(clients::Message::Close))
                 } else if self.recognize.details_open() {
@@ -821,6 +868,14 @@ impl App {
         ]
         .push(newer)
         .push(space::horizontal())
+        .push(style::icon_button(
+            settings::OPEN,
+            style::COG,
+            32.0,
+            button::secondary,
+            "Settings",
+            Some(Message::OpenSettings),
+        ))
         .push(
             button("Manage clients…")
                 .style(button::secondary)
@@ -975,6 +1030,15 @@ impl App {
                 Some(setup.view().map(Message::Setup)),
                 Message::Setup(setup::Message::Cancel),
             )
+        } else if self.settings.is_open() {
+            (
+                Some(
+                    self.settings
+                        .view(self.config.github_cli, &self.github)
+                        .map(Message::Settings),
+                ),
+                Message::Settings(settings::Message::Close),
+            )
         } else if self.clients.is_open() {
             (
                 Some(
@@ -1097,6 +1161,41 @@ impl App {
 
         Task::perform(blocking(move || config.save(&path)), Message::Saved)
     }
+
+    /// Finds how downloads from GitHub sign in: with a token in the
+    /// environment, or else with the GitHub CLI's login when the settings
+    /// allow it, which takes asking the CLI in the background.
+    fn sign_in(&mut self) -> Task<Message> {
+        if let Some(login) = github::from_environment(|variable| std::env::var(variable).ok()) {
+            self.signed_in(login);
+            Task::none()
+        } else if self.config.github_cli {
+            // A login the CLI gave before stays in use until it answers again.
+            if !matches!(self.github, github::Login::Cli(_)) {
+                self.signed_in(github::Login::Asking);
+            }
+            Task::perform(github::ask_cli(), Message::SignedIn)
+        } else {
+            self.signed_in(github::Login::Anonymous);
+            Task::none()
+        }
+    }
+
+    /// Downloads started from now on sign in to GitHub with `login`.
+    fn signed_in(&mut self, login: github::Login) {
+        if login != self.github {
+            // The status names where a token comes from, never the token.
+            log::info!("Downloads from GitHub: {}", login.status());
+        }
+
+        let signed = login
+            .token()
+            .cloned()
+            .zip(self.direct.clone())
+            .map(|(token, client)| github::Signed::new(client, token));
+        self.addons.sign_in(signed);
+        self.github = login;
+    }
 }
 
 /// What a key press does: Escape closes dialogs, F5 rescans, Ctrl+F
@@ -1113,6 +1212,17 @@ fn shortcut(event: keyboard::Event) -> Option<Message> {
         Key::Character("q") if modifiers.command() => Some(Message::Quit),
         _ => None,
     }
+}
+
+/// How every HTTP client of the launcher starts. A connection that never
+/// comes, or a server that stops sending, ends the request rather than
+/// hanging the catalog refresh or a download forever. A slow but flowing
+/// download is fine.
+fn http_client() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .user_agent(concat!("old_launcher/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
 }
 
 /// `count` of `noun`, in the plural when it isn't one: `1 addon`, `3 addons`.
@@ -1170,7 +1280,7 @@ fn describe(error: &dyn std::error::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iced_test::simulator;
+    use iced_test::{selector, simulator};
 
     /// A launcher listing `installations`, with nothing open.
     pub(crate) fn app(installations: &[&str]) -> App {
@@ -1185,6 +1295,9 @@ mod tests {
                 ..Config::default()
             },
             client: Ok(reqwest::Client::new()),
+            direct: None,
+            github: github::Login::Anonymous,
+            settings: settings::State::default(),
             catalog: Catalog::default(),
             refresh: catalog::Refresh::Idle,
             refreshed: None,
@@ -1590,6 +1703,102 @@ mod tests {
         })]);
 
         assert!(ui.find("Shortcut: F5").is_ok());
+    }
+
+    #[test]
+    fn the_cog_says_settings_on_hover_and_opens_them() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let mut app = opened(installation);
+
+        let mut ui = simulator(app.view());
+        let cog = ui
+            .find(selector::id(settings::OPEN))
+            .unwrap()
+            .bounds()
+            .center();
+        ui.point_at(cog);
+        let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: cog,
+        })]);
+        assert!(ui.find("Settings").is_ok(), "the hint");
+
+        let _ = ui.click(selector::id(settings::OPEN)).unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        for message in messages {
+            let _ = app.update(message);
+        }
+
+        assert!(app.settings.is_open());
+        let mut ui = simulator(app.view());
+        assert!(ui.find(settings::USE_CLI).is_ok());
+    }
+
+    #[test]
+    fn ticking_the_cli_box_is_saved_and_signs_in_with_it() {
+        let mut app = app(&["/games/wotlk"]);
+
+        let _ = app.update(Message::Settings(settings::Message::UseCli(true)));
+
+        assert!(app.config.github_cli);
+        // A token in the environment, as CI may have, comes first.
+        assert!(
+            matches!(
+                app.github,
+                github::Login::Asking | github::Login::Environment { .. }
+            ),
+            "{:?}",
+            app.github
+        );
+
+        let _ = app.update(Message::Settings(settings::Message::UseCli(false)));
+
+        assert!(!app.config.github_cli);
+        assert!(
+            matches!(
+                app.github,
+                github::Login::Anonymous | github::Login::Environment { .. }
+            ),
+            "{:?}",
+            app.github
+        );
+    }
+
+    #[test]
+    fn the_clis_answer_counts_only_while_asked_for() {
+        let mut app = app(&["/games/wotlk"]);
+        app.config.github_cli = false;
+
+        let _ = app.update(Message::SignedIn(github::Login::CliMissing));
+        assert_eq!(app.github, github::Login::Anonymous, "unticked meanwhile");
+
+        app.config.github_cli = true;
+        app.github = github::Login::Asking;
+        let _ = app.update(Message::SignedIn(github::Login::CliMissing));
+        assert_eq!(app.github, github::Login::CliMissing);
+
+        // Asked again while signed in, as when the settings open.
+        app.github = github::Login::Cli(github::Token::new("secret"));
+        let _ = app.update(Message::SignedIn(github::Login::CliMissing));
+        assert_eq!(app.github, github::Login::CliMissing, "logged out since");
+    }
+
+    #[test]
+    fn the_cli_login_stays_in_use_while_the_cli_is_asked_again() {
+        let mut app = app(&["/games/wotlk"]);
+        app.config.github_cli = true;
+        app.github = github::Login::Cli(github::Token::new("secret"));
+
+        let _ = app.update(Message::OpenSettings);
+
+        // A token in the environment, as CI may have, comes first.
+        assert!(
+            matches!(
+                app.github,
+                github::Login::Cli(_) | github::Login::Environment { .. }
+            ),
+            "{:?}",
+            app.github
+        );
     }
 
     /// Whether the Play button, which must say `label`, can be pressed.

@@ -14,6 +14,9 @@ pub const PLUS: &[u8] = include_bytes!("../assets/plus.svg");
 /// A pen, for editing.
 pub const PEN: &[u8] = include_bytes!("../assets/pen.svg");
 
+/// A cog, for the settings.
+pub const COG: &[u8] = include_bytes!("../assets/cog.svg");
+
 /// The size the icons are designed at: there, their lines fall on whole
 /// pixels, which any smaller size smears across two or three.
 const ICON: f32 = 24.0;

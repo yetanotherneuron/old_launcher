@@ -979,6 +979,7 @@ async fn a_download_installs_and_marks_the_folders_with_its_source() {
 
     let folders = install(
         client(),
+        None,
         source,
         download,
         installation.clone(),
@@ -1003,6 +1004,7 @@ async fn a_failed_download_names_its_source_and_installs_nothing() {
 
         install(
             client(),
+            None,
             source,
             download,
             installation.clone(),
@@ -1028,6 +1030,34 @@ async fn a_failed_download_names_its_source_and_installs_nothing() {
     assert!(installation.scan().unwrap().addons.is_empty());
 }
 
+/// Signed in to GitHub, an install downloads through the GitHub module's
+/// own redirect handling, and ends the same.
+#[tokio::test]
+async fn a_signed_in_download_installs_like_any_other() {
+    let server = serve(vec![("/acp.zip", Some(acp_zip()))]).await;
+    let (_root, installation) = testing::client(&[]);
+    let (source, download) = download("GitHub", format!("{server}/acp.zip"));
+    let direct = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let signed = github::Signed::sending_to(direct, "secret", std::slice::from_ref(&server));
+
+    let folders = install(
+        client(),
+        Some(signed),
+        source,
+        download,
+        installation.clone(),
+        Vec::new(),
+        Arc::default(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(folders, ["ACP"]);
+}
+
 #[tokio::test]
 async fn a_stopped_download_installs_nothing() {
     let server = serve(vec![("/acp.zip", Some(acp_zip()))]).await;
@@ -1037,6 +1067,7 @@ async fn a_stopped_download_installs_nothing() {
 
     let error = install(
         client(),
+        None,
         source,
         download,
         installation.clone(),
@@ -1121,6 +1152,7 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
         .collect();
     let folders = install(
         client(),
+        None,
         "Test Source".to_owned(),
         entry.downloads[0].clone(),
         installation.clone(),
@@ -1466,6 +1498,7 @@ async fn catalog_entries_install_into_a_real_client() {
 
         let folders = install(
             client(),
+            None,
             source.to_owned(),
             download.clone(),
             installation.clone(),

@@ -20,6 +20,11 @@ pub struct Config {
     /// The client folder last selected.
     #[serde(default)]
     pub selected: Option<PathBuf>,
+    /// Whether downloads from GitHub may sign in with the GitHub CLI's
+    /// login (`gh auth token`) when the environment has no token. Left out
+    /// of the file while off. The launcher never stores a token itself.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub github_cli: bool,
     /// How clients start outside Windows, by client folder. Clients missing
     /// here start with the defaults.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -177,6 +182,11 @@ fn quoted(text: &str) -> Vec<String> {
     strings
 }
 
+/// Whether `value` is off, which settings leave out of the file.
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +234,7 @@ mod tests {
         let mut config = Config {
             installations: vec!["/games/wotlk".into(), "/games/war mane".into()],
             selected: Some("/games/war mane".into()),
+            github_cli: true,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
         };
@@ -273,7 +284,9 @@ mod tests {
         config.save(&path).unwrap();
         let written = fs::read_to_string(&path).unwrap();
         assert!(
-            !written.contains("launch") && !written.contains("sources"),
+            !written.contains("launch")
+                && !written.contains("sources")
+                && !written.contains("github"),
             "nothing to write: {written}"
         );
     }
@@ -283,6 +296,7 @@ mod tests {
         let mut config = Config {
             installations: vec!["/games/wotlk".into(), "/games/warmane".into()],
             selected: Some("/games/wotlk".into()),
+            github_cli: false,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
         };

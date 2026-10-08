@@ -26,8 +26,7 @@ use crate::core::library::{Filter, Library, Order, Origin, Status};
 use crate::core::search::Query;
 use crate::core::{Installation, Snapshot};
 use crate::errors::Errors;
-use crate::style;
-use crate::{blocking, describe};
+use crate::{blocking, describe, github, style};
 
 /// The id of the search field, for keyboard focus.
 pub const SEARCH: &str = "addons-search";
@@ -43,6 +42,8 @@ pub struct State {
     confirm: Option<Confirm>,
     /// Whether a confirmed deletion is running.
     working: bool,
+    /// How downloads sign in to GitHub, when they do.
+    github: Option<github::Signed>,
 }
 
 /// Identifies a catalog entry across catalog refreshes: its
@@ -187,7 +188,14 @@ impl State {
             jobs: HashMap::new(),
             confirm: None,
             working: false,
+            github: None,
         }
+    }
+
+    /// Makes the downloads started from now on sign in to GitHub this way,
+    /// or not at all.
+    pub fn sign_in(&mut self, github: Option<github::Signed>) {
+        self.github = github;
     }
 
     /// Handles an interaction. Changes happen in `installation`; installs
@@ -282,6 +290,7 @@ impl State {
                 let task = Task::sip(
                     install(
                         client.clone(),
+                        self.github.clone(),
                         source.clone(),
                         download,
                         installation.clone(),
@@ -683,11 +692,13 @@ fn to_top() -> Task<Message> {
 
 /// Installs `download`, from the source named `source`, into
 /// `installation`, replacing the folders in `replacing`, and reports
-/// progress. Nothing else is tried when it fails: the failure names the
-/// source and says what went wrong. Setting `cancel` stops it while it is
-/// still downloading.
+/// progress. It downloads with `client`, or signed in to GitHub with
+/// `github` when there is a login. Nothing else is tried when it fails: the
+/// failure names the source and says what went wrong. Setting `cancel` stops
+/// it while it is still downloading.
 fn install(
     client: reqwest::Client,
+    github: Option<github::Signed>,
     source: String,
     download: Download,
     installation: Installation,
@@ -696,11 +707,21 @@ fn install(
 ) -> impl Straw<Vec<String>, Stage, Failure> {
     sipper(async move |mut progress| {
         let attempt = async {
-            let response = client
-                .get(&download.url)
-                .send()
-                .await
-                .and_then(reqwest::Response::error_for_status)
+            let response = match &github {
+                Some(signed) => signed.get(&download.url).await.map_err(Failure::Failed)?,
+                None => client
+                    .get(&download.url)
+                    .send()
+                    .await
+                    .map_err(|error| Failure::Failed(describe(&error)))?,
+            };
+
+            if let Some(refusal) = github::refusal(&response, github.is_some()) {
+                return Err(Failure::Failed(refusal.to_owned()));
+            }
+
+            let response = response
+                .error_for_status()
                 .map_err(|error| Failure::Failed(describe(&error)))?;
 
             let total = response.content_length();
