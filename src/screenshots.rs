@@ -58,6 +58,9 @@ fn screenshots() {
         ("Data/enUS/locale-enUS.MPQ", 440),
         ("Data/enUS/expansion-locale-enUS.MPQ", 210),
         ("Data/enUS/lichking-locale-enUS.MPQ", 330),
+        ("Data/esES/locale-esES.MPQ", 450),
+        ("Data/esES/expansion-locale-esES.MPQ", 215),
+        ("Data/esES/lichking-locale-esES.MPQ", 335),
     ] {
         write(&root.join(file), "");
         fs::File::options()
@@ -67,10 +70,12 @@ fn screenshots() {
             .set_len(megabytes * 1024 * 1024)
             .unwrap();
     }
-    write(
-        &root.join("Data/enUS/realmlist.wtf"),
-        "set realmlist logon.example.com\nset patchlist localhost\n",
-    );
+    for locale in ["enUS", "esES"] {
+        write(
+            &root.join(format!("Data/{locale}/realmlist.wtf")),
+            "set realmlist logon.example.com\nset patchlist localhost\n",
+        );
+    }
     let addons = root.join("Interface/AddOns");
 
     for name in [

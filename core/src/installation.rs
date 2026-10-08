@@ -28,6 +28,8 @@ pub struct Details {
     pub size: u64,
     /// The languages the client has data for (`enUS`, `esES`, …), sorted.
     pub locales: Vec<String>,
+    /// The one it plays in; see [`Installation::locale`].
+    pub locale: Option<String>,
     /// Which server the client connects to, when it has a `realmlist.wtf`.
     pub realmlist: Option<Realmlist>,
 }
@@ -101,6 +103,42 @@ impl Installation {
     /// `WTF/Config.wtf` sets, or else the first it has data for.
     pub fn locale(&self) -> Option<&str> {
         self.locale.as_deref()
+    }
+
+    /// Makes the client play in `locale`, one it has data for, from its next
+    /// start: `WTF/Config.wtf` gets one `SET locale` line, in place of any it
+    /// had, and is made if missing. Every other line stays byte for byte, and
+    /// the file keeps its permissions.
+    ///
+    /// The file is written beside itself and renamed over, so a crash
+    /// mid-write never leaves the client's settings truncated.
+    pub fn set_locale(&mut self, locale: &str) -> Result<(), Error> {
+        if !locales(&self.root).iter().any(|known| known == locale) {
+            return Err(Error::NoLocale(locale.to_owned()));
+        }
+
+        let wtf = self.wtf_directory();
+        fs::create_dir_all(&wtf).map_err(io_at(&wtf))?;
+        let path = child(&wtf, "Config.wtf");
+        let (config, permissions) = match fs::read(&path) {
+            Ok(config) => {
+                let metadata = fs::metadata(&path).map_err(io_at(&path))?;
+                (config, Some(metadata.permissions()))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), None),
+            Err(error) => return Err(io_at(&path)(error)),
+        };
+
+        let partial = path.with_extension("wtf.partial");
+        fs::write(&partial, with_setting(&config, "locale", locale)).map_err(io_at(&partial))?;
+        // The file it replaces keeps its permissions.
+        if let Some(permissions) = permissions {
+            fs::set_permissions(&partial, permissions).map_err(io_at(&partial))?;
+        }
+        fs::rename(&partial, &path).map_err(io_at(&path))?;
+
+        self.locale = Some(locale.to_owned());
+        Ok(())
     }
 
     /// `Interface/AddOns`, whether or not it exists yet.
@@ -286,6 +324,7 @@ impl Details {
         Ok(Self {
             size: size(root)?,
             locales: locales(root),
+            locale: locale(root),
             realmlist: Realmlist::of(root),
         })
     }
@@ -343,8 +382,7 @@ fn locales(root: &Path) -> Vec<String> {
 }
 
 /// What the `.wtf` file at `path` sets `name` to, the way the client reads
-/// it: every `set <name> <value>` line in turn (any case, the value maybe
-/// quoted), so the last one wins.
+/// it: every line setting it in turn, so the last one wins.
 fn setting(path: &Path, name: &str) -> Option<String> {
     let bytes = fs::read(path).ok()?;
     let text = String::from_utf8_lossy(&bytes);
@@ -352,15 +390,62 @@ fn setting(path: &Path, name: &str) -> Option<String> {
     text.trim_start_matches('\u{feff}')
         .lines()
         .rev()
-        .find_map(|line| {
-            let mut words = line.split_whitespace();
-            let set = words.next()?.eq_ignore_ascii_case("set");
-            let key = words.next()?.eq_ignore_ascii_case(name);
-            let value = words.collect::<Vec<_>>().join(" ");
-            let value = value.trim_matches('"');
-
-            (set && key && !value.is_empty()).then(|| value.to_owned())
+        .filter_map(set_line)
+        .find_map(|(key, value)| {
+            (key.eq_ignore_ascii_case(name) && !value.is_empty()).then_some(value)
         })
+}
+
+/// What a `.wtf` line sets, and to what: `set <name> <value>`, in any case,
+/// the value maybe quoted.
+fn set_line(line: &str) -> Option<(&str, String)> {
+    let mut words = line.split_whitespace();
+    if !words.next()?.eq_ignore_ascii_case("set") {
+        return None;
+    }
+    let name = words.next()?;
+    let value = words.collect::<Vec<_>>().join(" ");
+
+    Some((name, value.trim_matches('"').to_owned()))
+}
+
+/// The `.wtf` file `file` with `name` set to `value` by one line, where the
+/// first line setting it was, or else at the end, and no other line setting
+/// it. The rest stays byte for byte, a byte order mark included, and the
+/// new line ends the way the file's lines do.
+fn with_setting(file: &[u8], name: &str, value: &str) -> Vec<u8> {
+    const BOM: &[u8] = "\u{feff}".as_bytes();
+
+    let ending: &[u8] = if file.windows(2).any(|pair| pair == b"\r\n") {
+        b"\r\n"
+    } else {
+        b"\n"
+    };
+    let setting = [format!("SET {name} \"{value}\"").as_bytes(), ending].concat();
+    let body = file.strip_prefix(BOM);
+    let mut written = body.map_or_else(Vec::new, |_| BOM.to_vec());
+    let mut set = false;
+
+    for line in body.unwrap_or(file).split_inclusive(|&byte| byte == b'\n') {
+        let sets = set_line(&String::from_utf8_lossy(line))
+            .is_some_and(|(key, _)| key.eq_ignore_ascii_case(name));
+
+        match (sets, set) {
+            (false, _) => written.extend_from_slice(line),
+            (true, false) => written.extend_from_slice(&setting),
+            (true, true) => {}
+        }
+        set |= sets;
+    }
+
+    if !set {
+        if !written.is_empty() && !written.ends_with(b"\n") && written != BOM {
+            written.extend_from_slice(ending);
+        }
+        written.extend_from_slice(&setting);
+    }
+
+    written
 }
 
 /// The bytes in every file under `root`, symlinks not followed. Folders
@@ -542,6 +627,7 @@ mod tests {
         let details = Details::read(installation.root()).unwrap();
 
         assert_eq!(details.locales, ["enUS", "esES"]);
+        assert_eq!(details.locale.as_deref(), Some("enUS"));
         let size = [
             "Wow.exe",
             "Data/enUS/realmlist.wtf",
@@ -599,6 +685,101 @@ mod tests {
             Some("enUS")
         );
         assert_eq!(Realmlist::of(installation.root()), None);
+    }
+
+    #[test]
+    fn choosing_a_language_rewrites_only_its_line_in_config_wtf() {
+        let (root, _) = client();
+        fs::create_dir_all(root.path().join("Data/enUS")).unwrap();
+        fs::write(root.path().join("Data/esES/realmlist.wtf"), "set realmlist es.example.com").unwrap();
+        fs::create_dir_all(root.path().join("wtf")).unwrap();
+        fs::write(
+            root.path().join("wtf/config.wtf"),
+            "\u{feff}SET gxResolution \"1920x1080\"\r\nSET locale \"enUS\"\r\n\
+             SET realmName \"Icecrown\"\r\nset LOCALE enGB\r\nSET accountName \"PLAYER\"",
+        )
+        .unwrap();
+        let mut installation = Installation::open(root.path()).unwrap();
+        assert_eq!(installation.locale(), Some("enUS"), "enGB has no data");
+
+        installation.set_locale("esES").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.path().join("wtf/config.wtf")).unwrap(),
+            "\u{feff}SET gxResolution \"1920x1080\"\r\nSET locale \"esES\"\r\n\
+             SET realmName \"Icecrown\"\r\nSET accountName \"PLAYER\"",
+            "in place of the first, the others gone, the file spelled as it was"
+        );
+        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(
+            Installation::open(root.path()).unwrap().locale(),
+            Some("esES")
+        );
+        assert_eq!(
+            Realmlist::of(installation.root()).and_then(|realmlist| realmlist.server),
+            Some("es.example.com".into()),
+            "the realmlist follows"
+        );
+        assert_eq!(
+            fs::read_dir(root.path().join("wtf")).unwrap().count(),
+            1,
+            "nothing left beside it"
+        );
+    }
+
+    #[test]
+    fn a_language_is_set_in_a_config_wtf_made_or_extended_for_it() {
+        let (root, mut installation) = client();
+
+        installation.set_locale("esES").unwrap();
+        assert_eq!(
+            fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
+            "SET locale \"esES\"\n"
+        );
+
+        fs::write(root.path().join("WTF/Config.wtf"), "SET gxWindow \"1\"").unwrap();
+        installation.set_locale("esES").unwrap();
+        assert_eq!(
+            fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
+            "SET gxWindow \"1\"\nSET locale \"esES\"\n",
+            "after the last line, ended first"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn choosing_a_language_keeps_the_permissions_of_config_wtf() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (root, mut installation) = client();
+        let path = root.path().join("WTF/Config.wtf");
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(&path, "SET locale \"enUS\"\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o777)).unwrap();
+
+        installation.set_locale("esES").unwrap();
+
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o777
+        );
+    }
+
+    #[test]
+    fn a_language_without_data_is_refused() {
+        let (root, mut installation) = client();
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"esES\"\n").unwrap();
+
+        assert!(matches!(
+            installation.set_locale("deDE"),
+            Err(Error::NoLocale(locale)) if locale == "deDE"
+        ));
+        assert_eq!(
+            fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
+            "SET locale \"esES\"\n"
+        );
+        assert_eq!(installation.locale(), Some("esES"));
     }
 
     #[test]

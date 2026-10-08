@@ -442,10 +442,12 @@ impl App {
                     return Task::none();
                 }
                 let current = self.selected.path().map(Path::to_path_buf);
+                let (installation, _) = self.selected.open();
                 let action = self.clients.update(
                     message,
                     &mut self.config,
                     current.as_deref(),
+                    installation,
                     &mut self.errors,
                 );
                 let task = action.task.map(Message::Clients);
@@ -482,6 +484,19 @@ impl App {
                         };
 
                         Task::batch([task, open, self.save()])
+                    }
+                    Some(clients::Instruction::Switched(switched)) => {
+                        if let Selected::Open { installation, .. } = &mut self.selected
+                            && installation.root() == switched.root()
+                        {
+                            log::info!(
+                                "{} plays in {} from now on",
+                                switched.root().display(),
+                                switched.locale().unwrap_or("no language")
+                            );
+                            *installation = switched;
+                        }
+                        task
                     }
                     Some(clients::Instruction::Close { edited: true }) => {
                         log::info!("The launch settings changed");
@@ -1043,7 +1058,12 @@ impl App {
             (
                 Some(
                     self.clients
-                        .view(&self.config, self.selected.path(), installation)
+                        .view(
+                            &self.config,
+                            self.selected.path(),
+                            installation,
+                            game.is_some(),
+                        )
                         .map(Message::Clients),
                 ),
                 Message::Clients(clients::Message::Close),
@@ -1731,6 +1751,26 @@ mod tests {
         assert!(app.settings.is_open());
         let mut ui = simulator(app.view());
         assert!(ui.find(settings::USE_CLI).is_ok());
+    }
+
+    #[test]
+    fn a_language_switched_in_the_clients_dialog_shows_in_the_header() {
+        let (_root, installation) =
+            crate::testing::client(&["Data/enUS/realmlist.wtf", "Data/esES/realmlist.wtf"]);
+        let mut app = opened(installation.clone());
+        let _ = app.update(Message::ManageClients);
+        let mut switched = installation;
+        switched.set_locale("esES").unwrap();
+
+        let _ = app.update(Message::Clients(clients::Message::Switched(
+            "esES".into(),
+            Ok(switched),
+        )));
+        let _ = app.update(Message::Escape);
+
+        let mut ui = simulator(app.view());
+        assert!(ui.find("esES").is_ok());
+        assert!(ui.find("enUS").is_err());
     }
 
     #[test]

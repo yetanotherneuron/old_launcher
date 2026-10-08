@@ -64,6 +64,10 @@ pub enum Message {
     Focused,
     /// The realmlist of a client folder was read again.
     Reread(PathBuf, Result<Option<Realmlist>, String>),
+    /// A language was picked for the client shown.
+    Locale(String),
+    /// The client shown was switched to this language, or couldn't be.
+    Switched(String, Result<Installation, String>),
     /// The environment variables were edited.
     Env(String),
     /// The command was edited.
@@ -88,6 +92,9 @@ pub enum Instruction {
     Add,
     /// Forget the client shown.
     Remove,
+    /// The client shown plays in another language from now on: this is it,
+    /// switched.
+    Switched(Installation),
     /// The dialog closed.
     Close {
         /// Whether how a client starts was changed, so the config needs
@@ -152,12 +159,14 @@ impl State {
     }
 
     /// Handles an interaction; how the `current` client starts is edited
-    /// right in `config`, and failures go to `errors`.
+    /// right in `config`, its language is switched in `installation` (that
+    /// client, once it opened), and failures go to `errors`.
     pub fn update(
         &mut self,
         message: Message,
         config: &mut Config,
         current: Option<&Path>,
+        installation: Option<&Installation>,
         errors: &mut Errors,
     ) -> Action<Instruction, Message> {
         match message {
@@ -209,16 +218,7 @@ impl State {
                 }) else {
                     return Action::none();
                 };
-                let root = root.to_path_buf();
-                log::debug!("Reading the realmlist of {} again", root.display());
-
-                Action::task(Task::perform(
-                    blocking({
-                        let root = root.clone();
-                        move || Ok(Realmlist::of(&root))
-                    }),
-                    Message::Reread.with(root),
-                ))
+                Action::task(reread(root.to_path_buf()))
             }
             Message::Reread(path, Ok(realmlist)) => {
                 if let Some(Some(Ok(details))) = self.details.get_mut(&path) {
@@ -228,6 +228,39 @@ impl State {
             }
             // The last reading stays: it was only a refresh.
             Message::Reread(_, Err(_)) => Action::none(),
+            Message::Locale(locale) => {
+                let Some(mut installation) = installation
+                    .filter(|installation| installation.locale() != Some(locale.as_str()))
+                    .cloned()
+                else {
+                    return Action::none();
+                };
+                log::info!(
+                    "Switching {} to {locale}",
+                    installation.root().display()
+                );
+
+                Action::task(Task::perform(
+                    blocking({
+                        let locale = locale.clone();
+                        move || installation.set_locale(&locale).map(|()| installation)
+                    }),
+                    Message::Switched.with(locale),
+                ))
+            }
+            Message::Switched(_, Ok(installation)) => {
+                let root = installation.root().to_path_buf();
+                if let Some(Some(Ok(details))) = self.details.get_mut(&root) {
+                    details.locale = installation.locale().map(str::to_owned);
+                }
+
+                // The realmlist is the new language's.
+                Action::new(Instruction::Switched(installation), reread(root))
+            }
+            Message::Switched(locale, Err(error)) => {
+                errors.report(format!("Could not switch the language to {locale}: {error}"));
+                Action::none()
+            }
             Message::Env(env) => {
                 if let Some(root) = current {
                     let mut launch = config.launch(root);
@@ -272,12 +305,13 @@ impl State {
     }
 
     /// The dialog, showing the `current` client of `config`; `installation`
-    /// is that client, once it opened.
+    /// is that client, once it opened, and `playing` whether its game runs.
     pub fn view<'a>(
         &'a self,
         config: &'a Config,
         current: Option<&'a Path>,
         installation: Option<&'a Installation>,
+        playing: bool,
     ) -> Element<'a, Message> {
         let title = row![
             text("Clients").size(20).font(style::BOLD),
@@ -354,14 +388,7 @@ impl State {
             current.map(|root| {
                 let details: Element<'a, Message> = match self.details.get(root) {
                     Some(Some(Ok(details))) => column![
-                        fact(
-                            "Languages",
-                            if details.locales.is_empty() {
-                                "None found".to_owned()
-                            } else {
-                                details.locales.join(", ")
-                            }
-                        ),
+                        languages(details, playing),
                         match &details.realmlist {
                             Some(realmlist) => fact(
                                 "Realmlist",
@@ -451,14 +478,54 @@ impl State {
     }
 }
 
+/// Reads the realmlist of the client at `root` again.
+fn reread(root: PathBuf) -> Task<Message> {
+    log::debug!("Reading the realmlist of {} again", root.display());
+
+    Task::perform(
+        blocking({
+            let root = root.clone();
+            move || Ok(Realmlist::of(&root))
+        }),
+        Message::Reread.with(root),
+    )
+}
+
+/// The languages the client has data for. With two or more, the one it
+/// plays in is picked among them, but not while its game runs (`playing`).
+fn languages(details: &Details, playing: bool) -> Row<'_, Message> {
+    match details.locales.as_slice() {
+        [] => fact("Languages", "None found".to_owned()),
+        [locale] => fact("Languages", locale.clone()),
+        locales => {
+            let picker =
+                pick_list(details.locale.clone(), locales, String::clone).padding([2, 10]);
+
+            labelled(
+                "Language",
+                if playing {
+                    style::tip(
+                        picker,
+                        "Close the game first: it rewrites Config.wtf when it quits.",
+                    )
+                } else {
+                    picker.on_select(Message::Locale).into()
+                },
+            )
+            .align_y(Center)
+        }
+    }
+}
+
 /// A labelled fact about the client, to which more can be pushed after the
 /// value.
 fn fact<'a>(label: &'a str, value: String) -> Row<'a, Message> {
-    row![
-        text(label).width(100).style(text::secondary),
-        text(value).wrapping(text::Wrapping::WordOrGlyph),
-    ]
-    .spacing(12)
+    labelled(label, text(value).wrapping(text::Wrapping::WordOrGlyph))
+}
+
+/// `value`, labelled as a fact about the client.
+fn labelled<'a>(label: &'a str, value: impl Into<Element<'a, Message>>) -> Row<'a, Message> {
+    row![text(label).width(100).style(text::secondary), value.into()].spacing(12)
 }
 
 /// A labelled text field, with what is wrong with its contents under it.
@@ -491,7 +558,8 @@ mod tests {
     fn details(realmlist: Option<Realmlist>) -> Details {
         Details {
             size: 18_576_000_000,
-            locales: vec!["enGB".into(), "enUS".into()],
+            locales: vec!["enUS".into()],
+            locale: Some("enUS".into()),
             realmlist,
         }
     }
@@ -512,6 +580,7 @@ mod tests {
             message,
             config,
             Some(Path::new(WOTLK)),
+            None,
             &mut Errors::default(),
         )
     }
@@ -538,7 +607,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(ui.find("Reading the folder…").is_ok());
         drop(ui);
 
@@ -551,10 +620,151 @@ mod tests {
             ),
         );
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
-        for line in [WOTLK, "enGB, enUS", "logon.example.com", "17.3 GB"] {
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
+        for line in [WOTLK, "Languages", "enUS", "logon.example.com", "17.3 GB"] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
+    }
+
+    /// A client at a temporary folder with data for enUS and esES, each with
+    /// its realmlist, open and shown in the dialog.
+    fn bilingual() -> (tempfile::TempDir, Installation, State, Config) {
+        let (folder, installation) = crate::testing::client_with(&[
+            ("Data/enUS/realmlist.wtf", "set realmlist us.example.com"),
+            ("Data/esES/realmlist.wtf", "set realmlist es.example.com"),
+        ]);
+        let root = installation.root();
+        let mut config = Config {
+            installations: vec![root.to_path_buf()],
+            selected: Some(root.to_path_buf()),
+            ..Config::default()
+        };
+        let mut state = State::default();
+        let _ = state.open(Some(root));
+        let _ = state.update(
+            Message::Read(root.to_path_buf(), Ok(Details::read(root).unwrap())),
+            &mut config,
+            Some(root),
+            Some(&installation),
+            &mut Errors::default(),
+        );
+
+        (folder, installation, state, config)
+    }
+
+    #[test]
+    fn a_language_picked_is_written_and_the_realmlist_follows() {
+        let (_folder, installation, mut state, mut config) = bilingual();
+        let root = installation.root();
+        let mut errors = Errors::default();
+
+        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), false));
+        assert!(ui.find("Language").is_ok());
+        assert!(ui.find("us.example.com").is_ok());
+        let _ = ui.click("enUS").unwrap();
+        let _ = ui.click("esES").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        assert!(
+            matches!(messages.as_slice(), [Message::Locale(locale)] if locale == "esES"),
+            "{messages:?}"
+        );
+
+        let switch = state.update(
+            Message::Locale("esES".into()),
+            &mut config,
+            Some(root),
+            Some(&installation),
+            &mut errors,
+        );
+        assert!(switch.instruction.is_none());
+        assert!(switch.task.units() > 0, "written in the background");
+
+        // What the task does.
+        let mut switched = installation.clone();
+        switched.set_locale("esES").unwrap();
+        let done = state.update(
+            Message::Switched("esES".into(), Ok(switched)),
+            &mut config,
+            Some(root),
+            Some(&installation),
+            &mut errors,
+        );
+        assert!(matches!(
+            done.instruction,
+            Some(Instruction::Switched(switched)) if switched.locale() == Some("esES")
+        ));
+        assert!(done.task.units() > 0, "the realmlist is read again");
+        let _ = state.update(
+            Message::Reread(root.to_path_buf(), Ok(Realmlist::of(root))),
+            &mut config,
+            Some(root),
+            Some(&installation),
+            &mut errors,
+        );
+
+        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), false));
+        assert!(ui.find("esES").is_ok());
+        assert!(ui.find("es.example.com").is_ok());
+        assert!(errors.messages().is_empty(), "{:?}", errors.messages());
+    }
+
+    #[test]
+    fn picking_the_language_played_in_writes_nothing() {
+        let (_folder, installation, mut state, mut config) = bilingual();
+
+        let action = state.update(
+            Message::Locale("enUS".into()),
+            &mut config,
+            Some(installation.root()),
+            Some(&installation),
+            &mut Errors::default(),
+        );
+
+        assert_eq!(action.task.units(), 0);
+        assert!(!installation.root().join("WTF").exists());
+    }
+
+    #[test]
+    fn a_language_is_not_picked_while_the_game_runs() {
+        let (_folder, installation, state, config) = bilingual();
+        let root = installation.root();
+
+        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), true));
+        let picker = ui.find("enUS").unwrap().bounds().center();
+        ui.point_at(picker);
+        let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: picker,
+        })]);
+        assert!(
+            ui.find("Close the game first: it rewrites Config.wtf when it quits.")
+                .is_ok()
+        );
+        let _ = ui.click("enUS").unwrap();
+        assert!(ui.find("esES").is_err(), "the list doesn't open");
+        assert_eq!(ui.into_messages().count(), 0);
+    }
+
+    #[test]
+    fn a_failed_switch_goes_to_the_banner() {
+        let (_folder, installation, mut state, mut config) = bilingual();
+        let mut errors = Errors::default();
+
+        let action = state.update(
+            Message::Switched(
+                "esES".into(),
+                Err("/games/wotlk/WTF/Config.wtf: Permission denied".into()),
+            ),
+            &mut config,
+            Some(installation.root()),
+            Some(&installation),
+            &mut errors,
+        );
+
+        assert!(action.instruction.is_none());
+        assert_eq!(
+            errors.messages(),
+            ["Could not switch the language to esES: /games/wotlk/WTF/Config.wtf: Permission denied"]
+        );
     }
 
     #[test]
@@ -590,7 +800,7 @@ mod tests {
         let (mut state, mut config) = opened(Some(details(Some(realmlist(None)))));
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(ui.find("Not set").is_ok());
         let _ = ui.click(selector::id(EDIT_REALMLIST)).unwrap();
         // Not handled here: that would open an editor.
@@ -607,7 +817,7 @@ mod tests {
             Message::Reread(root.into(), Ok(Some(realmlist(Some("logon.example.com"))))),
         );
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(ui.find("logon.example.com").is_ok());
     }
 
@@ -615,7 +825,7 @@ mod tests {
     fn a_client_without_a_realmlist_offers_nothing_to_edit() {
         let (state, config) = opened(Some(details(None)));
 
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None));
+        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false));
 
         assert!(ui.find("No realmlist.wtf").is_ok());
         assert!(ui.find(selector::id(EDIT_REALMLIST)).is_err());
@@ -626,7 +836,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         let _ = ui.click(WOTLK).unwrap();
         let _ = ui.click("/games/warmane").unwrap();
         let message = ui.into_messages().next().unwrap();
@@ -645,7 +855,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         let _ = ui.click(selector::id(REMOVE)).unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
         for message in messages {
@@ -653,7 +863,7 @@ mod tests {
             assert!(action.instruction.is_none(), "not yet");
         }
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(
             ui.find("Remove /games/wotlk from the launcher? Its folder is left as it is.")
                 .is_ok()
@@ -666,7 +876,7 @@ mod tests {
         assert!(!state.removing);
 
         let _ = update(&mut state, &mut config, Message::Remove);
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         let _ = ui.click("Remove").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
         let instructions: Vec<Instruction> = messages
@@ -681,7 +891,7 @@ mod tests {
     fn adding_and_closing_are_left_to_the_launcher() {
         let (mut state, mut config) = opened(None);
 
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None));
+        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false));
         let _ = ui.click(selector::id(ADD)).unwrap();
         let _ = ui.click("Close").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
@@ -706,7 +916,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(ui.find("wine %command%").is_ok(), "the default, as a hint");
         let _ = ui.click(selector::id(ENV)).unwrap();
         let _ = ui.typewrite("WINEPREFIX=~/wow umu-run");
@@ -729,7 +939,7 @@ mod tests {
             config.launch(Path::new("/games/warmane")),
             Launch::default()
         );
-        let mut ui = simulator(state.view(&config, Some(root), None));
+        let mut ui = simulator(state.view(&config, Some(root), None, false));
         assert!(ui.find("umu-run is not a NAME=value pair.").is_ok());
         drop(ui);
 

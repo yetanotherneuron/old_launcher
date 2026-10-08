@@ -57,6 +57,10 @@ pub enum Error {
     #[error("invalid addon folder name: {0:?}")]
     InvalidName(String),
 
+    /// A language the client has no `Data` folder for.
+    #[error("the client has no Data/{0} folder")]
+    NoLocale(String),
+
     /// A SavedVariables path handed to `clean` lies outside the installation.
     #[error("refusing to delete {}: not inside the installation's WTF folder", .0.display())]
     OutsideWtf(PathBuf),

@@ -138,6 +138,13 @@ raw.githubusercontent.com only, never to signed release links or other
 hosts. When GitHub answers 429, or 403 with no requests left, the banner
 says GitHub is limiting downloads, and how to sign in when they weren't.
 
+**The language** a client plays in is the one `WTF/Config.wtf` sets
+(`SET locale`) when the client has a `Data/<locale>` folder for it, or else
+the first such folder; its `realmlist.wtf` is the one that counts. With
+several, the clients dialog switches it by rewriting that one line (the
+rest of the file stays byte for byte, and the file is made if missing), but
+not while the game runs, since the game writes the file when it quits.
+
 **Play** starts `Wow.exe` from the client folder on Windows. Elsewhere it
 runs the client's command with `sh`, the way Steam runs launch options: the
 environment variables are set and exported first, and `%command%` becomes
