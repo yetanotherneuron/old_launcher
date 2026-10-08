@@ -19,6 +19,9 @@ pub struct Folder {
     pub path: PathBuf,
     /// The name it must have under `Interface/AddOns`: its `.toc` file's stem.
     pub name: String,
+    /// That `.toc` file, spelled as the archive spells it: `Foo.TOC` loads
+    /// just as well, since the client ignores case.
+    pub toc: PathBuf,
 }
 
 /// Walks `root` breadth-first and returns every addon folder in it.
@@ -49,7 +52,7 @@ pub fn find(root: &Path) -> Result<Vec<Folder>, Error> {
                         subdirectories.push(path);
                     }
                 } else if let Some(stem) = toc_stem(&file_name) {
-                    tocs.push(stem.to_owned());
+                    tocs.push((stem.to_owned(), path));
                 }
             }
 
@@ -66,10 +69,10 @@ pub fn find(root: &Path) -> Result<Vec<Folder>, Error> {
 
             // Prefer the `.toc` named like its folder; otherwise the shortest
             // stem, so `Foo.toc` beats flavor variants like `Foo_Wrath.toc`.
-            tocs.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
-            let name = tocs
+            tocs.sort_by(|(a, _), (b, _)| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
+            let (name, toc) = tocs
                 .iter()
-                .find(|stem| stem.eq_ignore_ascii_case(&directory_name))
+                .find(|(stem, _)| stem.eq_ignore_ascii_case(&directory_name))
                 .unwrap_or(&tocs[0])
                 .clone();
 
@@ -80,6 +83,7 @@ pub fn find(root: &Path) -> Result<Vec<Folder>, Error> {
                 folders.push(Folder {
                     path: directory,
                     name,
+                    toc,
                 });
             }
         }
@@ -172,6 +176,19 @@ mod tests {
         let root = tree(&["acp/ACP.toc"]);
 
         assert_eq!(names(root.path()), ["ACP"]);
+    }
+
+    #[test]
+    fn a_toc_is_found_whatever_the_case_of_its_extension() {
+        let root = tree(&["The_Sarge_DK/The_Sarge.TOC", "The_Sarge_DK/The_Sarge.LUA"]);
+        let folders = find(root.path()).unwrap();
+
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].name, "The_Sarge");
+        assert_eq!(
+            folders[0].toc,
+            root.path().join("The_Sarge_DK/The_Sarge.TOC")
+        );
     }
 
     #[test]

@@ -108,6 +108,8 @@ impl Source for Collection {
                 links: Vec::new(),
                 updated: Updated::Given(updated),
                 require_wotlk: false,
+                // The zips are rebuilt daily under the same URL.
+                immutable: false,
             });
         }
 

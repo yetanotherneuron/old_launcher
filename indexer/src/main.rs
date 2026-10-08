@@ -8,7 +8,7 @@ mod source;
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,7 +20,9 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::fetch::fetch;
-use crate::source::{Listing, Source, Updated, github, locus313, nom0re, rising_gods};
+use crate::source::{
+    Listing, Source, Updated, github, locus313, nom0re, rising_gods, wowinterface,
+};
 
 /// Builds the launcher's addon catalog from every upstream source.
 #[derive(Debug, Parser)]
@@ -28,6 +30,10 @@ struct Arguments {
     /// Where to write the catalog.
     #[arg(long, default_value = "index/wotlk.json")]
     output: PathBuf,
+    /// Where to keep what was found in archives that never change, for the
+    /// next run to reuse instead of downloading them again.
+    #[arg(long, default_value = "index/archives.json")]
+    archives: PathBuf,
     /// How many archives to download at once.
     #[arg(long, default_value_t = 8)]
     jobs: usize,
@@ -70,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
     for owner in github::MAINTAINERS {
         gathered.push(gather(&client, &github::Maintainer(owner)).await?);
     }
+    gathered.push(gather(&client, &wowinterface::Site).await?);
     gathered.push(gather(&client, &rising_gods::Collection).await?);
 
     let mut sources = Vec::new();
@@ -88,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
     let mut seen = HashSet::new();
     listings.retain(|(_, source, listing)| seen.insert((source.clone(), listing.name.clone())));
 
+    let known = known_archives(&arguments.archives);
     let total = listings.len();
     let downloads = Arc::new(Semaphore::new(arguments.jobs.max(1)));
     let mut inspections = JoinSet::new();
@@ -95,32 +103,54 @@ async fn main() -> anyhow::Result<()> {
     for (priority, source, listing) in listings {
         let client = client.clone();
         let downloads = Arc::clone(&downloads);
+        let earlier = earlier(&listing, &known);
 
         let _ = inspections.spawn(async move {
-            let contents = async {
-                let _permit = downloads.acquire_owned().await?;
+            let reused = earlier.is_some();
+            let contents = match earlier {
+                Some(contents) => Ok(contents),
+                None => {
+                    async {
+                        let _permit = downloads.acquire_owned().await?;
 
-                contents(&client, &listing.download).await
-            }
-            .await;
+                        contents(&client, &listing.download).await
+                    }
+                    .await
+                }
+            };
 
-            (priority, source, listing, contents)
+            (priority, source, listing, contents, reused)
         });
     }
 
     let mut inspected = Vec::new();
     let mut skipped = Vec::new();
+    // What this run found in archives that never change, for the next.
+    let mut archives = BTreeMap::new();
+    let mut reused_count = 0;
 
     while let Some(inspection) = inspections.join_next().await {
-        let (priority, source, listing, contents) = inspection?;
+        let (priority, source, listing, contents, reused) = inspection?;
         let done = inspected.len() + skipped.len() + 1;
+        let note = if reused {
+            reused_count += 1;
+            " (inspected before)"
+        } else {
+            ""
+        };
+
+        if listing.immutable
+            && let Ok(contents) = &contents
+        {
+            let _ = archives.insert(listing.download.clone(), contents.clone());
+        }
 
         let reason = match contents {
             Ok(contents) => match left_out(&listing, &contents) {
                 Some(reason) => reason,
                 None => {
                     println!(
-                        "[{done}/{total}] {}: {} folders",
+                        "[{done}/{total}] {}: {} folders{note}",
                         listing.name,
                         contents.folders.len()
                     );
@@ -142,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
             Err(error) => format!("{error:#}"),
         };
 
-        println!("[{done}/{total}] {}: skipped, {reason}", listing.name);
+        println!("[{done}/{total}] {}: skipped{note}, {reason}", listing.name);
         skipped.push(format!("{source} / {}: {reason}", listing.name));
     }
 
@@ -244,11 +274,26 @@ async fn main() -> anyhow::Result<()> {
     std::fs::write(&arguments.output, catalog.to_json()?)
         .with_context(|| format!("writing {}", arguments.output.display()))?;
 
+    // Only the archives listed this run: the rest are gone or changed.
+    if let Some(parent) = arguments.archives.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        &arguments.archives,
+        serde_json::to_string_pretty(&archives)? + "\n",
+    )
+    .with_context(|| format!("writing {}", arguments.archives.display()))?;
+
     println!(
         "\nWrote {} addons from {} sources to {} ({merged} listed by more than one source).",
         catalog.entries.len(),
         catalog.sources.len(),
         arguments.output.display()
+    );
+    println!(
+        "Reused {reused_count} archives inspected before, and kept {} in {} for the next run.",
+        archives.len(),
+        arguments.archives.display()
     );
 
     if !skipped.is_empty() {
@@ -260,6 +305,35 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// What earlier runs found in archives that never change, by download URL,
+/// as kept at `path`. Without the file, or when it doesn't read, every
+/// archive is downloaded again, which costs time and nothing else.
+fn known_archives(path: &Path) -> BTreeMap<String, Contents> {
+    let json = match std::fs::read(path) {
+        Ok(json) => json,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return BTreeMap::new(),
+        Err(error) => {
+            println!("Not reusing {}: {error}", path.display());
+            return BTreeMap::new();
+        }
+    };
+
+    serde_json::from_slice(&json).unwrap_or_else(|error| {
+        println!("Not reusing {}: {error}", path.display());
+        BTreeMap::new()
+    })
+}
+
+/// What an earlier run found in `listing`'s archive, if it never changes
+/// and was inspected before.
+fn earlier(listing: &Listing, known: &BTreeMap<String, Contents>) -> Option<Contents> {
+    if !listing.immutable {
+        return None;
+    }
+
+    known.get(&listing.download).cloned()
 }
 
 /// Lists everything `source` offers, with how the catalog presents it.
@@ -410,6 +484,7 @@ mod tests {
                 links: Vec::new(),
                 updated: Updated::FromArchive,
                 require_wotlk: false,
+                immutable: false,
             },
             contents: Contents {
                 folders: vec![catalog::Folder {
@@ -439,6 +514,37 @@ mod tests {
                 .collect(),
             updated: None,
         }
+    }
+
+    #[test]
+    fn only_archives_that_never_change_are_reused() {
+        let mut listing = inspected(0, "1.0", None).listing;
+        let known = BTreeMap::from([(listing.download.clone(), folders(&[Some(30300)]))]);
+
+        assert_eq!(earlier(&listing, &known), None, "it may have changed");
+
+        listing.immutable = true;
+        assert_eq!(earlier(&listing, &known), Some(folders(&[Some(30300)])));
+
+        listing.download = "https://example.com/new.zip".into();
+        assert_eq!(earlier(&listing, &known), None, "never inspected");
+    }
+
+    #[test]
+    fn archives_found_before_are_read_back_and_a_bad_record_is_ignored() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("archives.json");
+        assert!(known_archives(&path).is_empty(), "no record yet");
+
+        let known = BTreeMap::from([(
+            "https://example.com/a.zip".to_owned(),
+            folders(&[Some(30300), None]),
+        )]);
+        std::fs::write(&path, serde_json::to_string_pretty(&known).unwrap()).unwrap();
+        assert_eq!(known_archives(&path), known);
+
+        std::fs::write(&path, "{ not json").unwrap();
+        assert!(known_archives(&path).is_empty(), "a broken record");
     }
 
     #[test]

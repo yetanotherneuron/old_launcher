@@ -12,7 +12,7 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::fetch::fetch;
-use crate::source::{Listing, Source, Updated};
+use crate::source::{Listing, Source, Updated, entities};
 
 const SITEMAP: &str = "https://addons.rising-gods.de/sitemap.xml";
 const PAGES: &str = "https://addons.rising-gods.de/addons/";
@@ -101,6 +101,8 @@ fn parse(html: &str, url: &str) -> Option<Listing> {
         updated: Updated::FromArchive,
         // The collection is curated for the Rising Gods 3.3.5a server.
         require_wotlk: false,
+        // A new upload may keep the old file name.
+        immutable: false,
     })
 }
 
@@ -137,49 +139,10 @@ fn text(html: &str) -> String {
         }
     }
 
-    let mut decoded = String::with_capacity(plain.len());
-    let mut rest = plain.as_str();
-
-    while let Some((before, after)) = rest.split_once('&') {
-        decoded.push_str(before);
-
-        let entity = after
-            .split_once(';')
-            .filter(|(entity, _)| entity.len() <= 8)
-            .and_then(|(entity, after)| {
-                let c = match entity {
-                    "amp" => '&',
-                    "lt" => '<',
-                    "gt" => '>',
-                    "quot" => '"',
-                    "apos" => '\'',
-                    "nbsp" => ' ',
-                    _ => {
-                        let code = match entity.strip_prefix("#x") {
-                            Some(hex) => u32::from_str_radix(hex, 16).ok()?,
-                            None => entity.strip_prefix('#')?.parse().ok()?,
-                        };
-                        char::from_u32(code)?
-                    }
-                };
-
-                Some((c, after))
-            });
-
-        match entity {
-            Some((c, after)) => {
-                decoded.push(c);
-                rest = after;
-            }
-            None => {
-                decoded.push('&');
-                rest = after;
-            }
-        }
-    }
-    decoded.push_str(rest);
-
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+    entities(&plain)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]

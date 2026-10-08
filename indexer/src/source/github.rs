@@ -106,6 +106,8 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
                     // A branch snapshot's files carry the last commit's date.
                     updated: Updated::FromArchive,
                     require_wotlk: true,
+                    // The branch moves on under the same URL.
+                    immutable: false,
                 }),
         );
 

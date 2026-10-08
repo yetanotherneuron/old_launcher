@@ -9,14 +9,15 @@ app does to a client folder, how the code is laid out, and how to test it.
 tool and committed here:
 
 ```sh
-GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer   # writes index/wotlk.json
+GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer   # writes index/wotlk.json and index/archives.json
 ```
 
 The token only raises GitHub's API limits: a run makes about a hundred
 calls, more than GitHub allows anonymously.
 
-The indexer lists every upstream source, downloads every archive, and
-records the addon folders each one installs (with their `.toc` title,
+The indexer lists every upstream source, downloads every archive except
+the unchanging ones it inspected before (see below), and records the addon
+folders each one installs (with their `.toc` title,
 version and interface), when it was last updated, and the addon's own page
 and history of changes at the source when it has them. Listings that install
 the same folders are merged into one entry whose downloads are ordered
@@ -35,12 +36,32 @@ describes it):
 - Backport maintainers on GitHub (ElvUI-WotLK, bkader, Bunny67, Zidras,
   s0h2x, KhalGH, Sattva-108, Xurkon): their own repositories that declare
   the 3.3.5a interface.
+- [WoWInterface](https://www.wowinterface.com), through the public API addon
+  managers use (`api.mmoui.com`). It tags files with game versions only from
+  Wrath Classic (3.4) on, so the indexer takes the untagged addons whose
+  latest file came out while 3.3 was the live patch (2009-12-08 to
+  2010-10-12) and keeps those that declare the 3.3.5a interface, but for a
+  few uploads left out by id (`wowinterface::EXCLUDED`), such as someone's
+  whole AddOns folder uploaded as one addon. Addons
+  still maintained today aren't there in their 3.3.5 version: the site keeps
+  only recent old versions.
 - [Rising Gods](https://addons.rising-gods.de/addons), a server's collection
   (descriptions in German).
 
 An addon's update date is the newest file date inside its archive, which for
 a repository snapshot is its last commit. locus313's zips are rebuilt daily,
-so for those it is the last commit touching the addon's folder.
+so for those it is the last commit touching the addon's folder. WoWInterface
+gives the upload date of the file.
+
+Some archives never change: a new version gets a new URL, as WoWInterface's
+links carry the upload time. What the indexer finds in those (folders,
+`.toc` fields and date) goes to `index/archives.json`, by URL, whether the
+listing made it into the catalog or not, and the next run reuses it instead
+of downloading the archive again. A source says so per listing
+(`Listing::immutable`). Branch snapshots and rebuilt zips change under the
+same URL, so they are downloaded every run. Without the file, every archive
+is downloaded again, so delete it after changing how archives are inspected
+(`Contents::inspect`), or the old findings stay.
 
 The app fetches the published catalog, `index/wotlk.json` as committed on
 `main`, which a weekly CI schedule regenerates, and keeps the last copy

@@ -139,6 +139,9 @@ fn parse(index: &[u8]) -> anyhow::Result<Vec<Listing>> {
                 .collect(),
             updated: Updated::FromArchive,
             require_wotlk: false,
+            // Many downloads are branch snapshots, which move on under the
+            // same URL.
+            immutable: false,
         })
         .collect())
 }

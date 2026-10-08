@@ -109,12 +109,13 @@ pub struct Folder {
 }
 
 /// What an archive installs, as the indexer records it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Contents {
     /// The addon folders, as [`Installation::install`](crate::Installation::install)
     /// would place them.
     pub folders: Vec<Folder>,
     /// When the newest file in the archive was modified (`YYYY-MM-DD`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
 }
 
@@ -263,9 +264,7 @@ impl Contents {
         let folders = layout::find(staging.path())?
             .into_iter()
             .map(|folder| {
-                // The name is the stem of a `.toc` file inside the folder.
-                let path = folder.path.join(format!("{}.toc", folder.name));
-                let toc = Toc::parse(&fs::read(&path).map_err(io_at(&path))?);
+                let toc = Toc::parse(&fs::read(&folder.toc).map_err(io_at(&folder.toc))?);
 
                 Ok(Folder {
                     name: folder.name,
@@ -469,5 +468,29 @@ mod tests {
             ]
         );
         assert_eq!(contents.updated, None);
+    }
+
+    #[test]
+    fn an_upper_case_toc_extension_is_read_too() {
+        // As Group Inviter is packaged on WoWInterface.
+        let archive = zip_of(&[
+            (
+                "Groupinviter/Groupinviter.TOC",
+                "## Title: Group Inviter\n## Interface: 30300\n",
+            ),
+            ("Groupinviter/Groupinviter.LUA", ""),
+        ]);
+
+        let contents = Contents::inspect(&archive).unwrap();
+
+        assert_eq!(
+            contents.folders,
+            [Folder {
+                name: "Groupinviter".into(),
+                title: Some("Group Inviter".into()),
+                version: None,
+                interface: Some(30300),
+            }]
+        );
     }
 }

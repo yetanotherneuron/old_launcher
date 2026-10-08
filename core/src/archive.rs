@@ -150,6 +150,14 @@ fn newer(newest: &mut Option<Date>, date: Option<Date>) {
     }
 }
 
+/// The UTC calendar date `seconds` after 1970-01-01, written as the catalog
+/// writes dates (`YYYY-MM-DD`).
+pub fn date(seconds: i64) -> String {
+    let (year, month, day) = civil(seconds.div_euclid(86_400));
+
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 /// The calendar date `days` days after 1970-01-01.
 fn civil(days: i64) -> Date {
     // Howard Hinnant's `civil_from_days`.
@@ -255,6 +263,14 @@ mod tests {
         assert_eq!(civil(0), (1970, 1, 1));
         assert_eq!(civil(19_000), (2022, 1, 8));
         assert_eq!(civil(11_016), (2000, 2, 29));
+    }
+
+    #[test]
+    fn seconds_since_the_epoch_become_catalog_dates() {
+        assert_eq!(date(0), "1970-01-01");
+        // Late on 2010-10-11, UTC: the evening before patch 4.0.1.
+        assert_eq!(date(1_286_834_170), "2010-10-11");
+        assert_eq!(date(-1), "1969-12-31");
     }
 
     #[test]
