@@ -27,7 +27,7 @@ use crate::core::library::{Filter, Library, Order, Origin, Status};
 use crate::core::search::Query;
 use crate::core::{Installation, Snapshot};
 use crate::errors::Errors;
-use crate::{blocking, describe, game, github, style};
+use crate::{blocking, describe, game, github, gitlab, style};
 
 /// The id of the search field, for keyboard focus.
 pub const SEARCH: &str = "addons-search";
@@ -740,7 +740,9 @@ fn install(
                     .map_err(|error| Failure::Failed(describe(&error)))?,
             };
 
-            if let Some(refusal) = github::refusal(&response, github.is_some()) {
+            if let Some(refusal) = github::refusal(&response, github.is_some())
+                .or_else(|| gitlab::refusal(&response))
+            {
                 return Err(Failure::Failed(refusal.to_owned()));
             }
 

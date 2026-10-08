@@ -14,6 +14,7 @@ mod clients;
 mod errors;
 mod game;
 mod github;
+mod gitlab;
 mod recognize;
 mod recovery;
 #[cfg(test)]

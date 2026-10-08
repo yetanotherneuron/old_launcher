@@ -137,6 +137,9 @@ github.com, api.github.com, codeload.github.com and
 raw.githubusercontent.com only, never to signed release links or other
 hosts. When GitHub answers 429, or 403 with no requests left, the banner
 says GitHub is limiting downloads, and how to sign in when they weren't.
+Downloads from GitLab stay anonymous: it allows anyone, signed in or not,
+five repository archives a minute, so a token would change nothing. When
+gitlab.com answers 429, the banner says to try again in a minute.
 
 **The language** a client plays in is the one `WTF/Config.wtf` sets
 (`SET locale`) when the client has a `Data/<locale>` folder for it, or else
