@@ -13,7 +13,7 @@ use crate::action::Action;
 use crate::core::launch::DEFAULT_COMMAND;
 use crate::core::{Config, Details, Installation, Realmlist};
 use crate::errors::Errors;
-use crate::{blocking, size, style};
+use crate::{blocking, game, size, style};
 
 /// The id of the button that adds a client.
 pub const ADD: &str = "clients-add";
@@ -160,13 +160,15 @@ impl State {
 
     /// Handles an interaction; how the `current` client starts is edited
     /// right in `config`, its language is switched in `installation` (that
-    /// client, once it opened), and failures go to `errors`.
+    /// client, once it opened) unless its game runs (`playing`), and
+    /// failures go to `errors`.
     pub fn update(
         &mut self,
         message: Message,
         config: &mut Config,
         current: Option<&Path>,
         installation: Option<&Installation>,
+        playing: bool,
         errors: &mut Errors,
     ) -> Action<Instruction, Message> {
         match message {
@@ -231,6 +233,7 @@ impl State {
             Message::Locale(locale) => {
                 let Some(mut installation) = installation
                     .filter(|installation| installation.locale() != Some(locale.as_str()))
+                    .filter(|_| !playing)
                     .cloned()
                 else {
                     return Action::none();
@@ -504,10 +507,7 @@ fn languages(details: &Details, playing: bool) -> Row<'_, Message> {
             labelled(
                 "Language",
                 if playing {
-                    style::tip(
-                        picker,
-                        "Close the game first: it rewrites Config.wtf when it quits.",
-                    )
+                    style::tip(picker, game::KEEPS_CONFIG)
                 } else {
                     picker.on_select(Message::Locale).into()
                 },
@@ -581,6 +581,7 @@ mod tests {
             config,
             Some(Path::new(WOTLK)),
             None,
+            false,
             &mut Errors::default(),
         )
     }
@@ -646,6 +647,7 @@ mod tests {
             &mut config,
             Some(root),
             Some(&installation),
+            false,
             &mut Errors::default(),
         );
 
@@ -674,6 +676,7 @@ mod tests {
             &mut config,
             Some(root),
             Some(&installation),
+            false,
             &mut errors,
         );
         assert!(switch.instruction.is_none());
@@ -687,6 +690,7 @@ mod tests {
             &mut config,
             Some(root),
             Some(&installation),
+            false,
             &mut errors,
         );
         assert!(matches!(
@@ -699,6 +703,7 @@ mod tests {
             &mut config,
             Some(root),
             Some(&installation),
+            false,
             &mut errors,
         );
 
@@ -717,6 +722,7 @@ mod tests {
             &mut config,
             Some(installation.root()),
             Some(&installation),
+            false,
             &mut Errors::default(),
         );
 
@@ -735,10 +741,7 @@ mod tests {
         let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
             position: picker,
         })]);
-        assert!(
-            ui.find("Close the game first: it rewrites Config.wtf when it quits.")
-                .is_ok()
-        );
+        assert!(ui.find(game::KEEPS_CONFIG).is_ok());
         let _ = ui.click("enUS").unwrap();
         assert!(ui.find("esES").is_err(), "the list doesn't open");
         assert_eq!(ui.into_messages().count(), 0);
@@ -757,6 +760,7 @@ mod tests {
             &mut config,
             Some(installation.root()),
             Some(&installation),
+            false,
             &mut errors,
         );
 

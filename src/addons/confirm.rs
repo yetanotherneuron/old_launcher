@@ -9,7 +9,7 @@ use iced::{Element, Fill, Fit};
 use super::Message;
 use crate::core::saved_variables::Scope;
 use crate::core::{Error, Installation};
-use crate::{counted, style};
+use crate::{counted, game, style};
 
 /// A deletion waiting for the user's confirmation.
 #[derive(Debug, Clone)]
@@ -80,6 +80,20 @@ impl Confirm {
         }
     }
 
+    /// Leaves out what the game would undo while it runs, as it writes saved
+    /// settings back when it logs out: an uninstall keeps them, and deleting
+    /// only them can't go ahead (false).
+    pub fn while_playing(&mut self) -> bool {
+        match self {
+            Self::Uninstall { delete_data, .. } => {
+                *delete_data = false;
+                true
+            }
+            Self::Repair { .. } => true,
+            Self::Clean { .. } => false,
+        }
+    }
+
     /// Carries out the deletion in `installation`.
     pub fn run(self, installation: &Installation) -> Result<(), Error> {
         match self {
@@ -103,8 +117,9 @@ impl Confirm {
     }
 
     /// The dialog asking for confirmation, with paths shown relative to the
-    /// client's `root`.
-    pub fn view<'a>(&'a self, root: &'a Path) -> Element<'a, Message> {
+    /// client's `root`. While its game runs (`playing`), saved settings are
+    /// left alone.
+    pub fn view<'a>(&'a self, root: &'a Path, playing: bool) -> Element<'a, Message> {
         // With the slashes the rest of the dialog uses, on Windows too.
         let relative = |file: &PathBuf| match file.strip_prefix(root) {
             Ok(relative) => relative
@@ -124,7 +139,7 @@ impl Confirm {
                 ..
             } => (
                 format!("Uninstall {title}?"),
-                if *delete_data {
+                if *delete_data && !playing {
                     "These folders and settings files will be deleted."
                 } else {
                     "These folders will be deleted from Interface/AddOns."
@@ -132,7 +147,7 @@ impl Confirm {
                 folders
                     .iter()
                     .map(|folder| format!("Interface/AddOns/{folder}"))
-                    .chain(data.iter().filter(|_| *delete_data).map(relative))
+                    .chain(data.iter().filter(|_| *delete_data && !playing).map(relative))
                     .collect::<Vec<_>>(),
                 "Uninstall",
             ),
@@ -146,8 +161,7 @@ impl Confirm {
             ),
             Self::Clean { title, files } => (
                 format!("Delete the saved data of {title}?"),
-                "These SavedVariables files will be deleted, resetting the settings they hold. \
-                 Close the game first: it rewrites them when you log out.",
+                "These SavedVariables files will be deleted, resetting the settings they hold.",
                 files.iter().map(relative).collect(),
                 "Delete",
             ),
@@ -168,19 +182,27 @@ impl Confirm {
                     } else {
                         format!("{} files", data.len())
                     };
-                    let consequence = if *delete_data {
-                        "Close the game first: it rewrites them when you log out."
+                    let label = format!("Also delete its saved settings ({files})");
+                    let (checkbox, consequence) = if playing {
+                        (
+                            checkbox(false).label(label),
+                            text(game::KEEPS_SETTINGS).style(text::warning),
+                        )
                     } else {
-                        "They stay in WTF for a reinstall, and show under Leftover data."
+                        (
+                            checkbox(*delete_data)
+                                .label(label)
+                                .on_toggle(Message::DeleteData),
+                            text(if *delete_data {
+                                "Deleting them resets the settings they hold."
+                            } else {
+                                "They stay in WTF for a reinstall, and show under Leftover data."
+                            })
+                            .style(text::secondary),
+                        )
                     };
 
-                    column![
-                        checkbox(*delete_data)
-                            .label(format!("Also delete its saved settings ({files})"))
-                            .on_toggle(Message::DeleteData),
-                        text(consequence).size(13).style(text::secondary),
-                    ]
-                    .spacing(4)
+                    column![checkbox, consequence.size(13)].spacing(4)
                 });
                 let required = (!required_by.is_empty()).then(|| {
                     let verb = if required_by.len() == 1 {
@@ -215,8 +237,12 @@ impl Confirm {
                     .push(settings)
                     .spacing(6)
             }
+            Self::Clean { .. } if playing => {
+                column![text(game::KEEPS_SETTINGS).style(text::warning)]
+            }
             Self::Repair { .. } | Self::Clean { .. } => column![],
         };
+        let blocked = playing && matches!(self, Self::Clean { .. });
 
         container(
             column![
@@ -240,7 +266,7 @@ impl Confirm {
                         .on_press(Message::Cancel),
                     button(action)
                         .style(button::danger)
-                        .on_press(Message::Confirm),
+                        .on_press_maybe((!blocked).then_some(Message::Confirm)),
                 ]
                 .spacing(8),
             ]
@@ -327,6 +353,45 @@ mod tests {
 
         assert!(!installation.addons_directory().join("Skada").exists());
         assert!(data[0].exists());
+    }
+
+    #[test]
+    fn while_the_game_runs_only_the_folders_go() {
+        let (_root, installation) = testing::client(&[
+            "Interface/AddOns/Skada/Skada.toc",
+            "WTF/Account/ME/SavedVariables/Skada.lua",
+        ]);
+        let data = installation
+            .scan()
+            .unwrap()
+            .data_files(&installation.scan().unwrap().groups()[0]);
+        let mut uninstall = Confirm::Uninstall {
+            title: "Skada".into(),
+            folders: vec!["Skada".into()],
+            data: data.clone(),
+            delete_data: true,
+            required_by: Vec::new(),
+            optionally_used_by: Vec::new(),
+        };
+
+        assert!(uninstall.while_playing());
+        uninstall.run(&installation).unwrap();
+
+        assert!(!installation.addons_directory().join("Skada").exists());
+        assert!(data[0].exists(), "the game would write it back anyway");
+        assert!(
+            !Confirm::Clean {
+                title: "Skada".into(),
+                files: data,
+            }
+            .while_playing()
+        );
+        assert!(
+            Confirm::Repair {
+                folder: "Skada".into(),
+            }
+            .while_playing()
+        );
     }
 
     #[test]

@@ -59,13 +59,37 @@ fn open<'a>(
         Some(installation),
         Some(snapshot),
         catalog::Refresh::Idle,
+        false,
+    ))
+}
+
+/// [`open`], while the client's game runs.
+fn playing<'a>(
+    state: &'a State,
+    installation: &'a Installation,
+    snapshot: &'a Snapshot,
+) -> simulator::Simulator<'a, Message> {
+    simulator(state.view(
+        &EMPTY,
+        Some(installation),
+        Some(snapshot),
+        catalog::Refresh::Idle,
+        true,
     ))
 }
 
 /// Applies `message` with no client open, and returns what it reported.
 fn apply(state: &mut State, catalog: &Catalog, message: Message) -> Errors {
     let mut errors = Errors::default();
-    let _ = state.update(message, catalog, Ok(&client()), None, None, &mut errors);
+    let _ = state.update(
+        message,
+        catalog,
+        Ok(&client()),
+        None,
+        None,
+        false,
+        &mut errors,
+    );
 
     errors
 }
@@ -97,7 +121,7 @@ fn searching_narrows_the_list_by_name_description_or_folder() {
     for query in ["damage", "skadastorage"] {
         apply(&mut state, &catalog, Message::QueryChanged(query.into()));
 
-        let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+        let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
         assert!(ui.find("Skada").is_ok(), "{query}");
         assert!(ui.find("Addon Control Panel").is_err(), "{query}");
         assert!(ui.find("All addons (1)").is_ok(), "{query}");
@@ -111,7 +135,7 @@ fn installing_needs_an_open_client() {
     let (_root, installation) = testing::client(&[]);
     let snapshot = installation.scan().unwrap();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     let _ = ui.click("Install");
     assert_eq!(ui.into_messages().count(), 0);
 
@@ -120,6 +144,7 @@ fn installing_needs_an_open_client() {
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
     let _ = ui.click("Install").unwrap();
     assert!(matches!(
@@ -133,11 +158,11 @@ fn without_a_catalog_the_list_says_what_is_going_on() {
     let state = State::new();
     let catalog = Catalog::default();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Running));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Running, false));
     assert!(ui.find("Fetching the list of addons…").is_ok());
     drop(ui);
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     assert!(
         ui.find("No addons listed yet: check the connection and try again.")
             .is_ok()
@@ -151,7 +176,7 @@ fn cards_show_every_source_the_date_folders_and_foreign_interfaces() {
     let catalog = catalog();
     let state = State::new();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
 
     assert!(ui.find("Other Source ↗").is_ok());
     assert!(ui.find("Test Source ↗").is_ok());
@@ -168,7 +193,7 @@ fn addons_made_for_other_versions_explain_the_risk_on_hover() {
     let catalog = catalog();
     let state = State::new();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     assert!(
         ui.find("Made for WotLK 3.3").is_err() && ui.find("Made for ").is_err(),
         "ACP declares 3.3.5a's own interface"
@@ -194,7 +219,7 @@ fn source_pills_link_to_the_addon_page_and_links_are_never_repeated() {
     let catalog = catalog();
     let state = State::new();
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     assert!(ui.find("GitHub ↗").is_err(), "the same page as the pill");
     assert!(ui.find("Curseforge ↗").is_ok());
     let _ = ui.click("Other Source ↗").unwrap();
@@ -204,7 +229,7 @@ fn source_pills_link_to_the_addon_page_and_links_are_never_repeated() {
     ));
 
     // A source without a page per addon links to its homepage.
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     let _ = ui.click("Test Source ↗").unwrap();
     assert!(matches!(
         ui.into_messages().next(),
@@ -225,7 +250,7 @@ fn entries_installed_from_any_source_offer_a_reinstall() {
         ..Snapshot::default()
     };
 
-    let mut ui = simulator(state.view(&catalog, None, Some(&snapshot), catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, Some(&snapshot), catalog::Refresh::Idle, false));
 
     assert!(ui.find("Reinstall").is_ok());
     assert!(ui.find("Installed").is_ok());
@@ -290,7 +315,7 @@ fn an_empty_result_offers_to_clear_the_filters() {
     );
     apply(&mut state, &catalog, Message::OrderSelected(Order::Updated));
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     assert!(ui.find("No addon matches.").is_ok());
     let _ = ui.click("Clear filters").unwrap();
     for message in ui.into_messages() {
@@ -311,7 +336,7 @@ fn installed_filters_need_a_client() {
         Message::StatusSelected(Status::Installed),
     );
 
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
 
     assert!(ui.find("Select a client to see its addons.").is_ok());
 }
@@ -321,7 +346,7 @@ fn recently_updated_addons_can_come_first() {
     let catalog = catalog();
     let mut state = State::new();
     let order = |state: &State| {
-        let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+        let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
         let skada = ui.find("Skada").unwrap().bounds().y;
         let acp = ui.find("Addon Control Panel").unwrap().bounds().y;
 
@@ -435,6 +460,7 @@ fn the_uninstall_icon_says_what_it_does_on_hover() {
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
     let icon = ui
         .find(Id::from(card::uninstall_id("ACP")))
@@ -462,6 +488,7 @@ fn confirming_runs_the_deletion_and_asks_for_a_rescan() {
             Ok(&client),
             Some(&installation),
             None,
+            false,
             &mut errors,
         )
     };
@@ -503,6 +530,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Ok(&client),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
     let finished = state.update(
@@ -514,6 +542,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Ok(&client),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
     assert!(matches!(finished.instruction, Some(Instruction::Changed)));
@@ -526,6 +555,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Ok(&client),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
     let _ = state.update(
@@ -534,6 +564,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Ok(&client),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
     assert!(
@@ -548,6 +579,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Ok(&client),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
     assert!(stopped.instruction.is_none() && !state.jobs.contains_key(&key));
@@ -559,6 +591,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         Err("no TLS provider"),
         Some(&installation),
         None,
+        false,
         &mut errors,
     );
 
@@ -603,6 +636,81 @@ fn leftover_data_of_removed_addons_can_be_deleted() {
 }
 
 #[test]
+fn saved_settings_are_left_alone_while_the_game_runs() {
+    let (_root, installation) = testing::client(&[
+        "Interface/AddOns/Skada/Skada.toc",
+        "WTF/Account/ME/SavedVariables/Skada.lua",
+        "WTF/Account/ME/SavedVariables/Recount.lua",
+    ]);
+    let snapshot = installation.scan().unwrap();
+    let mut state = State::new();
+
+    // Clean data is off, and says why on hover.
+    let mut ui = playing(&state, &installation, &snapshot);
+    let button = ui.find("Clean data").unwrap().bounds().center();
+    ui.point_at(button);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: button,
+    })]);
+    assert!(
+        ui.find(format!(
+            "Saved settings in 1 file, shared by the whole account. {}",
+            game::KEEPS_SETTINGS
+        ))
+        .is_ok()
+    );
+    let _ = ui.click("Clean data").unwrap();
+    assert_eq!(ui.into_messages().count(), 0);
+
+    // Uninstalling still works, keeping the saved settings.
+    let mut ui = playing(&state, &installation, &snapshot);
+    let _ = ui.click(Id::from(card::uninstall_id("Skada"))).unwrap();
+    for message in ui.into_messages() {
+        apply(&mut state, &EMPTY, message);
+    }
+    let mut ui = playing(&state, &installation, &snapshot);
+    assert!(ui.find(game::KEEPS_SETTINGS).is_ok());
+    let _ = ui
+        .click("Also delete its saved settings (1 file)")
+        .unwrap();
+    assert_eq!(ui.into_messages().count(), 0, "the box is off");
+    let _ = state.update(
+        Message::Cancel,
+        &EMPTY,
+        Ok(&client()),
+        Some(&installation),
+        Some(&snapshot),
+        true,
+        &mut Errors::default(),
+    );
+
+    // Neither leftover data goes.
+    state.filter.status = Status::LeftoverData;
+    let mut ui = playing(&state, &installation, &snapshot);
+    assert!(ui.find("Recount").is_ok());
+    let _ = ui.click("Delete all").unwrap();
+    let _ = ui.click("Delete").unwrap();
+    assert_eq!(ui.into_messages().count(), 0);
+
+    // A deletion asked before the game started waits for it to end.
+    state.confirm = Some(Confirm::Clean {
+        title: "Recount".into(),
+        files: snapshot.orphaned_data()[0].1.to_vec(),
+    });
+    let action = state.update(
+        Message::Confirm,
+        &EMPTY,
+        Ok(&client()),
+        Some(&installation),
+        Some(&snapshot),
+        true,
+        &mut Errors::default(),
+    );
+    assert_eq!(action.task.units(), 0);
+    assert!(state.confirm.is_some(), "still asking");
+}
+
+#[test]
 fn clean_data_explains_whose_settings_it_deletes_on_hover() {
     let (_root, installation) = testing::client(&[
         "Interface/AddOns/Skada/Skada.toc",
@@ -619,6 +727,7 @@ fn clean_data_explains_whose_settings_it_deletes_on_hover() {
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
     let button = ui.find("Clean data").unwrap().bounds().center();
     ui.point_at(button);
@@ -684,6 +793,7 @@ fn addons_from_entries_the_catalog_dropped_keep_their_source() {
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
     assert!(ui.find("No longer available").is_ok());
     let _ = ui.click("NoM0Re ↗").unwrap();
@@ -779,6 +889,7 @@ fn dialogs_keep_the_list_scrolled_where_it_was() {
             Some(&installation),
             Some(&snapshot),
             catalog::Refresh::Idle,
+            false,
         ),
     );
     ui.point_at(iced::Point::new(500.0, 300.0));
@@ -794,12 +905,14 @@ fn dialogs_keep_the_list_scrolled_where_it_was() {
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
     let mut ui = ui.rebuild(plain.view(
         &EMPTY,
         Some(&installation),
         Some(&snapshot),
         catalog::Refresh::Idle,
+        false,
     ));
 
     assert_eq!(offsets(&mut ui), scrolled);
@@ -846,6 +959,7 @@ fn a_failed_repair_keeps_the_list_scrolled_where_it_was() {
             Some(&installation),
             Some(&snapshot),
             catalog::Refresh::Idle,
+            false,
         )
     };
 
@@ -1137,6 +1251,7 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
             Ok(&client()),
             Some(&installation),
             Some(&snapshot),
+            false,
             &mut errors,
         );
     }
@@ -1168,6 +1283,7 @@ async fn an_installed_addon_is_updated_to_the_catalogs_version() {
         Ok(&client()),
         Some(&installation),
         Some(&snapshot),
+        false,
         &mut errors,
     );
     assert!(matches!(action.instruction, Some(Instruction::Changed)));
@@ -1231,7 +1347,7 @@ fn an_update_says_both_versions_and_links_to_what_changed() {
     let state = State::new();
 
     // Without a client, both are catalog versions, and nothing has changed.
-    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle));
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
     assert!(ui.find("Version 2.0").is_ok());
     assert!(ui.find("Version 3.1").is_ok());
     assert!(ui.find("Changes ↗").is_err());
@@ -1317,6 +1433,7 @@ fn a_source_can_be_picked_per_addon() {
                     Ok(&client()),
                     Some(&installation),
                     Some(&snapshot),
+                    false,
                     &mut errors,
                 )
                 .instruction
@@ -1352,6 +1469,7 @@ fn a_source_can_be_picked_per_addon() {
             Ok(&client()),
             Some(&installation),
             Some(&snapshot),
+            false,
             &mut errors,
         );
     }

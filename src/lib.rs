@@ -408,6 +408,7 @@ impl App {
                 }
             }
             Message::Addons(message) => {
+                let playing = self.playing();
                 let (installation, snapshot) = self.selected.open();
                 let action = self.addons.update(
                     message,
@@ -415,6 +416,7 @@ impl App {
                     self.client.as_ref().map_err(String::as_str),
                     installation,
                     snapshot,
+                    playing,
                     &mut self.errors,
                 );
                 let task = action.task.map(Message::Addons);
@@ -442,12 +444,14 @@ impl App {
                     return Task::none();
                 }
                 let current = self.selected.path().map(Path::to_path_buf);
+                let playing = self.playing();
                 let (installation, _) = self.selected.open();
                 let action = self.clients.update(
                     message,
                     &mut self.config,
                     current.as_deref(),
                     installation,
+                    playing,
                     &mut self.errors,
                 );
                 let task = action.task.map(Message::Clients);
@@ -752,12 +756,14 @@ impl App {
                 Task::none()
             }
             Message::Transfer(message) => {
+                let playing = self.playing();
                 let (installation, snapshot) = self.selected.open();
                 let action = self.transfer.update(
                     message,
                     &self.catalog,
                     installation,
                     snapshot,
+                    playing,
                     &mut self.errors,
                 );
                 let task = action.task.map(Message::Transfer);
@@ -807,7 +813,7 @@ impl App {
                     self.update(Message::Clients(clients::Message::Close))
                 } else if self.recognize.details_open() {
                     self.update(Message::Recognize(recognize::Message::Close))
-                } else if self.transfer.view().is_some() {
+                } else if self.transfer.view(self.playing()).is_some() {
                     self.update(Message::Transfer(transfer::Message::Cancel))
                 } else {
                     self.update(Message::Addons(addons::Message::Cancel))
@@ -1020,7 +1026,13 @@ impl App {
 
         let body = self
             .addons
-            .view(&self.catalog, installation, snapshot, self.refresh)
+            .view(
+                &self.catalog,
+                installation,
+                snapshot,
+                self.refresh,
+                game.is_some(),
+            )
             .map(Message::Addons);
 
         // The addons are always the second child, whatever the banners above
@@ -1078,7 +1090,7 @@ impl App {
         } else {
             (
                 self.transfer
-                    .view()
+                    .view(game.is_some())
                     .map(|dialog| dialog.map(Message::Transfer)),
                 Message::Transfer(transfer::Message::Cancel),
             )
@@ -1180,6 +1192,15 @@ impl App {
         log::debug!("Saving the settings to {}", path.display());
 
         Task::perform(blocking(move || config.save(&path)), Message::Saved)
+    }
+
+    /// Whether the selected client's game is being set up or running, so its
+    /// settings files are the game's to write.
+    fn playing(&self) -> bool {
+        self.selected
+            .path()
+            .and_then(|path| self.game.phase(path))
+            .is_some()
     }
 
     /// Finds how downloads from GitHub sign in: with a token in the

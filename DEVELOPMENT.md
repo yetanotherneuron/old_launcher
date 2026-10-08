@@ -142,8 +142,15 @@ says GitHub is limiting downloads, and how to sign in when they weren't.
 (`SET locale`) when the client has a `Data/<locale>` folder for it, or else
 the first such folder; its `realmlist.wtf` is the one that counts. With
 several, the clients dialog switches it by rewriting that one line (the
-rest of the file stays byte for byte, and the file is made if missing), but
-not while the game runs, since the game writes the file when it quits.
+rest of the file stays byte for byte, and the file is made if missing).
+
+**While a client's game runs**, the launcher leaves alone what the game
+writes back: `WTF/Config.wtf` when it quits, and the SavedVariables of
+every addon it loaded when it logs out. So the language can't be switched,
+saved settings can't be cleaned (on a card or as leftover data), an
+uninstall keeps them, and an export that holds some can't be imported.
+Installs, updates and repairs go ahead: the game never writes
+`Interface/AddOns`.
 
 **Play** starts `Wow.exe` from the client folder on Windows. Elsewhere it
 runs the client's command with `sh`, the way Steam runs launch options: the

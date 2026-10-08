@@ -11,7 +11,7 @@ use crate::catalog::{Catalog, Entry};
 use crate::core::transfer::{self, Import, Listed, Plan, Summary};
 use crate::core::{Installation, Snapshot};
 use crate::errors::Errors;
-use crate::{blocking, style};
+use crate::{blocking, game, style};
 
 /// The export and import state.
 #[derive(Default)]
@@ -80,13 +80,15 @@ impl State {
     }
 
     /// Handles an interaction with the client `installation`, as `snapshot`
-    /// saw it; imports install from `catalog`. Failures go to `errors`.
+    /// saw it; imports install from `catalog`, and restore no saved settings
+    /// while its game runs (`playing`). Failures go to `errors`.
     pub fn update(
         &mut self,
         message: Message,
         catalog: &Catalog,
         installation: Option<&Installation>,
         snapshot: Option<&Snapshot>,
+        playing: bool,
         errors: &mut Errors,
     ) -> Action<Instruction, Message> {
         match message {
@@ -207,10 +209,14 @@ impl State {
                 Action::none()
             }
             Message::Confirm => {
-                let (Stage::Reviewing { .. }, Some(installation)) = (&self.stage, installation)
+                let (Stage::Reviewing { import, .. }, Some(installation)) =
+                    (&self.stage, installation)
                 else {
                     return Action::none();
                 };
+                if playing && !import.files.is_empty() {
+                    return Action::none();
+                }
                 let Stage::Reviewing { import, plan } = std::mem::take(&mut self.stage) else {
                     return Action::none();
                 };
@@ -261,11 +267,14 @@ impl State {
         }
     }
 
-    /// The import dialog, while an export is being reviewed.
-    pub fn view(&self) -> Option<Element<'_, Message>> {
+    /// The import dialog, while an export is being reviewed. An export with
+    /// saved settings can't be imported while the client's game runs
+    /// (`playing`).
+    pub fn view(&self, playing: bool) -> Option<Element<'_, Message>> {
         let Stage::Reviewing { import, plan } = &self.stage else {
             return None;
         };
+        let blocked = playing && !import.files.is_empty();
 
         let file = import.path.file_name().map_or_else(
             || import.path.display().to_string(),
@@ -334,13 +343,7 @@ impl State {
                         .style(container::rounded_box),
                     column![text(restores)]
                         .push(replaces)
-                        .push(
-                            text(
-                                "Close the game first: it rewrites saved settings when you \
-                                 log out."
-                            )
-                            .style(text::secondary)
-                        )
+                        .push(blocked.then(|| text(game::KEEPS_SETTINGS).style(text::warning)))
                         .spacing(4),
                     row![
                         space::horizontal(),
@@ -349,7 +352,7 @@ impl State {
                             .on_press(Message::Cancel),
                         button("Import")
                             .style(button::primary)
-                            .on_press(Message::Confirm),
+                            .on_press_maybe((!blocked).then_some(Message::Confirm)),
                     ]
                     .spacing(8),
                 ]
@@ -497,6 +500,15 @@ mod tests {
     }
 
     fn update(state: &mut State, message: Message) -> Action<Instruction, Message> {
+        update_while(state, message, false)
+    }
+
+    /// [`update`], with the client's game running or not (`playing`).
+    fn update_while(
+        state: &mut State,
+        message: Message,
+        playing: bool,
+    ) -> Action<Instruction, Message> {
         let (_root, installation) = testing::client(&[]);
         let snapshot = installation.scan().unwrap();
 
@@ -505,6 +517,7 @@ mod tests {
             &Catalog::default(),
             Some(&installation),
             Some(&snapshot),
+            playing,
             &mut Errors::default(),
         )
     }
@@ -514,7 +527,7 @@ mod tests {
         let mut state = State::default();
         let _ = update(&mut state, Message::Read(Ok(reviewed())));
 
-        let dialog = state.view().expect("the dialog is open");
+        let dialog = state.view(false).expect("the dialog is open");
         let mut ui = simulator(dialog);
 
         for line in [
@@ -558,7 +571,7 @@ mod tests {
         let mut state = State::default();
         let _ = update(&mut state, Message::Read(Ok((import, plan))));
 
-        let dialog = state.view().expect("the dialog is open");
+        let dialog = state.view(false).expect("the dialog is open");
         let mut ui = simulator(dialog);
 
         for line in [
@@ -578,7 +591,7 @@ mod tests {
         let mut state = State::default();
         let _ = update(&mut state, Message::Read(Ok((import, plan))));
 
-        let dialog = state.view().expect("the dialog is open");
+        let dialog = state.view(false).expect("the dialog is open");
         let mut ui = simulator(dialog);
 
         assert!(
@@ -595,7 +608,7 @@ mod tests {
 
         let confirmed = update(&mut state, Message::Confirm);
         assert!(confirmed.instruction.is_none(), "restoring first");
-        assert!(state.busy() && state.view().is_none());
+        assert!(state.busy() && state.view(false).is_none());
 
         let restored = update(&mut state, Message::Restored(Ok(2)));
 
@@ -604,6 +617,32 @@ mod tests {
             Some(Instruction::Imported { restored: 2, install }) if install == [entry("Skada")]
         ));
         assert!(!state.busy());
+    }
+
+    #[test]
+    fn saved_settings_are_not_imported_while_the_game_runs() {
+        let mut state = State::default();
+        let _ = update(&mut state, Message::Read(Ok(reviewed())));
+
+        let mut ui = simulator(state.view(true).expect("the dialog is open"));
+        assert!(ui.find(game::KEEPS_SETTINGS).is_ok());
+        let _ = ui.click("Import").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "the button is off");
+
+        let confirmed = update_while(&mut state, Message::Confirm, true);
+        assert_eq!(confirmed.task.units(), 0);
+        assert!(state.view(true).is_some(), "still reviewing");
+
+        // An export without saved settings only installs addons.
+        let (mut import, plan) = reviewed();
+        import.files.clear();
+        let mut state = State::default();
+        let _ = update(&mut state, Message::Read(Ok((import, plan))));
+
+        let mut ui = simulator(state.view(true).expect("the dialog is open"));
+        assert!(ui.find(game::KEEPS_SETTINGS).is_err());
+        let _ = ui.click("Import").unwrap();
+        assert_eq!(ui.into_messages().count(), 1);
     }
 
     #[test]
@@ -618,6 +657,7 @@ mod tests {
                 &Catalog::default(),
                 Some(&installation),
                 Some(&snapshot),
+                false,
                 &mut errors,
             )
         };

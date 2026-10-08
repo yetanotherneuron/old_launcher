@@ -45,6 +45,13 @@ pub enum Phase {
     Running,
 }
 
+/// Why saved settings can't change while the client's game runs: whatever
+/// the launcher wrote or deleted, the game writes back.
+pub const KEEPS_SETTINGS: &str = "Close the game first: it rewrites saved settings when you log out.";
+
+/// Why the language can't change while the client's game runs.
+pub const KEEPS_CONFIG: &str = "Close the game first: it rewrites Config.wtf when it quits.";
+
 /// What happens to the games.
 #[derive(Debug, Clone)]
 pub enum Message {

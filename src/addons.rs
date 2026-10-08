@@ -15,7 +15,8 @@ use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
 use iced::widget::operation::{self, Animation, RelativeOffset};
 use iced::widget::{
-    button, center, column, container, pick_list, row, scrollable, space, text, text_input,
+    Button, button, center, column, container, pick_list, row, scrollable, space, text,
+    text_input,
 };
 use iced::{Center, Element, Fill, FillPortion, Function, Task, padding};
 
@@ -26,7 +27,7 @@ use crate::core::library::{Filter, Library, Order, Origin, Status};
 use crate::core::search::Query;
 use crate::core::{Installation, Snapshot};
 use crate::errors::Errors;
-use crate::{blocking, describe, github, style};
+use crate::{blocking, describe, game, github, style};
 
 /// The id of the search field, for keyboard focus.
 pub const SEARCH: &str = "addons-search";
@@ -198,10 +199,15 @@ impl State {
         self.github = github;
     }
 
-    /// Handles an interaction. Changes happen in `installation`; installs
-    /// download with `client` (or say why there is none) and replace what
-    /// `snapshot` says the same entry installed before. Whatever fails goes
-    /// to `errors`.
+    /// Handles an interaction. Changes happen in `installation`, whose saved
+    /// settings are left alone while its game runs (`playing`): the game
+    /// writes them back. Installs download with `client` (or say why there
+    /// is none) and replace what `snapshot` says the same entry installed
+    /// before. Whatever fails goes to `errors`.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each is a dependency of its own, as in the other screens"
+    )]
     pub fn update(
         &mut self,
         message: Message,
@@ -209,6 +215,7 @@ impl State {
         client: Result<&reqwest::Client, &str>,
         installation: Option<&Installation>,
         snapshot: Option<&Snapshot>,
+        playing: bool,
         errors: &mut Errors,
     ) -> Action<Instruction, Message> {
         match message {
@@ -364,7 +371,7 @@ impl State {
             }
             Message::DeleteData(delete) => {
                 if let Some(Confirm::Uninstall { delete_data, .. }) = &mut self.confirm {
-                    *delete_data = delete;
+                    *delete_data = delete && !playing;
                 }
                 Action::none()
             }
@@ -373,10 +380,16 @@ impl State {
                 Action::none()
             }
             Message::Confirm => {
-                let (Some(confirm), Some(installation)) = (self.confirm.take(), installation)
+                let (Some(mut confirm), Some(installation)) = (self.confirm.take(), installation)
                 else {
                     return Action::none();
                 };
+
+                // As the dialog shows it while the game runs.
+                if playing && !confirm.while_playing() {
+                    self.confirm = Some(confirm);
+                    return Action::none();
+                }
                 let installation = installation.clone();
                 let failure = confirm.failure();
 
@@ -411,13 +424,15 @@ impl State {
     }
 
     /// The `catalog` and the addons of `installation`, as last scanned
-    /// (`snapshot`). Nothing can be installed until both are there.
+    /// (`snapshot`). Nothing can be installed until both are there, and no
+    /// saved settings deleted while its game runs (`playing`).
     pub fn view<'a>(
         &'a self,
         catalog: &'a Catalog,
         installation: Option<&'a Installation>,
         snapshot: Option<&'a Snapshot>,
         refresh: catalog::Refresh,
+        playing: bool,
     ) -> Element<'a, Message> {
         let library = Library::new(catalog, snapshot);
         let query = Query::new(&self.query);
@@ -527,7 +542,7 @@ impl State {
                 None,
             )
         } else if self.filter.status == Status::LeftoverData {
-            self.leftovers(leftovers, filtered)
+            self.leftovers(leftovers, filtered, playing)
         } else {
             let shown = library.shown(&query, &self.filter);
 
@@ -551,11 +566,9 @@ impl State {
                 empty(message, action)
             } else {
                 scrollable(
-                    column(
-                        shown
-                            .into_iter()
-                            .map(|item| self.card(&library, item, catalog, snapshot, can_install)),
-                    )
+                    column(shown.into_iter().map(|item| {
+                        self.card(&library, item, catalog, snapshot, can_install, playing)
+                    }))
                     .spacing(8)
                     .padding(padding::right(14)),
                 )
@@ -572,16 +585,18 @@ impl State {
             self.confirm
                 .as_ref()
                 .zip(installation)
-                .map(|(confirm, installation)| confirm.view(installation.root())),
+                .map(|(confirm, installation)| confirm.view(installation.root(), playing)),
             Message::Cancel,
         )
     }
 
-    /// The data that removed addons left behind, by addon name.
+    /// The data that removed addons left behind, by addon name, which can't
+    /// be deleted while the game runs (`playing`).
     fn leftovers<'a>(
         &self,
         leftovers: Vec<(String, &'a [PathBuf])>,
         filtered: bool,
+        playing: bool,
     ) -> Element<'a, Message> {
         if leftovers.is_empty() {
             return empty(
@@ -598,6 +613,15 @@ impl State {
             .iter()
             .flat_map(|(_, files)| files.iter().cloned())
             .collect();
+        let deletable = !self.working && !playing;
+        // Why the buttons are off, when it's the game.
+        let explained = |button: Button<'a, Message>| -> Element<'a, Message> {
+            if playing {
+                style::tip(button, game::KEEPS_SETTINGS)
+            } else {
+                button.into()
+            }
+        };
 
         let header = row![
             column![
@@ -608,14 +632,14 @@ impl State {
             ]
             .spacing(2),
             space::horizontal(),
-            button("Delete all")
-                .style(button::danger)
-                .on_press_maybe((!self.working).then(|| {
+            explained(button("Delete all").style(button::danger).on_press_maybe(
+                deletable.then(|| {
                     Message::Ask(Confirm::Clean {
                         title: "all leftover data".to_owned(),
                         files: all,
                     })
-                })),
+                }),
+            )),
         ]
         .align_y(Center);
 
@@ -630,14 +654,14 @@ impl State {
                     })
                     .size(13)
                     .style(text::secondary),
-                    button("Delete")
-                        .style(button::text)
-                        .on_press_maybe((!self.working).then(|| {
+                    explained(button("Delete").style(button::text).on_press_maybe(
+                        deletable.then(|| {
                             Message::Ask(Confirm::Clean {
                                 title: name,
                                 files: files.to_vec(),
                             })
-                        })),
+                        }),
+                    )),
                 ]
                 .spacing(12)
                 .align_y(Center),

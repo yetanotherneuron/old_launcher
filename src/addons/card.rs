@@ -10,12 +10,13 @@ use crate::catalog::{Catalog, Entry};
 use crate::core::library::{Item, Library, Versions};
 use crate::core::toc;
 use crate::core::{Addon, Snapshot, Toc};
-use crate::size;
 use crate::style::{self, Tone};
+use crate::{game, size};
 
 impl State {
     /// The card of `item`, one of `library`'s. Install buttons are enabled
-    /// only when a client is open (`can_install`).
+    /// only when a client is open (`can_install`), and saved settings can't
+    /// be deleted while its game runs (`playing`).
     pub(super) fn card<'a>(
         &'a self,
         library: &Library<'a>,
@@ -23,6 +24,7 @@ impl State {
         catalog: &'a Catalog,
         snapshot: Option<&'a Snapshot>,
         can_install: bool,
+        playing: bool,
     ) -> Element<'a, Message> {
         let entry = match item {
             Item::Entry { entry, .. } => Some(entry),
@@ -281,11 +283,15 @@ impl State {
             let data = snapshot
                 .map(|snapshot| snapshot.data_files(group))
                 .unwrap_or_default();
-            let summary = confirm::data_summary(&data);
+            let summary = if playing && !data.is_empty() {
+                format!("{} {}", confirm::data_summary(&data), game::KEEPS_SETTINGS)
+            } else {
+                confirm::data_summary(&data)
+            };
 
             let clean = button("Clean data")
                 .style(button::secondary)
-                .on_press_maybe((!data.is_empty() && !self.working).then(|| {
+                .on_press_maybe((!data.is_empty() && !self.working && !playing).then(|| {
                     Message::Ask(Confirm::Clean {
                         title: title.clone(),
                         files: data.clone(),
