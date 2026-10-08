@@ -39,7 +39,7 @@ resolver = "3"
 members = ["core", "indexer"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://gitlab.com/juxuanu/old_launcher"
