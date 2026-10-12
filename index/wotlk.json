@@ -535,17 +535,22 @@
       ]
     },
     {
-      "name": "AddFriend-3.3.5a",
-      "description": "AddFriend is a simple addon that adds an \"Add Friend\" and \"Invite Guild\" option to the context menu of player options.",
+      "name": "AddFriend",
+      "description": "AddFriend is a simple addon that adds an Add Friend or Add Guild option to the context menu of player options.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/AddFriend.jpeg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "AddFriend-3.3.5a",
+          "name": "AddFriend",
           "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/refs/heads/main.zip",
           "updated": "2024-07-07",
-          "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
+          "links": [
+            {
+              "label": "Curseforge",
+              "url": "https://www.curseforge.com/wow/addons/addfriend"
+            }
+          ],
           "folders": [
             {
               "name": "AddFriend",
@@ -5319,10 +5324,26 @@
       ]
     },
     {
-      "name": "Cell",
-      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
+      "name": "Cell-WotLK",
+      "description": "A World of Warcraft raid frame addon.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
+          "updated": "2026-09-27",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -5335,22 +5356,6 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -8927,7 +8932,7 @@
           "source": "nom0re",
           "name": "DragonUI",
           "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-10-07",
+          "updated": "2026-10-11",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -21712,7 +21717,7 @@
           "source": "nom0re",
           "name": "Questie",
           "url": "https://github.com/Aldori15/Questie/archive/refs/heads/335.zip",
-          "updated": "2026-10-02",
+          "updated": "2026-10-11",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
             {
@@ -21723,8 +21728,8 @@
           "folders": [
             {
               "name": "Questie-335",
-              "title": "Questie-335 v9.9.4-335",
-              "version": "9.9.4-335",
+              "title": "Questie-335 v9.9.6-335",
+              "version": "9.9.6-335",
               "interface": 30300
             }
           ]
@@ -27111,70 +27116,6 @@
       ]
     },
     {
-      "name": "TradeSkillMaster",
-      "description": "TradeSkillMaster is an all-in-one suite for the in-game economy, backported to WotLK 3.3.5a. It includes auction-house scanning and bulk posting, crafting and profit management, item groups and operations, mailing, banking, vendoring, and accounting.",
-      "image": "https://media.forgecdn.net/attachments/311/730/untitled.png",
-      "downloads": [
-        {
-          "source": "nom0re",
-          "name": "TradeSkillMaster",
-          "url": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport/archive/refs/heads/master.zip",
-          "updated": "2026-10-02",
-          "changes": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport/commits/master",
-          "links": [
-            {
-              "label": "Github",
-              "url": "https://github.com/Keoo88/TradeSkillMaster-3.3.5-backport"
-            }
-          ],
-          "folders": [
-            {
-              "name": "TradeSkillMaster",
-              "title": "TradeSkillMaster",
-              "version": "v4.14.66",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_Accounting",
-              "title": "TradeSkillMaster_Accounting",
-              "version": "v4.14.66",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_AuctionDB",
-              "title": "TradeSkillMaster_AuctionDB",
-              "version": "v4.14.66-wrath",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_Banking",
-              "title": "TradeSkillMaster_Banking",
-              "version": "v4.14.66",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_Crafting",
-              "title": "TradeSkillMaster_Crafting",
-              "version": "v4.14.66",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_Mailing",
-              "title": "TradeSkillMaster_Mailing",
-              "version": "v4.14.66",
-              "interface": 30300
-            },
-            {
-              "name": "TradeSkillMaster_Vendoring",
-              "title": "TradeSkillMaster_Vendoring",
-              "version": "v4.14.66",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "Transcriptor-WOTLK",
       "description": "Event logging addon for 3.3.5a, suitable for boss encounters",
       "downloads": [
@@ -27816,6 +27757,124 @@
     },
     {
       "name": "WeakAuras",
+      "description": "WeakAuras is a powerful and flexible framework that allows the display of highly customizable graphics on World of Warcraft's user interface to indicate buffs, debuffs, and other relevant information. This addon was created to be a lightweight replacement for Power Auras but has since introduced more functionalities while remaining efficient and easy to use.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "WeakAuras",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
+          "updated": "2026-10-10",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
+          "links": [
+            {
+              "label": "GitHub latest",
+              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
+            },
+            {
+              "label": "GitHub 4.0.0",
+              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "WeakAuras-WotLK",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
+          "updated": "2026-10-10",
+          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WeakAuras",
       "description": "Displays configurable graphics and text based on buffs, debuffs, cooldowns, and other triggers",
       "downloads": [
         {
@@ -27950,124 +28009,6 @@
             {
               "name": "WeakAurasArchive",
               "title": "WeakAuras Archive",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "WeakAuras-WotLK",
-      "description": "World of Warcraft addon that provides a powerful framework to display customizable graphics on your screen.",
-      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
-      "downloads": [
-        {
-          "source": "nom0re",
-          "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-10-01",
-          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.0",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-10-01",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
-          "links": [
-            {
-              "label": "GitHub latest",
-              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
-            },
-            {
-              "label": "GitHub 4.0.0",
-              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
-            }
-          ],
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.0",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.0",
               "interface": 30300
             }
           ]
