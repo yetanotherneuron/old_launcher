@@ -5324,26 +5324,10 @@
       ]
     },
     {
-      "name": "Cell-WotLK",
-      "description": "A World of Warcraft raid frame addon.",
+      "name": "Cell",
+      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -5356,6 +5340,22 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
+          "updated": "2026-09-27",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -5664,7 +5664,7 @@
           "source": "nom0re",
           "name": "ClassicAPI",
           "url": "https://gitlab.com/tsoukie-3.3.5/classicapi/-/archive/main/classicapi-main.zip",
-          "updated": "2026-10-06",
+          "updated": "2026-10-18",
           "links": [
             {
               "label": "GitLab",
@@ -5675,7 +5675,7 @@
             {
               "name": "!!!ClassicAPI",
               "title": "!!!ClassicAPI",
-              "version": "1.29",
+              "version": "1.30",
               "interface": 30300
             }
           ]
@@ -5683,22 +5683,17 @@
       ]
     },
     {
-      "name": "ClassicNumbers",
-      "description": "ClassicNumbers replaces the default floating damage text with the classic popping animation. It offers configurable size, transparency, duration, scroll speed, damage-school colors, number shortening, and filters for small hits and critical strikes. Open its options with /cn.",
+      "name": "ClassicNumbers-WotLK",
+      "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "ClassicNumbers",
+          "name": "ClassicNumbers-WotLK",
           "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/refs/heads/main.zip",
           "updated": "2026-07-13",
+          "page": "https://github.com/NoM0Re/ClassicNumbers-WotLK",
           "changes": "https://github.com/NoM0Re/ClassicNumbers-WotLK/commits/main",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK"
-            }
-          ],
           "folders": [
             {
               "name": "ClassicNumbers",
@@ -6080,7 +6075,7 @@
           "source": "nom0re",
           "name": "Compact Raid Frame: Enhanced Raid Frames",
           "url": "https://gitlab.com/tsoukie-3.3.5/enhancedraidframes/-/archive/main/enhancedraidframes-main.zip",
-          "updated": "2026-09-18",
+          "updated": "2026-10-17",
           "links": [
             {
               "label": "GitLab",
@@ -6091,7 +6086,7 @@
             {
               "name": "EnhancedRaidFrames",
               "title": "Enhanced Raid Frames",
-              "version": "1.8",
+              "version": "1.9",
               "interface": 30300
             }
           ]
@@ -8932,7 +8927,7 @@
           "source": "nom0re",
           "name": "DragonUI",
           "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-10-11",
+          "updated": "2026-10-18",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -12897,7 +12892,7 @@
           "source": "nom0re",
           "name": "Gladdy",
           "url": "https://gitlab.com/tsoukie-3.3.5/gladdy/-/archive/main/gladdy-main.zip",
-          "updated": "2026-09-18",
+          "updated": "2026-10-17",
           "links": [
             {
               "label": "GitLab",
@@ -12908,7 +12903,7 @@
             {
               "name": "Gladdy",
               "title": "Gladdy",
-              "version": "2.54-Release",
+              "version": "2.55-Release",
               "interface": 30300
             }
           ]
@@ -15680,7 +15675,7 @@
           "source": "nom0re",
           "name": "Leatrix Maps",
           "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/refs/heads/main.zip",
-          "updated": "2026-10-05",
+          "updated": "2026-10-18",
           "changes": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/commits/main",
           "links": [
             {
@@ -15692,7 +15687,7 @@
             {
               "name": "Leatrix_Maps",
               "title": "Leatrix Maps",
-              "version": "3.0.189",
+              "version": "3.5.44",
               "interface": 30300
             }
           ]
@@ -21717,7 +21712,7 @@
           "source": "nom0re",
           "name": "Questie",
           "url": "https://github.com/Aldori15/Questie/archive/refs/heads/335.zip",
-          "updated": "2026-10-11",
+          "updated": "2026-10-15",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
             {
@@ -21728,8 +21723,8 @@
           "folders": [
             {
               "name": "Questie-335",
-              "title": "Questie-335 v9.9.6-335",
-              "version": "9.9.6-335",
+              "title": "Questie-335 v10.0.1-335",
+              "version": "10.0.1-335",
               "interface": 30300
             }
           ]
@@ -27595,7 +27590,7 @@
           "source": "nom0re",
           "name": "Vd-skip",
           "url": "https://github.com/Stradios/Vd-skip/archive/refs/heads/main.zip",
-          "updated": "2025-05-29",
+          "updated": "2026-10-17",
           "changes": "https://github.com/Stradios/Vd-skip/commits/main",
           "links": [
             {
@@ -27764,7 +27759,7 @@
           "source": "nom0re",
           "name": "WeakAuras",
           "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-10-10",
+          "updated": "2026-10-18",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
           "links": [
             {
@@ -27824,7 +27819,7 @@
           "source": "nom0re",
           "name": "WeakAuras-WotLK",
           "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-10-10",
+          "updated": "2026-10-18",
           "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
           "folders": [
