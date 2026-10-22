@@ -82,7 +82,7 @@ fn screenshots() {
         "Bartender4",
         "Details",
         "Questie",
-        "WeakAuras-WotLK",
+        "WeakAuras",
         "Omen Thread Meter",
         "Prat",
     ] {
