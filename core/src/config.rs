@@ -25,6 +25,11 @@ pub struct Config {
     /// of the file while off. The launcher never stores a token itself.
     #[serde(default, skip_serializing_if = "is_false")]
     pub github_cli: bool,
+    /// Whether Discord shows the game while it runs: its command then runs
+    /// as the child of the launcher, which tells Discord. Left out of the
+    /// file while off.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub discord: bool,
     /// How clients start outside Windows, by client folder. Clients missing
     /// here start with the defaults.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -235,6 +240,7 @@ mod tests {
             installations: vec!["/games/wotlk".into(), "/games/war mane".into()],
             selected: Some("/games/war mane".into()),
             github_cli: true,
+            discord: true,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
         };
@@ -286,7 +292,8 @@ mod tests {
         assert!(
             !written.contains("launch")
                 && !written.contains("sources")
-                && !written.contains("github"),
+                && !written.contains("github")
+                && !written.contains("discord"),
             "nothing to write: {written}"
         );
     }
@@ -297,6 +304,7 @@ mod tests {
             installations: vec!["/games/wotlk".into(), "/games/warmane".into()],
             selected: Some("/games/wotlk".into()),
             github_cli: false,
+            discord: false,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
         };

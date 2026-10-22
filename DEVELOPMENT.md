@@ -161,9 +161,23 @@ environment variables are set and exported first, and `%command%` becomes
 the quoted path to `Wow.exe` (`wine %command%` when there is no command).
 `~` and `$HOME` expand as in a terminal.
 
+**Showing the game on Discord**, when the settings say so (`discord` in the
+settings file, off by default), runs the game's command as the child of the
+launcher's own binary, started with `--discord` before the command
+(`src/discord.rs`). That wrapper connects to the Discord desktop app's local
+socket (a named pipe on Windows), sets the activity of the "Old Launcher"
+Discord application, "Playing World of Warcraft 3.3.5a" with the time
+played, and exits with the command's exit code when it exits, so the
+launcher sees what it would without it. Discord clears the status when the
+connection closes, so it goes with the game, whether the launcher is still
+open or not. When Discord isn't running, the wrapper looks for it again
+every 15 seconds. Commands that hand the game to Steam or Lutris and exit
+end the status with them. The application's ID is public and no secret is
+involved.
+
 The only file outside the clients lists the client folders, how each one
 starts, the sources picked per addon and whether to use the GitHub CLI's
-login:
+login and to show the game on Discord:
 `~/.config/old_launcher/config.toml` (`%APPDATA%\old_launcher\config.toml`
 on Windows), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
 launcher does nothing else until you choose: it shows why, where the file
@@ -180,8 +194,9 @@ edit it (then read it again), quit, or overwrite it with new settings.
   sources.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
   shell, with one TEA cell per screen (`setup`, `clients`, `settings`, and
-  `addons` with its cards and confirmation dialogs), and `github.rs` signs
-  downloads in to GitHub. Screens are tested with `iced_test::simulator`.
+  `addons` with its cards and confirmation dialogs), `github.rs` signs
+  downloads in to GitHub, and `discord.rs` shows the game on Discord.
+  Screens are tested with `iced_test::simulator`.
 - `docs/plans/`: work planned but not started.
 
 Nothing outside tests may panic on purpose: the workspace denies `unwrap`,

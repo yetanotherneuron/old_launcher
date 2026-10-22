@@ -11,6 +11,7 @@ mod action;
 mod addons;
 mod catalog;
 mod clients;
+pub mod discord;
 mod errors;
 mod game;
 mod github;
@@ -527,6 +528,14 @@ impl App {
                         self.config.github_cli = use_cli;
                         Task::batch([task, self.save(), self.sign_in()])
                     }
+                    Some(settings::Instruction::ShowOnDiscord(show)) => {
+                        log::info!(
+                            "{} the game on Discord from the next one on",
+                            if show { "Showing" } else { "Not showing" }
+                        );
+                        self.config.discord = show;
+                        Task::batch([task, self.save()])
+                    }
                     None => task,
                 }
             }
@@ -569,7 +578,7 @@ impl App {
                 let launch = self.config.launch(installation.root());
 
                 self.game
-                    .play(installation, &launch, &mut self.errors)
+                    .play(installation, &launch, self.config.discord, &mut self.errors)
                     .map(Message::Game)
             }
             Message::Game(message) => {
@@ -1062,7 +1071,7 @@ impl App {
             (
                 Some(
                     self.settings
-                        .view(self.config.github_cli, &self.github)
+                        .view(&self.config, &self.github)
                         .map(Message::Settings),
                 ),
                 Message::Settings(settings::Message::Close),
@@ -1823,6 +1832,18 @@ mod tests {
             "{:?}",
             app.github
         );
+    }
+
+    #[test]
+    fn ticking_the_discord_box_is_saved() {
+        let mut app = app(&["/games/wotlk"]);
+        assert!(!app.config.discord, "off until ticked");
+
+        let _ = app.update(Message::Settings(settings::Message::ShowOnDiscord(true)));
+        assert!(app.config.discord);
+
+        let _ = app.update(Message::Settings(settings::Message::ShowOnDiscord(false)));
+        assert!(!app.config.discord);
     }
 
     #[test]

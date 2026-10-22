@@ -30,6 +30,7 @@ It's a portable program: nothing to install, just run it.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
 - **Switch the language** of a client that has more than one.
+- **Show on Discord** that you're playing, if you want.
 
 ![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
 

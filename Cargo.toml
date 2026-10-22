@@ -9,7 +9,8 @@ homepage.workspace = true
 [dependencies]
 old_launcher_core = { workspace = true }
 iced = { workspace = true }
-tokio = { workspace = true }
+# The connection to Discord, and waiting before trying it again.
+tokio = { workspace = true, features = ["net", "io-util", "time"] }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 rfd = { workspace = true }

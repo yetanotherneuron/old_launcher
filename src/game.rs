@@ -8,7 +8,7 @@ use iced::{Function, Subscription, Task};
 
 use crate::core::{Installation, Launch, launch};
 use crate::errors::Errors;
-use crate::{blocking, describe};
+use crate::{blocking, describe, discord};
 
 /// The games started from the launcher or found running, by client folder,
 /// until over.
@@ -77,11 +77,13 @@ impl State {
     }
 
     /// Starts `installation`'s game as `launch` says, unless it is running
-    /// already. What fails goes to `errors`.
+    /// already, for Discord to show while it runs when `discord`. What fails
+    /// goes to `errors`.
     pub fn play(
         &mut self,
         installation: &Installation,
         launch: &Launch,
+        discord: bool,
         errors: &mut Errors,
     ) -> Task<Message> {
         let root = installation.root().to_path_buf();
@@ -92,6 +94,11 @@ impl State {
 
         match launch::command(installation, launch) {
             Ok(command) => {
+                let command = if discord {
+                    discord::wrapped(command)
+                } else {
+                    command
+                };
                 log::info!("Starting the game: {command:?}");
 
                 let _ = self.games.insert(
@@ -260,7 +267,7 @@ mod tests {
     /// not run: the task is dropped.
     fn started(state: &mut State, installation: &Installation) -> PathBuf {
         let mut errors = Errors::default();
-        let _ = state.play(installation, &Launch::default(), &mut errors);
+        let _ = state.play(installation, &Launch::default(), false, &mut errors);
         assert!(errors.messages().is_empty(), "{:?}", errors.messages());
 
         installation.root().to_path_buf()

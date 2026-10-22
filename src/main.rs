@@ -12,6 +12,11 @@ pub fn main() -> iced::Result {
     )
     .init();
 
+    // Started by the launcher to run a game while Discord shows it.
+    if let Some(code) = old_launcher::discord::wrapper(std::env::args_os()) {
+        std::process::exit(code);
+    }
+
     #[allow(unused_mut)]
     let mut window = window::Settings {
         size: Size::new(1200.0, 780.0),
