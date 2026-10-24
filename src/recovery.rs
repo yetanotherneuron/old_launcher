@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, space, text};
-use iced::{Element, Fill, Font};
+use iced::{Fill, Font, Widget};
 
 use crate::action::Action;
 use crate::core::{self, Config};
@@ -102,7 +102,7 @@ impl State {
     }
 
     /// The explanation and the choices.
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         let path = self.path.display().to_string();
 
         let error = container(text(&self.error).font(Font::MONOSPACE).size(13))
@@ -117,32 +117,25 @@ impl State {
         });
 
         // What overwriting forgets: the file holds nothing else.
-        let loss: Element<'_, Message> = if self.clients.is_empty() {
-            text(
-                "No client folder can be made out in it, so overwriting it loses nothing \
-                 recognizable. If you had added clients, you would add them again.",
-            )
-            .into()
-        } else {
-            column![text(if self.clients.len() == 1 {
-                "Overwriting it forgets the client folder it lists, which you would add again:"
-                    .to_owned()
-            } else {
-                format!(
-                    "Overwriting it forgets the {} client folders it lists, and which one was \
-                     selected. You would add them again:",
-                    self.clients.len()
-                )
-            })]
-            .extend(self.clients.iter().map(|client| {
+        let forgotten = match self.clients.len() {
+            0 => "No client folder can be made out in it, so overwriting it loses nothing \
+                  recognizable. If you had added clients, you would add them again."
+                .to_owned(),
+            1 => "Overwriting it forgets the client folder it lists, which you would add again:"
+                .to_owned(),
+            count => format!(
+                "Overwriting it forgets the {count} client folders it lists, and which one was \
+                 selected. You would add them again:"
+            ),
+        };
+        let loss = column(
+            std::iter::once(text(forgotten)).chain(self.clients.iter().map(|client| {
                 text(format!("• {}", client.display()))
                     .font(Font::MONOSPACE)
                     .size(13)
-                    .into()
-            }))
-            .spacing(4)
-            .into()
-        };
+            })),
+        )
+        .spacing(4);
 
         container(
             column![
@@ -168,17 +161,13 @@ impl State {
                 .wrap()
                 .vertical_spacing(8),
                 error,
-            ]
-            .push(retried)
-            .push(loss)
-            .push(
+                retried,
+                loss,
                 text(
                     "Your clients, their addons and their saved settings are not affected \
                      either way.",
                 )
                 .style(text::secondary),
-            )
-            .push(
                 row![
                     space::horizontal(),
                     button("Quit to fix it manually")
@@ -189,13 +178,12 @@ impl State {
                         .on_press(Message::Overwrite),
                 ]
                 .spacing(8),
-            )
+            ]
             .spacing(14),
         )
         .padding(24)
         .width(Fill.max(680))
         .style(style::card)
-        .into()
     }
 }
 

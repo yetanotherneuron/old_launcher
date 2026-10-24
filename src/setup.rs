@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, space, text, text_input};
-use iced::{Center, Element, Fill, Task};
+use iced::{Center, Fill, Task, Widget};
 
 use crate::action::Action;
 use crate::core::Installation;
@@ -130,7 +130,7 @@ impl State {
     }
 
     /// The form.
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         let idle = matches!(self.stage, Stage::Editing);
 
         let path = text_input("/games/World of Warcraft 3.3.5a", &self.path)
@@ -172,21 +172,16 @@ impl State {
                 )
                 .style(text::secondary),
                 row![path, browse].spacing(8),
-            ]
-            .push(error)
-            .push(
-                row![space::horizontal()]
-                    .push(cancel)
-                    .push(submit)
+                error,
+                row![space::horizontal(), cancel, submit]
                     .spacing(8)
                     .align_y(Center),
-            )
+            ]
             .spacing(14),
         )
         .padding(24)
         .width(Fill.max(620))
         .style(style::card)
-        .into()
     }
 }
 

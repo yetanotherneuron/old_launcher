@@ -3,7 +3,7 @@
 //! shows the game.
 
 use iced::widget::{button, checkbox, column, container, row, space, text};
-use iced::{Element, Fill};
+use iced::{Fill, Widget};
 
 use crate::action::Action;
 use crate::core::Config;
@@ -82,7 +82,7 @@ impl State {
 
     /// The dialog, with the boxes ticked as `config` says, saying what
     /// `login` means for downloads.
-    pub fn view<'a>(&'a self, config: &Config, login: &'a Login) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, config: &Config, login: &'a Login) -> impl Widget<Message> + use<'a> {
         let tone = match login {
             Login::Environment { .. } | Login::Cli(_) => text::success,
             Login::CliMissing | Login::CliFailed(_) => text::warning,
@@ -148,7 +148,6 @@ impl State {
         .padding(24)
         .width(Fill.max(560))
         .style(style::card)
-        .into()
     }
 }
 

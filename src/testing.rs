@@ -8,7 +8,7 @@ pub use crate::core::testing::{client, client_with};
 
 /// The vertical scroll offset of every scrollable on screen, as drawn, in
 /// the order they are laid out.
-pub fn offsets<Message>(ui: &mut Simulator<'_, Message>) -> Vec<f32> {
+pub fn offsets<'a, Message: 'a>(ui: &mut Simulator<'a, Message>) -> Vec<f32> {
     struct Offsets(Vec<f32>);
 
     impl Operation for Offsets {

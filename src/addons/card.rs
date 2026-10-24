@@ -2,7 +2,7 @@
 //! installed without the catalog.
 
 use iced::widget::{button, column, container, pick_list, progress_bar, row, text, tooltip};
-use iced::{Center, Element, Fill, Fit};
+use iced::{Center, Fill, Fit, Widget};
 
 use super::confirm::{self, Confirm};
 use super::{Choice, Key, Message, Stage, State};
@@ -25,7 +25,7 @@ impl State {
         snapshot: Option<&'a Snapshot>,
         can_install: bool,
         playing: bool,
-    ) -> Element<'a, Message> {
+    ) -> impl Widget<Message> + use<'a> {
         let entry = match item {
             Item::Entry { entry, .. } => Some(entry),
             Item::Manual(_) => None,
@@ -57,13 +57,16 @@ impl State {
 
         match (entry, group) {
             (Some(entry), Some(_)) => {
-                badges = badges.push(style::badge("Installed", Tone::Success));
+                badges = badges.push(style::badge("Installed", Tone::Success).boxed());
 
                 if let Some(update) = update {
-                    badges = badges.push(style::tip(
-                        style::badge("Update available", Tone::Warning),
-                        update_hint(update, main, entry, catalog),
-                    ));
+                    badges = badges.push(
+                        style::tip(
+                            style::badge("Update available", Tone::Warning),
+                            update_hint(update, main, entry, catalog),
+                        )
+                        .boxed(),
+                    );
                 }
             }
             (None, Some(group)) => match group.marker {
@@ -76,12 +79,15 @@ impl State {
                                 &source.name,
                                 &source.homepage,
                                 Message::OpenLink(source.homepage.clone()),
-                            ),
-                            None => style::badge(marker.source.clone(), Tone::Primary),
+                            )
+                            .boxed(),
+                            None => style::badge(marker.source.clone(), Tone::Primary).boxed(),
                         })
-                        .push(style::badge("No longer available", Tone::Warning));
+                        .push(style::badge("No longer available", Tone::Warning).boxed());
                 }
-                None => badges = badges.push(style::badge("Installed manually", Tone::Primary)),
+                None => {
+                    badges = badges.push(style::badge("Installed manually", Tone::Primary).boxed());
+                }
             },
             (_, None) => {}
         }
@@ -122,17 +128,18 @@ impl State {
 
         badges = badges
             .extend(broken.iter().map(|addon| {
-                style::badge(format!("No {}.toc: not loaded", addon.name), Tone::Danger)
+                style::badge(format!("No {}.toc: not loaded", addon.name), Tone::Danger).boxed()
             }))
             .extend(versions.into_iter().map(|(version, numbers)| {
                 style::tip(
                     style::badge(format!("Made for {version}"), Tone::Warning),
                     made_for_hint(&numbers),
                 )
+                .boxed()
             }));
 
         if toc.is_some_and(|toc| toc.load_on_demand) {
-            badges = badges.push(style::badge("Load on demand", Tone::Success));
+            badges = badges.push(style::badge("Load on demand", Tone::Success).boxed());
         }
 
         // Where to install from, when there is a choice: the source the
@@ -182,8 +189,9 @@ impl State {
             ))
         });
 
-        let install: Option<Element<'a, Message>> =
-            key.map(|key| match job.map(|job| &job.stage) {
+        let install = entry
+            .zip(key)
+            .map(|(entry, key)| match job.map(|job| &job.stage) {
                 Some(Stage::Downloading {
                     source,
                     received,
@@ -211,10 +219,10 @@ impl State {
                     ]
                     .spacing(8)
                     .align_y(Center)
-                    .into()
+                    .boxed()
                 }
-                Some(Stage::Installing) => text("Installing…").style(text::secondary).into(),
-                Some(Stage::Cancelling) => text("Cancelling…").style(text::secondary).into(),
+                Some(Stage::Installing) => text("Installing…").style(text::secondary).boxed(),
+                Some(Stage::Cancelling) => text("Cancelling…").style(text::secondary).boxed(),
                 None => {
                     let label = match (group.is_some(), update) {
                         (true, Some(update)) => format!("Update to {}", update.offered),
@@ -229,12 +237,8 @@ impl State {
                         })
                         .on_press_maybe(can_install.then_some(Message::Install(key)));
 
-                    // Where the download comes from; the key exists only
-                    // for an entry, so this always has one.
-                    match entry {
-                        Some(entry) => style::tip(install, source_hint(entry, catalog)),
-                        None => install.into(),
-                    }
+                    // Where the download comes from.
+                    style::tip(install, source_hint(entry, catalog)).boxed()
                 }
             });
 
@@ -320,14 +324,16 @@ impl State {
             .align_y(Center)
         });
 
-        let heading = row![badges.width(Fill).wrap().vertical_spacing(6)]
-            .push(repair)
-            .push(picker)
-            .push(changes)
-            .push(install)
-            .push(manage)
-            .spacing(10)
-            .align_y(Center);
+        let heading = row![
+            badges.width(Fill).wrap().vertical_spacing(6),
+            repair,
+            picker,
+            changes,
+            install,
+            manage,
+        ]
+        .spacing(10)
+        .align_y(Center);
 
         let description = entry
             .map(|entry| entry.description.as_str())
@@ -446,20 +452,21 @@ impl State {
                             .style(button::text)
                             .padding(0)
                             .on_press(Message::OpenLink(link.url.clone()))
-                            .into()
+                            .boxed()
                     });
 
                 // Wrapping onto more lines when the window is narrow.
                 Some(
                     row(pills.into_iter().map(|(label, url)| {
-                        style::link_badge(label, url, Message::OpenLink(url.to_owned()))
+                        style::link_badge(&label, url, Message::OpenLink(url.to_owned())).boxed()
                     }))
-                    .push(updated)
+                    .push(updated.boxed())
                     .extend(links)
                     .spacing(10)
                     .align_y(Center)
                     .wrap()
-                    .vertical_spacing(6),
+                    .vertical_spacing(6)
+                    .boxed(),
                 )
             }
             // Not one the catalog offers: the pages its `.toc` names.
@@ -469,12 +476,12 @@ impl State {
                         .style(button::text)
                         .padding(0)
                         .on_press(Message::OpenLink(url.clone()))
-                        .into()
                 }))
                 .spacing(10)
                 .align_y(Center)
                 .wrap()
                 .vertical_spacing(6)
+                .boxed()
             }),
         };
         let folders = folders.map(|folders| folder_list(&folders));
@@ -527,12 +534,13 @@ impl State {
                                 .on_press_maybe(
                                     (can_install && !installing).then_some(Message::Install(key)),
                                 )
-                                .into()
+                                .boxed()
                         }
                         None => style::tip(
                             text(dependency).size(13).style(text::warning),
                             "Not available here: install it yourself.",
-                        ),
+                        )
+                        .boxed(),
                     }
                 }))
                 .spacing(8)
@@ -542,26 +550,27 @@ impl State {
         });
 
         container(
-            column![heading]
-                .push(description)
-                .push(details)
-                .push(about)
-                .push(folders)
-                .push(required_by)
-                .push(optionally_used_by)
-                .push(missing)
-                .spacing(6),
+            column![
+                heading,
+                description,
+                details,
+                about,
+                folders,
+                required_by,
+                optionally_used_by,
+                missing,
+            ]
+            .spacing(6),
         )
         .padding(14)
         .width(Fill)
         .style(style::card)
-        .into()
     }
 }
 
 /// The `folders` an addon installs, on one line; all of them on hover, when
 /// they don't fit.
-fn folder_list<'a>(folders: &[String]) -> Element<'a, Message> {
+fn folder_list(folders: &[String]) -> impl Widget<Message> + use<> {
     let list = folders.join(", ");
 
     tooltip(
@@ -577,7 +586,6 @@ fn folder_list<'a>(folders: &[String]) -> Element<'a, Message> {
             .style(container::rounded_box),
         tooltip::Position::Bottom,
     )
-    .into()
 }
 
 /// `url` as a card shows it: without its scheme, a leading `www.` or a

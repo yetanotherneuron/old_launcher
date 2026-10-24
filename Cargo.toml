@@ -111,5 +111,5 @@ strip = true
 # launcher is written against. Every iced crate in the tree must come from
 # the same git source.
 [patch.crates-io]
-iced = { git = "https://github.com/iced-rs/iced", rev = "90dec30cc7368c3fbaac69790e43a4b08a21691d" }
-iced_test = { git = "https://github.com/iced-rs/iced", rev = "90dec30cc7368c3fbaac69790e43a4b08a21691d" }
+iced = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
+iced_test = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }

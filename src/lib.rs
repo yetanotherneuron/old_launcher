@@ -35,7 +35,9 @@ use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{
     button, center, column, container, operation, row, scrollable, space, text, tooltip,
 };
-use iced::{Center, Element, Event, Fill, Function, Subscription, Task, Theme, event, window};
+use iced::{
+    Center, Element, Event, Fill, Function, Subscription, Task, Theme, Widget, event, window,
+};
 
 use crate::catalog::Catalog;
 use crate::core::{Config, Installation, Snapshot};
@@ -833,18 +835,19 @@ impl App {
     /// Draws the launcher.
     pub fn view(&self) -> Element<'_, Message> {
         if let Some(recovery) = &self.recovery {
-            return column![]
-                .push(self.errors.view(Message::DismissError))
-                .push(center(scrollable(recovery.view().map(Message::Recovery))))
-                .spacing(14)
-                .padding(20)
-                .into();
+            return column![
+                self.errors.view(Message::DismissError),
+                center(scrollable(recovery.view().map(Message::Recovery))),
+            ]
+            .spacing(14)
+            .padding(20)
+            .boxed();
         }
 
         if self.config.installations.is_empty()
             && let Some(setup) = &self.setup
         {
-            return center(setup.view().map(Message::Setup)).padding(20).into();
+            return center(setup.view().map(Message::Setup)).padding(20).boxed();
         }
 
         let title = button(text("Old Launcher").size(24).font(style::BOLD))
@@ -892,23 +895,19 @@ impl App {
                 tooltip::Position::Bottom,
             ),
             version,
-        ]
-        .push(newer)
-        .push(space::horizontal())
-        .push(style::icon_button(
-            settings::OPEN,
-            style::COG,
-            32.0,
-            button::secondary,
-            "Settings",
-            Some(Message::OpenSettings),
-        ))
-        .push(
+            newer,
+            space::horizontal(),
+            style::icon_button(
+                settings::OPEN,
+                style::COG,
+                32.0,
+                button::secondary,
+                "Settings",
+                Some(Message::OpenSettings),
+            ),
             button("Manage clients…")
                 .style(button::secondary)
                 .on_press(Message::ManageClients),
-        )
-        .push(
             button(
                 text(match game {
                     None => "Play",
@@ -923,7 +922,7 @@ impl App {
                 (matches!(self.selected, Selected::Open { .. }) && game.is_none())
                     .then_some(Message::Play),
             ),
-        )
+        ]
         .spacing(10)
         .align_y(Center);
 
@@ -936,74 +935,65 @@ impl App {
             }
         );
 
-        let client: Element<'_, Message> = match &self.selected {
-            Selected::Nothing => text("No client selected.").style(text::secondary).into(),
+        let client = match &self.selected {
+            Selected::Nothing => text("No client selected.").style(text::secondary).boxed(),
             Selected::Opening(path) => text(format!("Opening {}…", path.display()))
                 .style(text::secondary)
-                .into(),
+                .boxed(),
             Selected::Failed(path) => text(format!("{} is not a usable client.", path.display()))
                 .style(text::danger)
-                .into(),
+                .boxed(),
             Selected::Open {
                 installation,
                 snapshot,
-            } => row![style::badge(
-                installation.version().to_string(),
-                style::Tone::Primary
-            )]
-            .push(
+            } => row![
+                style::badge(installation.version().to_string(), style::Tone::Primary),
                 installation
                     .locale()
                     .map(|locale| style::badge(locale, style::Tone::Primary)),
-            )
-            .push(
                 text(installation.root().display().to_string())
                     .size(13)
                     .style(text::secondary)
                     .wrapping(text::Wrapping::None)
                     .ellipsis(text::Ellipsis::Middle)
                     .width(Fill),
-            )
-            // Until the first scan, the cards can't say what is installed.
-            .push(
+                // Until the first scan, the cards can't say what is installed.
                 snapshot
                     .is_none()
                     .then(|| text("Reading the addons…").size(13).style(text::secondary)),
-            )
-            .push(style::tip(
-                match self.refresh {
-                    catalog::Refresh::Idle => button("Refresh")
-                        .style(button::text)
-                        .on_press(Message::Refresh),
-                    catalog::Refresh::Running => button("Refreshing…").style(button::text),
-                },
-                "Shortcut: F5",
-            ))
-            .push(
+                style::tip(
+                    match self.refresh {
+                        catalog::Refresh::Idle => button("Refresh")
+                            .style(button::text)
+                            .on_press(Message::Refresh),
+                        catalog::Refresh::Running => button("Refreshing…").style(button::text),
+                    },
+                    "Shortcut: F5",
+                ),
                 button("Open AddOns folder")
                     .style(button::text)
                     .on_press(Message::OpenAddOns),
-            )
-            .push(style::tip(
-                button("Export…").style(button::text).on_press_maybe(
-                    (snapshot_ready && !self.transfer.busy())
-                        .then_some(Message::Transfer(transfer::Message::Export)),
+                style::tip(
+                    button("Export…").style(button::text).on_press_maybe(
+                        (snapshot_ready && !self.transfer.busy())
+                            .then_some(Message::Transfer(transfer::Message::Export)),
+                    ),
+                    "Saves the list of addons and their saved settings to a zip file, to \
+                     import on another computer. The files in it are named after your \
+                     account and characters.",
                 ),
-                "Saves the list of addons and their saved settings to a zip file, to \
-                 import on another computer. The files in it are named after your \
-                 account and characters.",
-            ))
-            .push(style::tip(
-                button("Import…").style(button::text).on_press_maybe(
-                    (snapshot_ready && !self.transfer.busy())
-                        .then_some(Message::Transfer(transfer::Message::Import)),
+                style::tip(
+                    button("Import…").style(button::text).on_press_maybe(
+                        (snapshot_ready && !self.transfer.busy())
+                            .then_some(Message::Transfer(transfer::Message::Import)),
+                    ),
+                    "Installs the addons listed in an export and restores their saved \
+                     settings, after showing what it will do.",
                 ),
-                "Installs the addons listed in an export and restores their saved \
-                 settings, after showing what it will do.",
-            ))
+            ]
             .spacing(8)
             .align_y(Center)
-            .into(),
+            .boxed(),
         };
 
         let error = self.errors.view(Message::DismissError);
@@ -1047,11 +1037,7 @@ impl App {
         // iced's keyed diff mistakes a child inserted before the last one for
         // one appended after it, and hands out the wrong widget states.
         let content = column![
-            column![header, client]
-                .push(error)
-                .push(notice)
-                .push(proposal)
-                .spacing(14),
+            column![header, client, error, notice, proposal].spacing(14),
             container(body).height(Fill),
         ]
         .spacing(14)
@@ -1060,7 +1046,7 @@ impl App {
         let (dialog, on_blur) = if let Some(setup) = &self.setup {
             // Added from the clients dialog, which comes back afterwards.
             (
-                Some(setup.view().map(Message::Setup)),
+                Some(setup.view().map(Message::Setup).boxed()),
                 Message::Setup(setup::Message::Cancel),
             )
         } else if self.settings.is_open() {
@@ -1068,7 +1054,8 @@ impl App {
                 Some(
                     self.settings
                         .view(&self.config, &self.github)
-                        .map(Message::Settings),
+                        .map(Message::Settings)
+                        .boxed(),
                 ),
                 Message::Settings(settings::Message::Close),
             )
@@ -1082,7 +1069,8 @@ impl App {
                             installation,
                             game.is_some(),
                         )
-                        .map(Message::Clients),
+                        .map(Message::Clients)
+                        .boxed(),
                 ),
                 Message::Clients(clients::Message::Close),
             )
@@ -1090,19 +1078,19 @@ impl App {
             (
                 self.recognize
                     .dialog(&self.catalog)
-                    .map(|dialog| dialog.map(Message::Recognize)),
+                    .map(|dialog| dialog.map(Message::Recognize).boxed()),
                 Message::Recognize(recognize::Message::Close),
             )
         } else {
             (
                 self.transfer
                     .view(game.is_some())
-                    .map(|dialog| dialog.map(Message::Transfer)),
+                    .map(|dialog| dialog.map(Message::Transfer).boxed()),
                 Message::Transfer(transfer::Message::Cancel),
             )
         };
 
-        style::modal(content, dialog, on_blur)
+        style::modal(content, dialog, on_blur).boxed()
     }
 
     /// Keyboard shortcuts (see [`shortcut`]), the window getting the focus

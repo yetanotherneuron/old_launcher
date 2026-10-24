@@ -3,7 +3,7 @@
 
 use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
-use iced::{Border, Color, Element, Fit, Font, Theme, border, color, font};
+use iced::{Border, Color, Fit, Font, Theme, Widget, border, color, font};
 
 /// A trash can, drawn in black like every icon: the buttons tint them.
 pub const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
@@ -72,9 +72,9 @@ pub fn card(theme: &Theme) -> container::Style {
 
 /// `content`, explained by `hint` in a box below it on hover.
 pub fn tip<'a, Message: 'a>(
-    content: impl Into<Element<'a, Message>>,
+    content: impl Widget<Message> + 'a,
     hint: impl text::IntoFragment<'a>,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     tooltip(
         content,
         container(text(hint).size(13))
@@ -83,7 +83,6 @@ pub fn tip<'a, Message: 'a>(
             .style(container::rounded_box),
         tooltip::Position::Bottom,
     )
-    .into()
 }
 
 /// A full-width notice tinted with `tone`, whose text takes the tone's color.
@@ -118,7 +117,7 @@ impl Tone {
 pub fn badge<'a, Message: 'a>(
     label: impl text::IntoFragment<'a>,
     tone: Tone,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     container(text(label).size(12))
         .padding([2, 8])
         .style(move |theme: &Theme| {
@@ -131,16 +130,15 @@ pub fn badge<'a, Message: 'a>(
                 ..container::Style::default()
             }
         })
-        .into()
 }
 
 /// A gold [`badge`] that links to `url`: it sends `on_press` when clicked and
 /// shows the URL on hover.
 pub fn link_badge<'a, Message: Clone + 'a>(
-    label: impl std::fmt::Display,
+    label: &str,
     url: &'a str,
     on_press: Message,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + use<'a, Message> {
     let badge = button(text(format!("{label} ↗")).size(12))
         .padding([2, 8])
         .on_press(on_press)
@@ -166,7 +164,6 @@ pub fn link_badge<'a, Message: Clone + 'a>(
             .style(container::rounded_box),
         tooltip::Position::Bottom,
     )
-    .into()
 }
 
 /// A small trash can button that sends `on_press` (disabled without one),
@@ -174,7 +171,7 @@ pub fn link_badge<'a, Message: Clone + 'a>(
 pub fn delete_button<'a, Message: Clone + 'a>(
     label: &'a str,
     on_press: Option<Message>,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     let enabled = on_press.is_some();
 
     let icon = svg(svg::Handle::from_memory(TRASH))
@@ -219,7 +216,6 @@ pub fn delete_button<'a, Message: Clone + 'a>(
             .style(container::rounded_box),
         tooltip::Position::Bottom,
     )
-    .into()
 }
 
 /// A square button `size` wide showing `icon` (one of the icons above) in
@@ -236,7 +232,7 @@ pub fn icon_button<'a, Message: Clone + 'a>(
     style: fn(&Theme, button::Status) -> button::Style,
     hint: &'a str,
     on_press: Option<Message>,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     let status = if on_press.is_some() {
         button::Status::Active
     } else {
@@ -264,7 +260,6 @@ pub fn icon_button<'a, Message: Clone + 'a>(
             .style(container::rounded_box),
         tooltip::Position::Bottom,
     )
-    .into()
 }
 
 /// Shows `dialog`, if any, centered over a dimmed `base`; clicking outside it
@@ -273,12 +268,13 @@ pub fn icon_button<'a, Message: Clone + 'a>(
 /// `base` sits in the same place whether a dialog is open or not, so it keeps
 /// its widget state (scroll positions, focus) while dialogs come and go.
 pub fn modal<'a, Message: Clone + 'a>(
-    base: impl Into<Element<'a, Message>>,
-    dialog: Option<impl Into<Element<'a, Message>>>,
+    base: impl Widget<Message> + 'a,
+    dialog: Option<impl Widget<Message> + 'a>,
     on_blur: Message,
-) -> Element<'a, Message> {
-    stack![base.into()]
-        .push(dialog.map(|dialog| {
+) -> impl Widget<Message> + 'a {
+    stack![
+        base,
+        dialog.map(|dialog| {
             opaque(
                 mouse_area(center(opaque(dialog)).style(|_theme| {
                     container::Style {
@@ -294,6 +290,6 @@ pub fn modal<'a, Message: Clone + 'a>(
                 }))
                 .on_press(on_blur),
             )
-        }))
-        .into()
+        }),
+    ]
 }

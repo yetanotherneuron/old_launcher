@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, scrollable, space, text};
-use iced::{Element, Fill, Fit, Task};
+use iced::{Fill, Fit, Task, Widget};
 
 use crate::action::Action;
 use crate::catalog::{Catalog, Entry};
@@ -270,7 +270,7 @@ impl State {
     /// The import dialog, while an export is being reviewed. An export with
     /// saved settings can't be imported while the client's game runs
     /// (`playing`).
-    pub fn view(&self, playing: bool) -> Option<Element<'_, Message>> {
+    pub fn view(&self, playing: bool) -> Option<impl Widget<Message> + '_> {
         let Stage::Reviewing { import, plan } = &self.stage else {
             return None;
         };
@@ -287,31 +287,29 @@ impl State {
             .map(|entry| entry.name.clone())
             .collect();
 
-        let sections = column![]
-            .push(section("To install", &install, "Nothing to install.", None))
-            .push(section(
+        let sections = column![
+            section("To install", &install, "Nothing to install.", None),
+            section(
                 "Already here, left as they are",
                 &titles(&plan.present),
                 "",
                 Some(text::secondary),
-            ))
-            .push(section(
+            ),
+            section(
                 "No longer available, so not installed",
                 &titles(&plan.unavailable),
                 "",
                 Some(text::warning),
-            ))
-            .push(section(
+            ),
+            section(
                 "Installed by hand on the other computer: install these yourself",
                 &titles(&plan.manual),
                 "",
                 Some(text::warning),
-            ))
-            .push(files(
-                "Saved settings already here, replaced",
-                &plan.replaced,
-            ))
-            .spacing(12);
+            ),
+            files("Saved settings already here, replaced", &plan.replaced),
+        ]
+        .spacing(12);
 
         let files = import.files.len();
         let restores = if files == 0 {
@@ -341,10 +339,12 @@ impl State {
                         .padding(10)
                         .width(Fill)
                         .style(container::rounded_box),
-                    column![text(restores)]
-                        .push(replaces)
-                        .push(blocked.then(|| text(game::KEEPS_SETTINGS).style(text::warning)))
-                        .spacing(4),
+                    column![
+                        text(restores),
+                        replaces,
+                        blocked.then(|| text(game::KEEPS_SETTINGS).style(text::warning)),
+                    ]
+                    .spacing(4),
                     row![
                         space::horizontal(),
                         button("Cancel")
@@ -360,8 +360,7 @@ impl State {
             )
             .padding(24)
             .width(Fill.max(620))
-            .style(style::card)
-            .into(),
+            .style(style::card),
         )
     }
 }
@@ -378,7 +377,7 @@ fn section<'a, Message: 'a>(
     names: &[String],
     empty: &'a str,
     tone: Option<fn(&iced::Theme) -> text::Style>,
-) -> Option<Element<'a, Message>> {
+) -> Option<impl Widget<Message> + use<'a, Message>> {
     if names.is_empty() && empty.is_empty() {
         return None;
     }
@@ -393,12 +392,15 @@ fn section<'a, Message: 'a>(
         body = body.style(tone);
     }
 
-    Some(column![heading(title, names.len()), body].spacing(4).into())
+    Some(column![heading(title, names.len()), body].spacing(4))
 }
 
 /// A titled list of data `files`, one per line, relative to the client
 /// folder; left out when there are none.
-fn files<'a, Message: 'a>(title: &'a str, files: &[PathBuf]) -> Option<Element<'a, Message>> {
+fn files<'a, Message: 'a>(
+    title: &'a str,
+    files: &[PathBuf],
+) -> Option<impl Widget<Message> + use<'a, Message>> {
     if files.is_empty() {
         return None;
     }
@@ -411,15 +413,11 @@ fn files<'a, Message: 'a>(title: &'a str, files: &[PathBuf]) -> Option<Element<'
             .collect::<Vec<_>>()
             .join("/");
 
-        text(path).size(13).style(text::warning).into()
+        text(path).size(13).style(text::warning)
     }))
     .spacing(2);
 
-    Some(
-        column![heading(title, files.len()), lines]
-            .spacing(4)
-            .into(),
-    )
+    Some(column![heading(title, files.len()), lines].spacing(4))
 }
 
 /// A section's title, with how many items it lists.

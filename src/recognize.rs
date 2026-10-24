@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use iced::widget::{button, column, container, row, scrollable, space, text};
-use iced::{Center, Element, Fill, Fit, Task, padding};
+use iced::{Center, Fill, Fit, Task, Widget, padding};
 
 use crate::action::Action;
 use crate::catalog::{Catalog, Entry};
@@ -159,7 +159,7 @@ impl State {
     }
 
     /// The banner proposing the addons, while there are any.
-    pub fn banner(&self) -> Option<Element<'_, Message>> {
+    pub fn banner(&self) -> Option<impl Widget<Message> + '_> {
         let proposal = match self.proposed.as_slice() {
             [] => return None,
             [one] => format!(
@@ -190,14 +190,13 @@ impl State {
                 .align_y(Center),
             )
             .padding([6, 12])
-            .style(style::banner(style::Tone::Success))
-            .into(),
+            .style(style::banner(style::Tone::Success)),
         )
     }
 
     /// The list of proposed addons, while open: each with the catalog
     /// source it would be recorded under and its folders.
-    pub fn dialog<'a>(&'a self, catalog: &'a Catalog) -> Option<Element<'a, Message>> {
+    pub fn dialog<'a>(&'a self, catalog: &'a Catalog) -> Option<impl Widget<Message> + 'a> {
         if !self.details {
             return None;
         }
@@ -220,7 +219,6 @@ impl State {
                     .style(text::secondary),
             ]
             .spacing(2)
-            .into()
         });
 
         Some(
@@ -254,13 +252,12 @@ impl State {
             )
             .padding(24)
             .width(Fill.max(620))
-            .style(style::card)
-            .into(),
+            .style(style::card),
         )
     }
 
     /// The button that recognizes the proposed addons.
-    fn accept(&self) -> Element<'_, Message> {
+    fn accept(&self) -> impl Widget<Message> + use<> {
         button(if self.working {
             "Recognizing…"
         } else {
@@ -268,7 +265,6 @@ impl State {
         })
         .style(button::primary)
         .on_press_maybe((!self.working).then_some(Message::Accept))
-        .into()
     }
 }
 

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use iced::widget::{button, checkbox, column, container, row, scrollable, space, text};
-use iced::{Element, Fill, Fit};
+use iced::{Fill, Fit, Widget};
 
 use super::Message;
 use crate::core::saved_variables::Scope;
@@ -119,7 +119,7 @@ impl Confirm {
     /// The dialog asking for confirmation, with paths shown relative to the
     /// client's `root`. While its game runs (`playing`), saved settings are
     /// left alone.
-    pub fn view<'a>(&'a self, root: &'a Path, playing: bool) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, root: &'a Path, playing: bool) -> impl Widget<Message> + 'a {
         // With the slashes the rest of the dialog uses, on Windows too.
         let relative = |file: &PathBuf| match file.strip_prefix(root) {
             Ok(relative) => relative
@@ -231,11 +231,7 @@ impl Confirm {
                     .style(text::secondary)
                 });
 
-                column![]
-                    .push(required)
-                    .push(optional)
-                    .push(settings)
-                    .spacing(6)
+                column![required, optional, settings].spacing(6)
             }
             Self::Clean { .. } if playing => {
                 column![text(game::KEEPS_SETTINGS).style(text::warning)]
@@ -251,7 +247,7 @@ impl Confirm {
                 warnings,
                 container(
                     scrollable(
-                        column(items.into_iter().map(|item| text(item).size(13).into())).spacing(2)
+                        column(items.into_iter().map(|item| text(item).size(13))).spacing(2)
                     )
                     .height(Fit.max(240))
                     .width(Fill)
@@ -275,7 +271,6 @@ impl Confirm {
         .padding(24)
         .width(Fill.max(560))
         .style(style::card)
-        .into()
     }
 }
 

@@ -2,7 +2,7 @@
 //! dismissed.
 
 use iced::widget::{button, column, container, row, text};
-use iced::{Center, Element, Fill};
+use iced::{Center, Fill, Widget};
 
 use crate::style::{self, Tone};
 
@@ -37,13 +37,11 @@ impl Errors {
     pub fn view<'a, Message: Clone + 'a>(
         &'a self,
         dismiss: Message,
-    ) -> Option<Element<'a, Message>> {
+    ) -> Option<impl Widget<Message> + 'a> {
         (!self.0.is_empty()).then(|| {
             container(
                 row![
-                    column(self.0.iter().map(|error| text(error).into()))
-                        .spacing(4)
-                        .width(Fill),
+                    column(self.0.iter().map(text)).spacing(4).width(Fill),
                     button("Dismiss").style(button::text).on_press(dismiss),
                 ]
                 .spacing(8)
@@ -51,7 +49,6 @@ impl Errors {
             )
             .padding([6, 12])
             .style(style::banner(Tone::Danger))
-            .into()
         })
     }
 }

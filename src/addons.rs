@@ -13,12 +13,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
-use iced::widget::operation::{self, Animation, RelativeOffset};
+use iced::widget::operation::Animation;
+use iced::widget::operation::scrollable::{RelativeOffset, snap_to};
 use iced::widget::{
     Button, button, center, column, container, pick_list, row, scrollable, space, text,
     text_input,
 };
-use iced::{Center, Element, Fill, FillPortion, Function, Task, padding};
+use iced::{Center, Element, Fill, FillPortion, Function, Task, Widget, padding};
 
 use crate::action::Action;
 use crate::catalog::{self, Catalog, Entry};
@@ -433,7 +434,7 @@ impl State {
         snapshot: Option<&'a Snapshot>,
         refresh: catalog::Refresh,
         playing: bool,
-    ) -> Element<'a, Message> {
+    ) -> impl Widget<Message> + 'a {
         let library = Library::new(catalog, snapshot);
         let query = Query::new(&self.query);
         let can_install = installation.is_some() && snapshot.is_some();
@@ -541,6 +542,7 @@ impl State {
                 },
                 None,
             )
+            .boxed()
         } else if self.filter.status == Status::LeftoverData {
             self.leftovers(leftovers, filtered, playing)
         } else {
@@ -563,7 +565,7 @@ impl State {
                     Status::LeftoverData => ("No leftover data.", None),
                 };
 
-                empty(message, action)
+                empty(message, action).boxed()
             } else {
                 scrollable(
                     column(shown.into_iter().map(|item| {
@@ -574,7 +576,7 @@ impl State {
                 )
                 .id(LIST)
                 .height(Fill)
-                .into()
+                .boxed()
             }
         };
 
@@ -606,7 +608,8 @@ impl State {
                     "No leftover data."
                 },
                 filtered.then_some(CLEAR),
-            );
+            )
+            .boxed();
         }
 
         let all: Vec<PathBuf> = leftovers
@@ -615,11 +618,11 @@ impl State {
             .collect();
         let deletable = !self.working && !playing;
         // Why the buttons are off, when it's the game.
-        let explained = |button: Button<'a, Message>| -> Element<'a, Message> {
+        let explained = |button: Button<'a, Message, &'static str>| -> Element<'a, Message> {
             if playing {
-                style::tip(button, game::KEEPS_SETTINGS)
+                style::tip(button, game::KEEPS_SETTINGS).boxed()
             } else {
-                button.into()
+                button.boxed()
             }
         };
 
@@ -668,18 +671,16 @@ impl State {
             )
             .padding([6, 14])
             .style(style::card)
-            .into()
         });
 
         scrollable(
-            column![header]
-                .extend(rows)
+            column![header, column(rows).spacing(8)]
                 .spacing(8)
                 .padding(padding::right(14)),
         )
         .id(LIST)
         .height(Fill)
-        .into()
+        .boxed()
     }
 }
 
@@ -689,18 +690,15 @@ const CLEAR: (&str, Message) = ("Clear filters", Message::ClearFilters);
 
 /// A centered `message` for an empty list, with a button offering a way
 /// out (`action`: its label, and what pressing it sends) when there is one.
-fn empty<'a>(message: &'a str, action: Option<(&'a str, Message)>) -> Element<'a, Message> {
+fn empty<'a>(message: &'a str, action: Option<(&'a str, Message)>) -> impl Widget<Message> + 'a {
     center(
-        column![text(message).style(text::secondary)]
-            .push(
-                action.map(|(label, message)| {
-                    button(label).style(button::secondary).on_press(message)
-                }),
-            )
-            .spacing(12)
-            .align_x(Center),
+        column![
+            text(message).style(text::secondary),
+            action.map(|(label, message)| button(label).style(button::secondary).on_press(message)),
+        ]
+        .spacing(12)
+        .align_x(Center),
     )
-    .into()
 }
 
 /// What the banner says when there is no HTTP client to download with, and
@@ -711,7 +709,7 @@ pub fn unavailable(error: &str) -> String {
 
 /// Scrolls the list back to the top, for a list that changed contents.
 fn to_top() -> Task<Message> {
-    operation::snap_to(LIST, RelativeOffset::START, Animation::Instant)
+    snap_to(LIST, RelativeOffset::START, Animation::Instant)
 }
 
 /// Installs `download`, from the source named `source`, into

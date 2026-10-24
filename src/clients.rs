@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use iced::widget::{
     Row, TextInput, button, column, container, pick_list, row, space, stack, text, text_input,
 };
-use iced::{Center, Element, Fill, Font, Function, Task, padding};
+use iced::{Center, Element, Fill, Font, Function, Task, Widget, padding};
 
 use crate::action::Action;
 use crate::core::launch::DEFAULT_COMMAND;
@@ -315,7 +315,7 @@ impl State {
         current: Option<&'a Path>,
         installation: Option<&'a Installation>,
         playing: bool,
-    ) -> Element<'a, Message> {
+    ) -> impl Widget<Message> + 'a {
         let title = row![
             text("Clients").size(20).font(style::BOLD),
             space::horizontal(),
@@ -387,52 +387,56 @@ impl State {
             .style(style::banner(style::Tone::Danger))
         });
 
-        let about =
-            current.map(|root| {
-                let details: Element<'a, Message> = match self.details.get(root) {
-                    Some(Some(Ok(details))) => column![
-                        languages(details, playing),
-                        match &details.realmlist {
-                            Some(realmlist) => fact(
-                                "Realmlist",
-                                realmlist
-                                    .server
-                                    .clone()
-                                    .unwrap_or_else(|| "Not set".to_owned()),
-                            )
-                            .push(style::icon_button(
+        let about = current.map(|root| {
+            // What the folder holds, or why it isn't known (yet).
+            let details: Element<'a, Message> = match self.details.get(root) {
+                Some(Some(Ok(details))) => column![
+                    languages(details, playing),
+                    match &details.realmlist {
+                        Some(realmlist) => fact(
+                            "Realmlist",
+                            realmlist
+                                .server
+                                .clone()
+                                .unwrap_or_else(|| "Not set".to_owned()),
+                        )
+                        .push(
+                            style::icon_button(
                                 EDIT_REALMLIST,
                                 style::PEN,
                                 26.0,
                                 button::text,
                                 "Edit realmlist.wtf",
                                 Some(Message::EditRealmlist(realmlist.path.clone())),
-                            ))
-                            .align_y(Center),
-                            None => fact("Realmlist", "No realmlist.wtf".to_owned()),
-                        },
-                        fact("Size", size(details.size)),
-                    ]
-                    .spacing(6)
-                    .into(),
-                    Some(Some(Err(error))) => text(format!("Could not read the folder: {error}"))
-                        .style(text::danger)
-                        .into(),
-                    Some(None) | None => text("Reading the folder…").style(text::secondary).into(),
-                };
+                            )
+                            .boxed(),
+                        )
+                        .align_y(Center),
+                        None => fact("Realmlist", "No realmlist.wtf".to_owned()),
+                    },
+                    fact("Size", size(details.size)),
+                ]
+                .spacing(6)
+                .boxed(),
+                Some(Some(Err(error))) => text(format!("Could not read the folder: {error}"))
+                    .style(text::danger)
+                    .boxed(),
+                Some(None) | None => text("Reading the folder…").style(text::secondary).boxed(),
+            };
 
-                container(
-                    column![fact("Folder", root.display().to_string())]
-                        .push(installation.map(|installation| {
-                            fact("Version", installation.version().to_string())
-                        }))
-                        .push(details)
-                        .spacing(6),
-                )
-                .padding(12)
-                .width(Fill)
-                .style(container::rounded_box)
-            });
+            container(
+                column![
+                    fact("Folder", root.display().to_string()),
+                    installation
+                        .map(|installation| fact("Version", installation.version().to_string())),
+                    details,
+                ]
+                .spacing(6),
+            )
+            .padding(12)
+            .width(Fill)
+            .style(container::rounded_box)
+        });
 
         // Windows starts Wow.exe itself.
         let launch = current.filter(|_| !cfg!(windows)).map(|root| {
@@ -467,17 +471,10 @@ impl State {
             .spacing(10)
         });
 
-        container(
-            column![title, picker]
-                .push(removal)
-                .push(about)
-                .push(launch)
-                .spacing(14),
-        )
-        .padding(24)
-        .width(Fill.max(620))
-        .style(style::card)
-        .into()
+        container(column![title, picker, removal, about, launch].spacing(14))
+            .padding(24)
+            .width(Fill.max(620))
+            .style(style::card)
     }
 }
 
@@ -496,7 +493,7 @@ fn reread(root: PathBuf) -> Task<Message> {
 
 /// The languages the client has data for. With two or more, the one it
 /// plays in is picked among them, but not while its game runs (`playing`).
-fn languages(details: &Details, playing: bool) -> Row<'_, Message> {
+fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
     match details.locales.as_slice() {
         [] => fact("Languages", "None found".to_owned()),
         [locale] => fact("Languages", locale.clone()),
@@ -504,28 +501,26 @@ fn languages(details: &Details, playing: bool) -> Row<'_, Message> {
             let picker =
                 pick_list(details.locale.clone(), locales, String::clone).padding([2, 10]);
 
-            labelled(
-                "Language",
-                if playing {
-                    style::tip(picker, game::KEEPS_CONFIG)
-                } else {
-                    picker.on_select(Message::Locale).into()
-                },
-            )
-            .align_y(Center)
+            let language = if playing {
+                labelled("Language", style::tip(picker, game::KEEPS_CONFIG))
+            } else {
+                labelled("Language", picker.on_select(Message::Locale))
+            };
+
+            language.align_y(Center)
         }
     }
 }
 
 /// A labelled fact about the client, to which more can be pushed after the
 /// value.
-fn fact<'a>(label: &'a str, value: String) -> Row<'a, Message> {
+fn fact(label: &str, value: String) -> Row<Element<'_, Message>> {
     labelled(label, text(value).wrapping(text::Wrapping::WordOrGlyph))
 }
 
 /// `value`, labelled as a fact about the client.
-fn labelled<'a>(label: &'a str, value: impl Into<Element<'a, Message>>) -> Row<'a, Message> {
-    row![text(label).width(100).style(text::secondary), value.into()].spacing(12)
+fn labelled<'a>(label: &'a str, value: impl Widget<Message> + 'a) -> Row<Element<'a, Message>> {
+    row![text(label).width(100).style(text::secondary), value].spacing(12)
 }
 
 /// A labelled text field, with what is wrong with its contents under it.
@@ -533,11 +528,13 @@ fn field<'a>(
     label: &'a str,
     input: TextInput<'a, Message>,
     problem: Option<String>,
-) -> Element<'a, Message> {
-    column![text(label).size(13), input.padding(8)]
-        .push(problem.map(|problem| text(problem).size(12).style(text::danger)))
-        .spacing(4)
-        .into()
+) -> impl Widget<Message> + 'a {
+    column![
+        text(label).size(13),
+        input.padding(8),
+        problem.map(|problem| text(problem).size(12).style(text::danger)),
+    ]
+    .spacing(4)
 }
 
 #[cfg(test)]
