@@ -21,7 +21,12 @@ zip = { workspace = true }
 sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
 shlex = { workspace = true }
-sysinfo = { workspace = true }
 dunce = { workspace = true }
+
+[target.'cfg(not(windows))'.dependencies]
+sysinfo = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
 
 [dev-dependencies]

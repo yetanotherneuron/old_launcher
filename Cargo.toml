@@ -92,9 +92,12 @@ sevenz-rust2 = { version = "0.23", default-features = false, features = ["util",
 rars = "0.9"
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
-# Lists running processes (on Linux and Windows alike), to tell whether a
-# client's game is running.
+# Lists running processes outside Windows, to tell whether a client's game
+# is running under Wine or Proton.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+# Windows' own functions, to tell the same there asking for as little as
+# Windows lets: the processes' names, then each `Wow.exe`'s path.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 
 # Release binaries are what people download: as fast and small as the
 # compiler makes them, at the cost of slower release builds. Panics still

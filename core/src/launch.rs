@@ -2,11 +2,14 @@
 //! command the client is set up with (Wine, Proton through umu-launcher,
 //! Lutris, Steam, …), the way Steam runs a game's launch options.
 
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(windows)]
+use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use crate::{Error, Installation};
 
@@ -145,6 +148,51 @@ pub fn command(installation: &Installation, launch: &Launch) -> Result<Command, 
 /// the client folder or working in it, or else started from a folder of the
 /// same name (as a runner's own drive sees the client, say).
 pub fn running(roots: &[PathBuf]) -> Vec<PathBuf> {
+    #[cfg(windows)]
+    let games = games(roots);
+    #[cfg(not(windows))]
+    let games = games();
+
+    roots
+        .iter()
+        .filter(|root| {
+            let name = root.file_name().map(|name| name.to_string_lossy());
+
+            games.iter().any(|game| {
+                game.exe
+                    .as_deref()
+                    .and_then(Path::parent)
+                    .is_some_and(|folder| same(folder, root))
+                    || game.cwd.as_deref().is_some_and(|cwd| same(cwd, root))
+                    || game
+                        .program
+                        .as_deref()
+                        .and_then(folder)
+                        .zip(name.as_deref())
+                        .is_some_and(|(folder, name)| folder.eq_ignore_ascii_case(name))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+/// A running `Wow.exe`, as much of it as tells whose game it is.
+#[derive(Debug, Default)]
+struct Game {
+    /// Its program file.
+    exe: Option<PathBuf>,
+    /// The folder it works in.
+    cwd: Option<PathBuf>,
+    /// The program its command line starts with: under Wine or Proton, the
+    /// Windows path of `Wow.exe`.
+    program: Option<String>,
+}
+
+/// The processes named `Wow.exe`: under Wine or Proton, the game's.
+#[cfg(not(windows))]
+fn games() -> Vec<Game> {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
     // Every process is looked at, so none of their files stay open.
     sysinfo::set_open_files_limit(0);
 
@@ -176,28 +224,170 @@ pub fn running(roots: &[PathBuf]) -> Vec<PathBuf> {
             .with_cmd(UpdateKind::Always),
     );
 
-    roots
+    games
         .iter()
-        .filter(|root| {
-            let name = root.file_name().map(|name| name.to_string_lossy());
-
-            games
-                .iter()
-                .filter_map(|pid| system.process(*pid))
-                .any(|game| {
-                    game.exe()
-                        .and_then(Path::parent)
-                        .is_some_and(|folder| same(folder, root))
-                        || game.cwd().is_some_and(|cwd| same(cwd, root))
-                        || game.cmd().first().is_some_and(|program| {
-                            folder(&program.to_string_lossy())
-                                .zip(name.as_deref())
-                                .is_some_and(|(folder, name)| folder.eq_ignore_ascii_case(name))
-                        })
-                })
+        .filter_map(|pid| system.process(*pid))
+        .map(|game| Game {
+            exe: game.exe().map(Path::to_path_buf),
+            cwd: game.cwd().map(Path::to_path_buf),
+            program: game
+                .cmd()
+                .first()
+                .map(|program| program.to_string_lossy().into_owned()),
         })
-        .cloned()
         .collect()
+}
+
+/// The `Wow.exe` processes found for the clients asked about, kept open so
+/// that later looks only ask each whether it exited.
+#[cfg(windows)]
+static FOUND: Mutex<Vec<Found>> = Mutex::new(Vec::new());
+
+/// A `Wow.exe` found running, kept open with the right to tell when it
+/// exits, and no other but asking its path.
+#[cfg(windows)]
+struct Found {
+    /// Its process id, which no other process takes while it is open.
+    id: u32,
+    /// Its program file.
+    exe: PathBuf,
+    process: OwnedHandle,
+}
+
+/// The `Wow.exe` processes of the clients at `roots`, by their program file
+/// alone. Those found before are only asked whether they exited. The
+/// processes are looked at again only when one of `roots` has no game
+/// found, and then as little as Windows lets: a snapshot of their names,
+/// which opens none of them, then each `Wow.exe`'s path. Security software
+/// rightly suspects a program that opens other processes to read their
+/// memory, as a general listing of processes does.
+#[cfg(windows)]
+fn games(roots: &[PathBuf]) -> Vec<Game> {
+    let mut found = FOUND.lock().unwrap_or_else(PoisonError::into_inner);
+    found.retain(|game| alive(&game.process));
+
+    let of = |game: &Found, root: &PathBuf| {
+        game.exe
+            .parent()
+            .is_some_and(|folder| same(folder, root))
+    };
+    let unknown = roots
+        .iter()
+        .any(|root| !found.iter().any(|game| of(game, root)));
+
+    if unknown {
+        for id in named_wow() {
+            if found.iter().any(|game| game.id == id) {
+                continue;
+            }
+            let game = open(id).filter(|game| roots.iter().any(|root| of(game, root)));
+            found.extend(game);
+        }
+    }
+
+    found
+        .iter()
+        .map(|game| Game {
+            exe: Some(game.exe.clone()),
+            ..Game::default()
+        })
+        .collect()
+}
+
+/// Whether the process held is still running: asked without waiting.
+#[cfg(windows)]
+fn alive(process: &OwnedHandle) -> bool {
+    use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+    use windows_sys::Win32::System::Threading::WaitForSingleObject;
+
+    // SAFETY: the handle is open, with the right to wait for it.
+    unsafe { WaitForSingleObject(process.as_raw_handle(), 0) == WAIT_TIMEOUT }
+}
+
+/// The ids of the processes named `Wow.exe`, from a snapshot of the names of
+/// the processes, which opens none of them.
+#[cfg(windows)]
+fn named_wow() -> Vec<u32> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+
+    // SAFETY: a plain call; the handle is checked, then owned.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Vec::new();
+    }
+    // SAFETY: a handle just opened, which nothing else owns.
+    let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot) };
+
+    let mut entry = PROCESSENTRY32W {
+        dwSize: size_of::<PROCESSENTRY32W>() as u32,
+        ..PROCESSENTRY32W::default()
+    };
+    let mut ids = Vec::new();
+    // SAFETY: `entry` is a PROCESSENTRY32W whose size field is set, as both
+    // calls require, and the snapshot is open.
+    let mut listed = unsafe { Process32FirstW(snapshot.as_raw_handle(), &mut entry) } != 0;
+
+    while listed {
+        let name = &entry.szExeFile;
+        let length = name.iter().position(|&unit| unit == 0).unwrap_or(name.len());
+
+        if String::from_utf16_lossy(&name[..length]).eq_ignore_ascii_case("Wow.exe") {
+            ids.push(entry.th32ProcessID);
+        }
+        // SAFETY: as for the first.
+        listed = unsafe { Process32NextW(snapshot.as_raw_handle(), &mut entry) } != 0;
+    }
+
+    ids
+}
+
+/// The process `id`, opened with the right to tell when it exits and to
+/// ask its path, and no other: nothing of it can be read, and Task Manager
+/// asks as much. Nothing when Windows refuses, or it has no path.
+#[cfg(windows)]
+fn open(id: u32) -> Option<Found> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        QueryFullProcessImageNameW,
+    };
+
+    // SAFETY: a plain call; the handle is checked, then owned.
+    let process =
+        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, id) };
+    if process.is_null() {
+        return None;
+    }
+    // SAFETY: a handle just opened, which nothing else owns.
+    let process = unsafe { OwnedHandle::from_raw_handle(process) };
+
+    // As long as a path gets.
+    let mut path = vec![0u16; 32_768];
+    let mut length = path.len() as u32;
+    // SAFETY: `path` holds `length` units, which the call is told, and the
+    // process is open.
+    let named = unsafe {
+        QueryFullProcessImageNameW(
+            process.as_raw_handle(),
+            PROCESS_NAME_WIN32,
+            path.as_mut_ptr(),
+            &mut length,
+        )
+    } != 0;
+
+    path.get(..length as usize)
+        .filter(|_| named)
+        .map(|exe| Found {
+            id,
+            exe: PathBuf::from(OsString::from_wide(exe)),
+            process,
+        })
 }
 
 /// Whether `a` and `b` are the same folder however they are spelled: with
@@ -373,6 +563,60 @@ mod tests {
             (!found.is_empty()).then_some(found)
         });
         assert_eq!(found.as_deref(), Some(std::slice::from_ref(&root)));
+
+        game.kill().unwrap();
+        game.wait().unwrap();
+        assert!(running(&clients).is_empty());
+    }
+
+    /// Set for [`the_game`] when it stands for the game.
+    #[cfg(windows)]
+    const GAME: &str = "OLD_LAUNCHER_TEST_GAME";
+
+    /// The game of the test below, which runs this test program as a
+    /// client's `Wow.exe`, with this test alone: it waits to be found.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "the game a_game_is_running_while_its_wow_exe_runs runs"]
+    fn the_game() {
+        if std::env::var_os(GAME).is_some() {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    }
+
+    /// This test program, copied as a client's `Wow.exe`, stands for the
+    /// game.
+    #[cfg(windows)]
+    #[test]
+    fn a_game_is_running_while_its_wow_exe_runs() {
+        use std::fs;
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(directory.path()).unwrap();
+        let other = root.join("other");
+        fs::create_dir(&other).unwrap();
+        fs::copy(std::env::current_exe().unwrap(), root.join("Wow.exe")).unwrap();
+        let clients = [root.clone(), other];
+
+        assert!(running(&clients).is_empty());
+
+        let mut game = Command::new(root.join("Wow.exe"))
+            .args(["launch::tests::the_game", "--exact", "--ignored", "--quiet"])
+            .env(GAME, "1")
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let found = (0..100).find_map(|_| {
+            let found = running(&clients);
+            if found.is_empty() {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            (!found.is_empty()).then_some(found)
+        });
+        assert_eq!(found.as_deref(), Some(std::slice::from_ref(&root)));
+        // Kept open since: asked only whether it exited.
+        assert_eq!(running(&clients), std::slice::from_ref(&root));
 
         game.kill().unwrap();
         game.wait().unwrap();

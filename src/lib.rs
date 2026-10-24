@@ -581,14 +581,10 @@ impl App {
                     .play(installation, &launch, self.config.discord, &mut self.errors)
                     .map(Message::Game)
             }
-            Message::Game(message) => {
-                let (installation, _) = self.selected.open();
-                let selected = installation.map(Installation::root);
-
-                self.game
-                    .update(message, selected, &mut self.errors)
-                    .map(Message::Game)
-            }
+            Message::Game(message) => self
+                .game
+                .update(message, &mut self.errors)
+                .map(Message::Game),
             // Back from somewhere else, where a game may have started or a
             // realmlist been edited.
             Message::Focused => {

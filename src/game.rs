@@ -58,7 +58,7 @@ pub enum Message {
     /// The command that started the game of this client folder exited, with
     /// this exit code if it had one, or failed to start.
     Exited(PathBuf, Result<Option<i32>, String>),
-    /// Time to look for the games started, and the selected client's.
+    /// Time to look at the games followed.
     Watch,
     /// The client folders whose game is running.
     Watched(Result<Vec<PathBuf>, String>),
@@ -142,13 +142,8 @@ impl State {
         )
     }
 
-    /// Handles what happened to the games; `selected` is the client shown.
-    pub fn update(
-        &mut self,
-        message: Message,
-        selected: Option<&Path>,
-        errors: &mut Errors,
-    ) -> Task<Message> {
+    /// Handles what happened to the games.
+    pub fn update(&mut self, message: Message, errors: &mut Errors) -> Task<Message> {
         match message {
             Message::Exited(root, result) => {
                 log::info!("The game's command exited: {result:?}");
@@ -183,7 +178,10 @@ impl State {
 
                 Task::none()
             }
-            Message::Watch => self.watch(selected),
+            // Only the games followed: the selected client is looked at when
+            // it opens and when the window gets the focus back, so a game
+            // that runs is otherwise asked only whether it is over.
+            Message::Watch => self.watch(None),
             Message::Watched(Ok(running)) => {
                 for root in &running {
                     let _ = self.games.entry(root.clone()).or_insert_with(|| {
@@ -281,31 +279,29 @@ mod tests {
         let mut errors = Errors::default();
         let root = started(&mut state, &installation);
 
-        let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(
             state.phase(&root),
             Some(Phase::SettingUp),
             "no Wow.exe yet: Proton being set up, say"
         );
 
-        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), &mut errors);
         assert_eq!(state.phase(&root), Some(Phase::Running));
 
         // wine or umu-run exit with the game, which then goes.
         let _ = state.update(
             Message::Exited(root.clone(), Ok(Some(0))),
-            None,
             &mut errors,
         );
         assert_eq!(state.phase(&root), Some(Phase::Running), "until it is gone");
-        let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(state.phase(&root), None);
         assert!(errors.messages().is_empty(), "a normal exit");
 
         let _ = started(&mut state, &installation);
         let _ = state.update(
             Message::Exited(root.clone(), Ok(Some(3))),
-            None,
             &mut errors,
         );
         assert_eq!(state.phase(&root), None, "over at once");
@@ -331,7 +327,6 @@ mod tests {
 
         let _ = state.update(
             Message::Exited(root.clone(), Ok(Some(0))),
-            None,
             &mut errors,
         );
         assert_eq!(state.phase(&root), None, "over when Wow.exe exits");
@@ -348,27 +343,25 @@ mod tests {
         // `steam steam://rungameid/…` exits as soon as Steam has the game.
         let _ = state.update(
             Message::Exited(root.clone(), Ok(Some(0))),
-            None,
             &mut errors,
         );
         for _ in 1..Game::PATIENCE {
-            let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+            let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         }
         assert_eq!(state.phase(&root), Some(Phase::SettingUp));
-        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), &mut errors);
         assert_eq!(state.phase(&root), Some(Phase::Running));
-        let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(state.phase(&root), None);
 
         // And when the game never shows up, the launcher stops waiting.
         let _ = started(&mut state, &installation);
         let _ = state.update(
             Message::Exited(root.clone(), Ok(Some(0))),
-            None,
             &mut errors,
         );
         for _ in 0..Game::PATIENCE {
-            let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+            let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         }
         assert_eq!(state.phase(&root), None);
     }
@@ -380,15 +373,21 @@ mod tests {
         let mut errors = Errors::default();
         let root = installation.root().to_path_buf();
 
-        // Nothing was started, but the selected client is looked at.
+        // Nothing was started, but the selected client is looked at: when it
+        // opens or the window gets the focus back, never every second.
         assert!(state.watch(Some(&root)).units() > 0);
         assert_eq!(state.watch(None).units(), 0, "nothing to look for");
+        assert_eq!(
+            state.update(Message::Watch, &mut errors).units(),
+            0,
+            "only the games followed"
+        );
 
-        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), &mut errors);
         assert_eq!(state.phase(&root), Some(Phase::Running));
         assert!(state.subscription().units() > 0, "followed every second");
 
-        let _ = state.update(Message::Watched(Ok(Vec::new())), None, &mut errors);
+        let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(state.phase(&root), None);
         assert_eq!(state.subscription().units(), 0);
     }
