@@ -42,9 +42,11 @@ fn catalog() -> Catalog {
     Catalog::parse(CATALOG.as_bytes()).unwrap()
 }
 
+/// The launcher's own client: GitHub's API refuses requests without its
+/// user agent.
 fn client() -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::new()
+    crate::http_client().build().unwrap()
 }
 
 /// The screen of `state`, with `installation` open as `snapshot` saw it.
@@ -1603,7 +1605,8 @@ async fn catalog_entries_install_into_a_real_client() {
     let catalog = catalog::repository();
 
     // A repository zip, a branch snapshot, a release archive and a bare
-    // repository link, plus one from each other kind of source.
+    // repository link, plus one from each other kind of source: WoWInterface's
+    // a RAR archive.
     for (source, name) in [
         ("nom0re", "Addon Control Panel"),
         ("nom0re", "Skada vs. Details!"),
@@ -1612,6 +1615,7 @@ async fn catalog_entries_install_into_a_real_client() {
         ("rising-gods", "Quartz"),
         ("locus313", "Omen"),
         ("github-bkader", "FixGroups-WoTLK"),
+        ("wowinterface", "1337 Achievement Helper"),
     ] {
         let (entry, download) = catalog
             .entries
