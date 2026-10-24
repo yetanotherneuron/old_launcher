@@ -462,7 +462,20 @@ impl State {
                     .vertical_spacing(6),
                 )
             }
-            None => None,
+            // Not one the catalog offers: the pages its `.toc` names.
+            None => toc.filter(|toc| !toc.websites.is_empty()).map(|toc| {
+                row(toc.websites.iter().map(|url| {
+                    button(text(format!("{} ↗", address(url))).size(13))
+                        .style(button::text)
+                        .padding(0)
+                        .on_press(Message::OpenLink(url.clone()))
+                        .into()
+                }))
+                .spacing(10)
+                .align_y(Center)
+                .wrap()
+                .vertical_spacing(6)
+            }),
         };
         let folders = folders.map(|folders| folder_list(&folders));
 
@@ -565,6 +578,15 @@ fn folder_list<'a>(folders: &[String]) -> Element<'a, Message> {
         tooltip::Position::Bottom,
     )
     .into()
+}
+
+/// `url` as a card shows it: without its scheme, a leading `www.` or a
+/// trailing slash, as in `github.com/bkader/Raven-WotLK`.
+fn address(url: &str) -> &str {
+    let address = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let address = address.strip_prefix("www.").unwrap_or(address);
+
+    address.strip_suffix('/').unwrap_or(address)
 }
 
 /// What an "Update available" badge means: the version installed against

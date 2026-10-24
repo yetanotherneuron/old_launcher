@@ -805,6 +805,27 @@ fn addons_from_entries_the_catalog_dropped_keep_their_source() {
 }
 
 #[test]
+fn manual_installs_link_to_the_pages_their_toc_names() {
+    let (_root, installation) = testing::client_with(&[(
+        "Interface/AddOns/Raven/Raven.toc",
+        "## Title: Raven\n## X-Website: http://www.example.org/raven/\n\
+         ## X-Repository: https://github.com/example/Raven\n## X-Email: someone@example.org\n",
+    )]);
+    let snapshot = installation.scan().unwrap();
+    let state = State::new();
+
+    let mut ui = open(&state, &EMPTY, &installation, &snapshot);
+    assert!(ui.find("Installed manually").is_ok());
+    assert!(ui.find("github.com/example/Raven ↗").is_ok());
+    let _ = ui.click("example.org/raven ↗").unwrap();
+
+    assert!(matches!(
+        ui.into_messages().next(),
+        Some(Message::OpenLink(url)) if url == "http://www.example.org/raven/"
+    ));
+}
+
+#[test]
 fn addons_list_what_requires_them() {
     let (_root, installation) = client_with_dependents();
     let snapshot = installation.scan().unwrap();

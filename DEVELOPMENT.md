@@ -90,7 +90,8 @@ There is no database. Everything is read from the client folder itself:
 - **Where an addon came from**: installing drops a small
   `.old_launcher.toml` marker (source, catalog entry, URL) into each folder
   it creates. The client ignores it. Folders without a marker show as
-  installed manually, one card per folder.
+  installed manually, one card per folder, with links to the web pages
+  their `.toc` names (`X-Website`, `URL`, `X-Repository` and the like).
 - **Addons installed before the launcher**: after each scan, unmarked folders
   that exactly match a catalog entry (every folder it installs is present)
   get that entry's marker. Bundles are matched before entries shipping one of

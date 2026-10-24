@@ -25,6 +25,9 @@ pub struct Toc {
     pub saved_variables_per_character: Vec<String>,
     /// Whether the client only loads the addon when another addon asks for it.
     pub load_on_demand: bool,
+    /// The addon's own web pages (`X-Website`, `URL`, `X-Repository`, …), as
+    /// http(s) addresses, in the order written and without repeats.
+    pub websites: Vec<String>,
 }
 
 impl Toc {
@@ -70,6 +73,20 @@ impl Toc {
                     toc.saved_variables_per_character.extend(list(value));
                 }
                 "loadondemand" => toc.load_on_demand = value == "1",
+                // The names addons use for their page, from the 2010
+                // packagers' `X-Website` to the backports' repositories.
+                "x-website" | "x-url" | "url" | "website" | "x-repository" | "x-github"
+                | "x-github-project-homepage" => {
+                    let address = strip_escapes(value)
+                        .split_whitespace()
+                        .find_map(web_address);
+
+                    if let Some(address) = address
+                        && !toc.websites.contains(&address)
+                    {
+                        toc.websites.push(address);
+                    }
+                }
                 "dependencies" | "requireddeps" => toc.dependencies.extend(list(value)),
                 key if key.starts_with("dep") => toc.dependencies.extend(list(value)),
                 _ => {}
@@ -272,6 +289,45 @@ pub fn strip_escapes(text: &str) -> String {
     plain.trim().to_owned()
 }
 
+/// `word` as a web address, when it is one: an http(s) address, or one
+/// starting with `www.`, taken as http. Brackets, quotes and punctuation
+/// around it are left out. Anything else (an email address, another
+/// scheme, a host without a dot) is not one, so nothing but a web page is
+/// ever opened from a `.toc`.
+fn web_address(word: &str) -> Option<String> {
+    let word = word.trim_matches(['(', ')', '<', '>', '[', ']', '"', '\'', ',', ';', '.']);
+    let (scheme, rest) = match word.split_once("://") {
+        Some((scheme, rest))
+            if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") =>
+        {
+            (scheme.to_ascii_lowercase(), rest)
+        }
+        Some(_) => return None,
+        None if word
+            .get(..4)
+            .is_some_and(|start| start.eq_ignore_ascii_case("www.")) =>
+        {
+            ("http".to_owned(), word)
+        }
+        None => return None,
+    };
+
+    // A host name with a dot, as in example.com (and maybe a port), and
+    // nothing an address can't hold.
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let labels: Vec<&str> = host.split('.').collect();
+    let valid = labels.len() > 1
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | ':'))
+        })
+        && rest.chars().all(|c| c.is_ascii_graphic());
+
+    valid.then(|| format!("{scheme}://{rest}"))
+}
+
 fn list(value: &str) -> impl Iterator<Item = String> + '_ {
     value
         .split([',', ' '])
@@ -329,6 +385,52 @@ mod tests {
         let toc = Toc::parse(b"\xEF\xBB\xBF## Interface: 30300\n");
 
         assert_eq!(toc.interface, Some(30300));
+    }
+
+    #[test]
+    fn web_pages_come_from_the_fields_addons_name_them_in() {
+        let toc = Toc::parse(
+            b"## X-Website: http://www.wowace.com/projects/bartender4/\r\n\
+              ## URL: www.example.org\r\n\
+              ## X-Repository: https://github.com/example/Addon\r\n\
+              ## X-Github-Project-Homepage: |cff00ff00https://github.com/example/Addon|r\r\n\
+              ## X-Website: HTTP://Example.NET/  [does not work anymore]\r\n\
+              ## X-Feedback: http://forums.example.com\r\n\
+              ## X-Email: someone@example.com\r\n",
+        );
+
+        assert_eq!(
+            toc.websites,
+            [
+                "http://www.wowace.com/projects/bartender4/",
+                "http://www.example.org",
+                "https://github.com/example/Addon",
+                "http://Example.NET/",
+            ]
+        );
+    }
+
+    #[test]
+    fn only_web_addresses_are_web_pages() {
+        for value in [
+            "someone@example.com",
+            "mailto:someone@example.com",
+            "javascript:alert(1)",
+            "file:///C:/Windows/notepad.exe",
+            "ftp://example.org/addon.zip",
+            "http://localhost/",
+            "https://",
+            "http://example..org",
+            "http://user@example.org",
+            "See the forums",
+        ] {
+            let toc = Toc::parse(format!("## X-Website: {value}\n").as_bytes());
+
+            assert!(toc.websites.is_empty(), "{value}: {:?}", toc.websites);
+        }
+
+        let toc = Toc::parse(b"## URL: Visit (https://example.org/addon).\n");
+        assert_eq!(toc.websites, ["https://example.org/addon"]);
     }
 
     #[test]
