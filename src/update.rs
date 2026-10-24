@@ -103,10 +103,7 @@ mod tests {
 
     #[test]
     fn the_description_is_beside_the_page() {
-        assert_eq!(
-            RELEASE,
-            "https://old-launcher-0d3217.gitlab.io/release.json"
-        );
+        assert_eq!(RELEASE, "https://old-launcher.icarns.xyz/release.json");
     }
 
     #[test]

@@ -45,7 +45,7 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://gitlab.com/juxuanu/old_launcher"
 # The project page, where the downloads are.
-homepage = "https://old-launcher-0d3217.gitlab.io/"
+homepage = "https://old-launcher.icarns.xyz/"
 
 # Nothing outside tests may panic on purpose: errors are returned and shown.
 # Tests may (clippy.toml), since a failed assertion is how they fail.
