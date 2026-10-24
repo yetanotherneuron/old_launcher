@@ -87,9 +87,9 @@ tempfile = "3"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 # Archive formats, all pure Rust (no C/C++ toolchain).
-zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma"] }
-sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
-rars = "0.9"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma"] }
+sevenz-rust2 = { version = "0.24", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
+rars = "0.12"
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
 # Lists running processes outside Windows, to tell whether a client's game

@@ -67,7 +67,7 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                         .map(|time| (time.year(), time.month(), time.day())),
                 );
 
-                let path = contained(destination, file.name())?;
+                let path = contained(destination, &file.name()?)?;
 
                 if file.is_dir() {
                     fs::create_dir_all(&path).map_err(io_at(&path))?;
@@ -100,17 +100,20 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
         }
         Format::Rar => {
             let archive = rars::ArchiveReader::read(bytes)?;
+            // RAR 5 dates its files in seconds since 1970, older RAR in DOS
+            // time.
+            let unix = matches!(archive, rars::Archive::Rar50Plus(_));
 
             archive.extract_to(None, |entry| {
-                // A DOS timestamp: the date sits in the high 16 bits.
-                let time = entry.file_time;
                 newer(
                     &mut newest,
-                    Some((
-                        (time >> 25) as u16 + 1980,
-                        ((time >> 21) & 0x0F) as u8,
-                        ((time >> 16) & 0x1F) as u8,
-                    )),
+                    entry.file_time.map(|time| {
+                        if unix {
+                            civil(i64::from(time).div_euclid(86_400))
+                        } else {
+                            dos_date(time)
+                        }
+                    }),
                 );
 
                 let name = entry.name_lossy();
@@ -159,6 +162,15 @@ pub fn date(seconds: i64) -> String {
 }
 
 /// The calendar date `days` days after 1970-01-01.
+/// The date of a DOS timestamp, which sits in its high 16 bits.
+fn dos_date(time: u32) -> Date {
+    (
+        (time >> 25) as u16 + 1980,
+        ((time >> 21) & 0x0F) as u8,
+        ((time >> 16) & 0x1F) as u8,
+    )
+}
+
 fn civil(days: i64) -> Date {
     // Howard Hinnant's `civil_from_days`.
     let z = days + 719_468;
@@ -256,6 +268,42 @@ mod tests {
             extract(&archive, destination.path()).unwrap().as_deref(),
             Some("2024-11-30")
         );
+    }
+
+    /// RAR 5 dates files in seconds since 1970, and older RAR in DOS time:
+    /// read the other way, either gives another day, or none.
+    #[test]
+    fn rar_dates_are_read_as_each_version_writes_them() {
+        // 2010-07-24, 12:00 UTC.
+        let unix = 1_279_972_800;
+        let dos = (30 << 25) | (7 << 21) | (24 << 16) | (12 << 11);
+
+        for (version, time) in [
+            (rars::ArchiveVersion::Rar50, unix),
+            (rars::ArchiveVersion::Rar29, dos),
+        ] {
+            let mut builder = rars::Builder::new(version);
+            builder
+                .add_bytes(
+                    b"ACP/ACP.toc".to_vec(),
+                    b"## Title: ACP".to_vec(),
+                    Some(time),
+                    None,
+                )
+                .unwrap();
+            let destination = tempfile::tempdir().unwrap();
+            // The writer spools to a file, in the current folder unless told.
+            let spool = rars::WriterResources::default().with_temp_dir(destination.path());
+            let archive = builder.to_bytes_with_resources(&spool, None).unwrap();
+
+            assert_eq!(
+                extract(&archive, destination.path()).unwrap().as_deref(),
+                Some("2010-07-24"),
+                "{version:?}"
+            );
+            let toc = fs::read_to_string(destination.path().join("ACP/ACP.toc")).unwrap();
+            assert_eq!(toc, "## Title: ACP", "{version:?}");
+        }
     }
 
     #[test]

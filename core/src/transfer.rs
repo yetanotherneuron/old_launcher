@@ -191,7 +191,10 @@ impl Import {
             return Err(Error::ExportVersion(manifest.version));
         }
 
-        let mut files: Vec<PathBuf> = zip.file_names().filter_map(saved_variables).collect();
+        let mut files: Vec<PathBuf> = Vec::new();
+        for name in zip.file_names() {
+            files.extend(saved_variables(&name?));
+        }
         files.sort();
 
         Ok(Self {
