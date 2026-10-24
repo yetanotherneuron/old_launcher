@@ -691,7 +691,11 @@ mod tests {
     fn choosing_a_language_rewrites_only_its_line_in_config_wtf() {
         let (root, _) = client();
         fs::create_dir_all(root.path().join("Data/enUS")).unwrap();
-        fs::write(root.path().join("Data/esES/realmlist.wtf"), "set realmlist es.example.com").unwrap();
+        fs::write(
+            root.path().join("Data/esES/realmlist.wtf"),
+            "set realmlist es.example.com",
+        )
+        .unwrap();
         fs::create_dir_all(root.path().join("wtf")).unwrap();
         fs::write(
             root.path().join("wtf/config.wtf"),

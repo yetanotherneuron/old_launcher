@@ -252,7 +252,13 @@ fn entries_installed_from_any_source_offer_a_reinstall() {
         ..Snapshot::default()
     };
 
-    let mut ui = simulator(state.view(&catalog, None, Some(&snapshot), catalog::Refresh::Idle, false));
+    let mut ui = simulator(state.view(
+        &catalog,
+        None,
+        Some(&snapshot),
+        catalog::Refresh::Idle,
+        false,
+    ));
 
     assert!(ui.find("Reinstall").is_ok());
     assert!(ui.find("Installed").is_ok());
@@ -672,9 +678,7 @@ fn saved_settings_are_left_alone_while_the_game_runs() {
     }
     let mut ui = playing(&state, &installation, &snapshot);
     assert!(ui.find(game::KEEPS_SETTINGS).is_ok());
-    let _ = ui
-        .click("Also delete its saved settings (1 file)")
-        .unwrap();
+    let _ = ui.click("Also delete its saved settings (1 file)").unwrap();
     assert_eq!(ui.into_messages().count(), 0, "the box is off");
     let _ = state.update(
         Message::Cancel,

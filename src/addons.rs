@@ -16,8 +16,7 @@ use iced::task::{Straw, sipper};
 use iced::widget::operation::Animation;
 use iced::widget::operation::scrollable::{RelativeOffset, snap_to};
 use iced::widget::{
-    Button, button, center, column, container, pick_list, row, scrollable, space, text,
-    text_input,
+    Button, button, center, column, container, pick_list, row, scrollable, space, text, text_input,
 };
 use iced::{Center, Element, Fill, FillPortion, Function, Task, Widget, padding};
 
@@ -626,52 +625,54 @@ impl State {
             }
         };
 
-        let header = row![
-            column![
-                text("Leftover data").size(17).font(style::BOLD),
-                text("Saved settings of addons that are no longer installed.")
-                    .size(13)
-                    .style(text::secondary),
-            ]
-            .spacing(2),
-            space::horizontal(),
-            explained(button("Delete all").style(button::danger).on_press_maybe(
-                deletable.then(|| {
-                    Message::Ask(Confirm::Clean {
-                        title: "all leftover data".to_owned(),
-                        files: all,
-                    })
-                }),
-            )),
-        ]
-        .align_y(Center);
-
-        let rows = leftovers.into_iter().map(|(name, files)| {
-            container(
-                row![
-                    text(name.clone()).width(Fill),
-                    text(if files.len() == 1 {
-                        "1 file".to_owned()
-                    } else {
-                        format!("{} files", files.len())
-                    })
-                    .size(13)
-                    .style(text::secondary),
-                    explained(button("Delete").style(button::text).on_press_maybe(
-                        deletable.then(|| {
-                            Message::Ask(Confirm::Clean {
-                                title: name,
-                                files: files.to_vec(),
-                            })
-                        }),
-                    )),
+        let header =
+            row![
+                column![
+                    text("Leftover data").size(17).font(style::BOLD),
+                    text("Saved settings of addons that are no longer installed.")
+                        .size(13)
+                        .style(text::secondary),
                 ]
-                .spacing(12)
-                .align_y(Center),
-            )
-            .padding([6, 14])
-            .style(style::card)
-        });
+                .spacing(2),
+                space::horizontal(),
+                explained(button("Delete all").style(button::danger).on_press_maybe(
+                    deletable.then(|| {
+                        Message::Ask(Confirm::Clean {
+                            title: "all leftover data".to_owned(),
+                            files: all,
+                        })
+                    }),
+                )),
+            ]
+            .align_y(Center);
+
+        let rows =
+            leftovers.into_iter().map(|(name, files)| {
+                container(
+                    row![
+                        text(name.clone()).width(Fill),
+                        text(if files.len() == 1 {
+                            "1 file".to_owned()
+                        } else {
+                            format!("{} files", files.len())
+                        })
+                        .size(13)
+                        .style(text::secondary),
+                        explained(button("Delete").style(button::text).on_press_maybe(
+                            deletable.then(|| {
+                                Message::Ask(Confirm::Clean {
+                                    title: name,
+                                    files: files.to_vec(),
+                                })
+                            }),
+                        )),
+                    ]
+                    .spacing(12)
+                    .align_y(Center),
+                )
+                .padding([6, 14])
+                .style(style::card)
+            });
 
         scrollable(
             column![header, column(rows).spacing(8)]
@@ -738,8 +739,8 @@ fn install(
                     .map_err(|error| Failure::Failed(describe(&error)))?,
             };
 
-            if let Some(refusal) = github::refusal(&response, github.is_some())
-                .or_else(|| gitlab::refusal(&response))
+            if let Some(refusal) =
+                github::refusal(&response, github.is_some()).or_else(|| gitlab::refusal(&response))
             {
                 return Err(Failure::Failed(refusal.to_owned()));
             }

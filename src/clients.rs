@@ -238,10 +238,7 @@ impl State {
                 else {
                     return Action::none();
                 };
-                log::info!(
-                    "Switching {} to {locale}",
-                    installation.root().display()
-                );
+                log::info!("Switching {} to {locale}", installation.root().display());
 
                 Action::task(Task::perform(
                     blocking({
@@ -261,7 +258,9 @@ impl State {
                 Action::new(Instruction::Switched(installation), reread(root))
             }
             Message::Switched(locale, Err(error)) => {
-                errors.report(format!("Could not switch the language to {locale}: {error}"));
+                errors.report(format!(
+                    "Could not switch the language to {locale}: {error}"
+                ));
                 Action::none()
             }
             Message::Env(env) => {
@@ -498,8 +497,7 @@ fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
         [] => fact("Languages", "None found".to_owned()),
         [locale] => fact("Languages", locale.clone()),
         locales => {
-            let picker =
-                pick_list(details.locale.clone(), locales, String::clone).padding([2, 10]);
+            let picker = pick_list(details.locale.clone(), locales, String::clone).padding([2, 10]);
 
             let language = if playing {
                 labelled("Language", style::tip(picker, game::KEEPS_CONFIG))
@@ -764,7 +762,9 @@ mod tests {
         assert!(action.instruction.is_none());
         assert_eq!(
             errors.messages(),
-            ["Could not switch the language to esES: /games/wotlk/WTF/Config.wtf: Permission denied"]
+            [
+                "Could not switch the language to esES: /games/wotlk/WTF/Config.wtf: Permission denied"
+            ]
         );
     }
 

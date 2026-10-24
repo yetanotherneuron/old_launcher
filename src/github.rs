@@ -529,8 +529,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "downloads from GitHub, signed in with GH_TOKEN, GITHUB_TOKEN or gh auth token"]
     async fn every_kind_of_github_download_arrives_signed_in() {
-        let login = from_environment(|variable| std::env::var(variable).ok())
-            .unwrap_or_else(ask_cli_now);
+        let login =
+            from_environment(|variable| std::env::var(variable).ok()).unwrap_or_else(ask_cli_now);
         let token = login.token().expect("a token").clone();
         // The launcher's own client: GitHub's API refuses requests without
         // a user agent.

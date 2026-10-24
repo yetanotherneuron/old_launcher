@@ -47,7 +47,8 @@ pub enum Phase {
 
 /// Why saved settings can't change while the client's game runs: whatever
 /// the launcher wrote or deleted, the game writes back.
-pub const KEEPS_SETTINGS: &str = "Close the game first: it rewrites saved settings when you log out.";
+pub const KEEPS_SETTINGS: &str =
+    "Close the game first: it rewrites saved settings when you log out.";
 
 /// Why the language can't change while the client's game runs.
 pub const KEEPS_CONFIG: &str = "Close the game first: it rewrites Config.wtf when it quits.";
@@ -290,20 +291,14 @@ mod tests {
         assert_eq!(state.phase(&root), Some(Phase::Running));
 
         // wine or umu-run exit with the game, which then goes.
-        let _ = state.update(
-            Message::Exited(root.clone(), Ok(Some(0))),
-            &mut errors,
-        );
+        let _ = state.update(Message::Exited(root.clone(), Ok(Some(0))), &mut errors);
         assert_eq!(state.phase(&root), Some(Phase::Running), "until it is gone");
         let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(state.phase(&root), None);
         assert!(errors.messages().is_empty(), "a normal exit");
 
         let _ = started(&mut state, &installation);
-        let _ = state.update(
-            Message::Exited(root.clone(), Ok(Some(3))),
-            &mut errors,
-        );
+        let _ = state.update(Message::Exited(root.clone(), Ok(Some(3))), &mut errors);
         assert_eq!(state.phase(&root), None, "over at once");
         assert_eq!(
             errors.messages(),
@@ -325,10 +320,7 @@ mod tests {
             "nothing to set up"
         );
 
-        let _ = state.update(
-            Message::Exited(root.clone(), Ok(Some(0))),
-            &mut errors,
-        );
+        let _ = state.update(Message::Exited(root.clone(), Ok(Some(0))), &mut errors);
         assert_eq!(state.phase(&root), None, "over when Wow.exe exits");
     }
 
@@ -341,10 +333,7 @@ mod tests {
         let root = started(&mut state, &installation);
 
         // `steam steam://rungameid/…` exits as soon as Steam has the game.
-        let _ = state.update(
-            Message::Exited(root.clone(), Ok(Some(0))),
-            &mut errors,
-        );
+        let _ = state.update(Message::Exited(root.clone(), Ok(Some(0))), &mut errors);
         for _ in 1..Game::PATIENCE {
             let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         }
@@ -356,10 +345,7 @@ mod tests {
 
         // And when the game never shows up, the launcher stops waiting.
         let _ = started(&mut state, &installation);
-        let _ = state.update(
-            Message::Exited(root.clone(), Ok(Some(0))),
-            &mut errors,
-        );
+        let _ = state.update(Message::Exited(root.clone(), Ok(Some(0))), &mut errors);
         for _ in 0..Game::PATIENCE {
             let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         }

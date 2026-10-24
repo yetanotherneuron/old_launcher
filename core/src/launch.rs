@@ -266,11 +266,8 @@ fn games(roots: &[PathBuf]) -> Vec<Game> {
     let mut found = FOUND.lock().unwrap_or_else(PoisonError::into_inner);
     found.retain(|game| alive(&game.process));
 
-    let of = |game: &Found, root: &PathBuf| {
-        game.exe
-            .parent()
-            .is_some_and(|folder| same(folder, root))
-    };
+    let of =
+        |game: &Found, root: &PathBuf| game.exe.parent().is_some_and(|folder| same(folder, root));
     let unknown = roots
         .iter()
         .any(|root| !found.iter().any(|game| of(game, root)));
@@ -333,7 +330,10 @@ fn named_wow() -> Vec<u32> {
 
     while listed {
         let name = &entry.szExeFile;
-        let length = name.iter().position(|&unit| unit == 0).unwrap_or(name.len());
+        let length = name
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(name.len());
 
         if String::from_utf16_lossy(&name[..length]).eq_ignore_ascii_case("Wow.exe") {
             ids.push(entry.th32ProcessID);
@@ -359,8 +359,13 @@ fn open(id: u32) -> Option<Found> {
     };
 
     // SAFETY: a plain call; the handle is checked, then owned.
-    let process =
-        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, id) };
+    let process = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+            0,
+            id,
+        )
+    };
     if process.is_null() {
         return None;
     }

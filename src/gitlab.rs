@@ -37,9 +37,6 @@ mod tests {
             refused("notgitlab.com", StatusCode::TOO_MANY_REQUESTS),
             None
         );
-        assert_eq!(
-            refused("example.com", StatusCode::TOO_MANY_REQUESTS),
-            None
-        );
+        assert_eq!(refused("example.com", StatusCode::TOO_MANY_REQUESTS), None);
     }
 }

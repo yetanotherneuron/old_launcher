@@ -75,7 +75,12 @@ impl Toc {
                 "loadondemand" => toc.load_on_demand = value == "1",
                 // The names addons use for their page, from the 2010
                 // packagers' `X-Website` to the backports' repositories.
-                "x-website" | "x-url" | "url" | "website" | "x-repository" | "x-github"
+                "x-website"
+                | "x-url"
+                | "url"
+                | "website"
+                | "x-repository"
+                | "x-github"
                 | "x-github-project-homepage" => {
                     let address = strip_escapes(value)
                         .split_whitespace()

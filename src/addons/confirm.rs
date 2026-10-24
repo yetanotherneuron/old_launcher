@@ -147,7 +147,11 @@ impl Confirm {
                 folders
                     .iter()
                     .map(|folder| format!("Interface/AddOns/{folder}"))
-                    .chain(data.iter().filter(|_| *delete_data && !playing).map(relative))
+                    .chain(
+                        data.iter()
+                            .filter(|_| *delete_data && !playing)
+                            .map(relative),
+                    )
                     .collect::<Vec<_>>(),
                 "Uninstall",
             ),
