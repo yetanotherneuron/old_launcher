@@ -1,6 +1,7 @@
-# Lints and tests every push, and every merge request. Pushes to the default
-# branch that pass also build the downloadable binaries, which the README
-# links to, publish the project page and keep the AUR package up to date.
+# Checks the formatting, lints and tests every push, and every merge request.
+# Pushes to the default branch that pass also build the downloadable binaries,
+# which the README links to, publish the project page and keep the AUR
+# package up to date.
 # A scheduled pipeline regenerates the catalog instead, and commits it
 # without starting another: the launchers read it from the repository.
 #
@@ -47,8 +48,8 @@ workflow:
         on_new_commit: none
     - if: $CI_COMMIT_BRANCH
 
-# Every job waits for its namesake in an older pipeline to finish, so what
-# a later commit publishes is never overtaken by an earlier one. Each
+# Every job but `fmt` waits for its namesake in an older pipeline to finish,
+# so what a later commit publishes is never overtaken by an earlier one. Each
 # resource group's process mode is set to oldest_first through the API.
 .ordered:
   resource_group: $CI_JOB_NAME
@@ -72,6 +73,17 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - when: on_success
+
+# The code as rustfmt writes it. Like every check, it holds back the release
+# stage: nothing is built or published from code it fails. It compiles
+# nothing and publishes nothing, so it needs no cache and no ordering.
+fmt:
+  extends: .push
+  stage: check
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt --all --check
 
 clippy:
   extends: [.cargo, .push]
