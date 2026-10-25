@@ -21,7 +21,7 @@ use tokio::task::JoinSet;
 
 use crate::fetch::fetch;
 use crate::source::{
-    Listing, Source, Updated, github, locus313, nom0re, rising_gods, wowinterface,
+    Listing, Source, Updated, github, gitlab, locus313, nom0re, rising_gods, wowinterface,
 };
 
 /// Builds the launcher's addon catalog from every upstream source.
@@ -75,6 +75,9 @@ async fn main() -> anyhow::Result<()> {
     ];
     for owner in github::MAINTAINERS {
         gathered.push(gather(&client, &github::Maintainer(owner)).await?);
+    }
+    for author in gitlab::AUTHORS {
+        gathered.push(gather(&client, author).await?);
     }
     gathered.push(gather(&client, &wowinterface::Site).await?);
     gathered.push(gather(&client, &rising_gods::Collection).await?);

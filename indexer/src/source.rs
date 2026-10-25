@@ -4,6 +4,7 @@
 //! Adding one means writing that module and listing the source in `main`.
 
 pub mod github;
+pub mod gitlab;
 pub mod locus313;
 pub mod nom0re;
 pub mod rising_gods;

@@ -52,6 +52,7 @@ every week:
   a curated collection of backports.
 - Backport maintainers on GitHub: ElvUI-WotLK, bkader, Bunny67, Zidras,
   s0h2x, KhalGH, Sattva-108, Xurkon.
+- Addon authors on GitLab: juxuanu (Kekator).
 - [WoWInterface](https://www.wowinterface.com), for the addons whose last
   version was made for patch 3.3.
 - [Rising Gods](https://addons.rising-gods.de/addons), a server's collection

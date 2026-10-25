@@ -36,6 +36,10 @@ describes it):
 - Backport maintainers on GitHub (ElvUI-WotLK, bkader, Bunny67, Zidras,
   s0h2x, KhalGH, Sattva-108, Xurkon): their own repositories that declare
   the 3.3.5a interface.
+- Addon authors on GitLab (juxuanu): only the projects named in
+  `gitlab::AUTHORS`, since GitLab doesn't tell anonymous callers how big a
+  project is, and listing every project of an author would download them
+  all.
 - [WoWInterface](https://www.wowinterface.com), through the public API addon
   managers use (`api.mmoui.com`). It tags files with game versions only from
   Wrath Classic (3.4) on, so the indexer takes the untagged addons whose
@@ -76,7 +80,8 @@ Sources live in `indexer/src/source/`, one module each, as types
 implementing the `Source` trait (`info` describes it for the catalog, `list`
 returns its listings). Adding one means writing that module and adding it to
 the ordered list in `indexer/src/main.rs`; a GitHub maintainer is one more
-name in `github::MAINTAINERS`.
+name in `github::MAINTAINERS`, and a GitLab project one more path in
+`gitlab::AUTHORS`.
 
 The word "catalog" never appears in the app's own text: users see "the list
 of addons", what is "available" and what is "up to date". It stays in the
