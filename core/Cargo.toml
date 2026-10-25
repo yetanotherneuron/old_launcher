@@ -22,6 +22,7 @@ sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
 shlex = { workspace = true }
 dunce = { workspace = true }
+sha2 = { workspace = true }
 
 [target.'cfg(not(windows))'.dependencies]
 sysinfo = { workspace = true }

@@ -61,7 +61,7 @@ async fn published(client: Result<reqwest::Client, String>) -> Result<String, St
 /// Whether `published` is a later version than `current`, comparing their
 /// numbers dot by dot (`0.10.0` is later than `0.9.1`). A version that
 /// doesn't read as numbers is never newer.
-fn newer(published: &str, current: &str) -> bool {
+pub(crate) fn newer(published: &str, current: &str) -> bool {
     let numbers = |version: &str| -> Option<Vec<u64>> {
         version
             .split('-')

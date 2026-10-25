@@ -170,6 +170,43 @@ environment variables are set and exported first, and `%command%` becomes
 the quoted path to `Wow.exe` (`wine %command%` when there is no command).
 `~` and `$HOME` expand as in a terminal.
 
+**Lumenveil**, a graphics mod, is a `version.dll` that `Wow.exe` loads from
+its folder and that loads `CoAVolFog.dll` beside it (`core/src/lumenveil.rs`,
+`src/clients/lumenveil.rs`). Like the addons, it is looked for whenever the
+client is read (opened, refreshed, or after something was installed): any
+of its files there but the player's settings and saved spots, which
+uninstalling keeps, is Lumenveil, though a `version.dll` alone is another
+mod's unless it matches the release's checksums. What is there is checked
+against the checksums of its release that the launcher keeps in
+`Lumenveil/SHA256SUMS.txt`, written when it installs it or checks it, and
+said nothing of if it is as released. Otherwise the launcher needs to do
+something before starting the game, which waits for it (Play is disabled),
+and a banner above the addons says so:
+- never checked: Check compares the files with the checksums GitHub gives
+  for the version `CoAVolFog.dll` says it is, and keeps them;
+- files missing or changed (the `.ini` settings aside), the lamp and water
+  data its setup writes (`lampdata.bin`, `liquiddata.bin`) missing,
+  `SET gxApi "d3d9ex"` in `Config.wtf`, or a version that can't be told:
+  Repair removes what is there but the player's settings and spots, then
+  installs the release of that version (or the latest) and runs the setup.
+
+The problems `CoAVolFog.log` reports are said in the clients dialog only:
+no repair fixes them, and only running it again tells whether they still
+hold. The dialog's Graphics section says the rest too, and installs,
+updates and uninstalls. Installing downloads the release from GitHub,
+signed in like any GitHub download, and checks the zip and each file
+against its checksums before anything changes, sets Direct3D 9 where the
+client used 9Ex, then runs `Lumenveil/lamp_extract.exe` twice as
+`Lumenveil-Setup.cmd` does (a minute or so under Wine). Off Windows the tool
+runs through the client's command. Wine loads its own `version.dll` unless
+told otherwise, so while Lumenveil is as released (`lumenveil::working`),
+the game starts with `version=n,b` in `WINEDLLOVERRIDES`
+(`launch::with_mods`): added to the client's own environment variables each
+time, merged with a `WINEDLLOVERRIDES` they set and in place of any setting
+of theirs for `version`, and never saved in them. Uninstalling asks first,
+and deletes `CoAVolFog.ini` and the spots saved in the game only when
+ticked. Checking aside, none of it runs while the game does.
+
 **Showing the game on Discord**, when the settings say so (`discord` in the
 settings file, off by default), runs the game's command as the child of the
 launcher's own binary, started with `--discord` before the command
@@ -226,6 +263,8 @@ OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
 # Downloads one file of each kind from GitHub, signed in with GH_TOKEN,
 # GITHUB_TOKEN or the GitHub CLI's login:
 cargo test --lib github -- --ignored
+# Installs Lumenveil's latest release into a temporary client:
+cargo test --lib lumenveil -- --ignored
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored

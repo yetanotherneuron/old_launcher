@@ -1,11 +1,15 @@
 //! The clients dialog: which client the launcher shows, what its folder
-//! holds and, outside Windows, how the game starts.
+//! holds, outside Windows how the game starts, and Lumenveil, a graphics mod
+//! for it.
+
+pub mod lumenveil;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use iced::widget::{
-    Row, TextInput, button, column, container, pick_list, row, space, stack, text, text_input,
+    Row, TextInput, button, column, container, pick_list, row, scrollable, space, stack, text,
+    text_input,
 };
 use iced::{Center, Element, Fill, Font, Function, Task, Widget, padding};
 
@@ -13,7 +17,7 @@ use crate::action::Action;
 use crate::core::launch::DEFAULT_COMMAND;
 use crate::core::{Config, Details, Installation, Realmlist};
 use crate::errors::Errors;
-use crate::{blocking, game, size, style};
+use crate::{blocking, game, github, size, style};
 
 /// The id of the button that adds a client.
 pub const ADD: &str = "clients-add";
@@ -49,6 +53,8 @@ pub struct State {
     edited: bool,
     /// Whether the client shown is about to be removed, pending a yes.
     removing: bool,
+    /// The Lumenveil section.
+    lumenveil: lumenveil::State,
 }
 
 /// Interactions with the dialog.
@@ -82,6 +88,9 @@ pub enum Message {
     CancelRemove,
     /// The dialog was closed.
     Close,
+    /// Something happened in the Lumenveil section, or its work ended,
+    /// which may be after the dialog closed.
+    Lumenveil(lumenveil::Message),
 }
 
 /// What the dialog asks of its parent.
@@ -118,6 +127,11 @@ impl State {
         self.open
     }
 
+    /// Downloads from GitHub sign in with `github` from now on.
+    pub fn sign_in(&mut self, github: Option<github::Signed>) {
+        self.lumenveil.sign_in(github);
+    }
+
     /// Closes the dialog without a word to the parent: there is nothing
     /// left to manage.
     pub fn close(&mut self) {
@@ -125,17 +139,34 @@ impl State {
         self.removing = false;
     }
 
-    /// Notes that the client folder at `root` changed (addons came or went),
-    /// so what it holds is read again: now, if the dialog shows it
-    /// (`current`), or when it next does.
+    /// Notes that the client folder at `root` was just read, or changed
+    /// (addons came or went), so what it holds is read again: now, if the
+    /// dialog shows it (`current`), or when it next does. Lumenveil is
+    /// looked for in it at once, for the banner above the addons.
     pub fn changed(&mut self, root: &Path, current: Option<&Path>) -> Task<Message> {
         let _ = self.stale.insert(root.to_path_buf());
 
-        if self.open && current == Some(root) {
+        let read = if self.open && current == Some(root) {
             self.read(root)
         } else {
             Task::none()
-        }
+        };
+
+        Task::batch([read, lumenveil::find(root).map(Message::Lumenveil)])
+    }
+
+    /// Whether starting the game of the client at `root` waits for the
+    /// launcher to check or repair Lumenveil in it, as its banner says.
+    pub fn holds_back(&self, root: &Path) -> bool {
+        self.lumenveil.holds_back(root)
+    }
+
+    /// The banner above the addons about Lumenveil in the `current` client,
+    /// when there is something to say; `playing` says whether its game runs.
+    pub fn banner(&self, current: Option<&Path>, playing: bool) -> Option<impl Widget<Message>> {
+        self.lumenveil
+            .banner(current?, playing)
+            .map(|banner| banner.map(Message::Lumenveil))
     }
 
     /// Reads what the client folder at `root` holds, unless it was read
@@ -160,8 +191,9 @@ impl State {
 
     /// Handles an interaction; how the `current` client starts is edited
     /// right in `config`, its language is switched in `installation` (that
-    /// client, once it opened) unless its game runs (`playing`), and
-    /// failures go to `errors`.
+    /// client, once it opened) unless its game runs (`playing`), downloads
+    /// use `client`, and failures go to `errors`.
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         message: Message,
@@ -169,6 +201,7 @@ impl State {
         current: Option<&Path>,
         installation: Option<&Installation>,
         playing: bool,
+        client: Result<&reqwest::Client, &str>,
         errors: &mut Errors,
     ) -> Action<Instruction, Message> {
         match message {
@@ -195,8 +228,12 @@ impl State {
                     ),
                     Err(error) => log::warn!("Could not read {}: {error}", path.display()),
                 }
+                let lumenveil = match &result {
+                    Ok(_) => self.lumenveil.shown(&path, client).map(Message::Lumenveil),
+                    Err(_) => Task::none(),
+                };
                 let _ = self.details.insert(path, Some(result));
-                Action::none()
+                Action::task(lumenveil)
             }
             Message::EditRealmlist(path) => {
                 log::info!("Opening {} in an editor", path.display());
@@ -302,6 +339,26 @@ impl State {
                 Action::instruction(Instruction::Close {
                     edited: std::mem::take(&mut self.edited),
                 })
+            }
+            Message::Lumenveil(message) => {
+                let action = self.lumenveil.update(
+                    message,
+                    current,
+                    installation,
+                    config,
+                    playing,
+                    client,
+                    errors,
+                );
+                let task = action.task.map(Message::Lumenveil);
+
+                match action.instruction {
+                    Some(lumenveil::Instruction::Changed(root)) => {
+                        let read = self.changed(&root, current);
+                        Action::task(Task::batch([task, read]))
+                    }
+                    None => Action::task(task),
+                }
             }
         }
     }
@@ -470,7 +527,22 @@ impl State {
             .spacing(10)
         });
 
-        container(column![title, picker, removal, about, launch].spacing(14))
+        // Nothing to say of a folder that can't be read.
+        let graphics = current
+            .filter(|root| !matches!(self.details.get(*root), Some(Some(Err(_)))))
+            .map(|root| {
+                self.lumenveil
+                    .view(root, playing)
+                    .boxed()
+                    .map(Message::Lumenveil)
+            });
+
+        // A short window scrolls what is under the title, so Close stays in
+        // sight.
+        let body =
+            scrollable(column![picker, removal, about, launch, graphics].spacing(14)).spacing(10);
+
+        container(column![title, body].spacing(14))
             .padding(24)
             .width(Fill.max(620))
             .style(style::card)
@@ -577,6 +649,7 @@ mod tests {
             Some(Path::new(WOTLK)),
             None,
             false,
+            Err("offline"),
             &mut Errors::default(),
         )
     }
@@ -622,6 +695,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_window_too_short_for_the_dialog_scrolls_it_below_the_title() {
+        let (state, config) = opened(Some(details(Some(realmlist(None)))));
+        let root = Path::new(WOTLK);
+
+        let mut ui = iced_test::simulator::Simulator::with_size(
+            iced::Settings::default(),
+            crate::App::MIN_SIZE,
+            iced::widget::center(state.view(&config, Some(root), None, false)),
+        );
+        let title = ui.find("Clients").unwrap().bounds();
+        assert!(title.y >= 0.0, "the title is in the window: {title:?}");
+        let last = ui
+            .find("Servers may forbid modified clients, and their anti-cheat may detect it.")
+            .unwrap()
+            .bounds();
+        assert!(last.height > 0.0, "the last line isn't squeezed: {last:?}");
+        assert_eq!(crate::testing::offsets(&mut ui), [0.0]);
+    }
+
     /// A client at a temporary folder with data for enUS and esES, each with
     /// its realmlist, open and shown in the dialog.
     fn bilingual() -> (tempfile::TempDir, Installation, State, Config) {
@@ -643,6 +736,7 @@ mod tests {
             Some(root),
             Some(&installation),
             false,
+            Err("offline"),
             &mut Errors::default(),
         );
 
@@ -672,6 +766,7 @@ mod tests {
             Some(root),
             Some(&installation),
             false,
+            Err("offline"),
             &mut errors,
         );
         assert!(switch.instruction.is_none());
@@ -686,6 +781,7 @@ mod tests {
             Some(root),
             Some(&installation),
             false,
+            Err("offline"),
             &mut errors,
         );
         assert!(matches!(
@@ -699,6 +795,7 @@ mod tests {
             Some(root),
             Some(&installation),
             false,
+            Err("offline"),
             &mut errors,
         );
 
@@ -718,6 +815,7 @@ mod tests {
             Some(installation.root()),
             Some(&installation),
             false,
+            Err("offline"),
             &mut Errors::default(),
         );
 
@@ -756,6 +854,7 @@ mod tests {
             Some(installation.root()),
             Some(&installation),
             false,
+            Err("offline"),
             &mut errors,
         );
 
@@ -776,9 +875,10 @@ mod tests {
         state.close();
         assert_eq!(state.open(Some(root)).units(), 0, "remembered");
 
-        // Addons came or went while the dialog was closed.
+        // Addons came or went while the dialog was closed: only Lumenveil
+        // is looked for at once, for the banner above the addons.
         state.close();
-        assert_eq!(state.changed(root, None).units(), 0, "read when next shown");
+        assert_eq!(state.changed(root, None).units(), 1, "read when next shown");
         assert!(state.open(Some(root)).units() > 0);
         assert!(
             matches!(state.details.get(root), Some(Some(Ok(_)))),
@@ -786,13 +886,50 @@ mod tests {
         );
 
         // And while it is open and showing that client.
-        assert!(state.changed(root, Some(root)).units() > 0);
+        assert_eq!(state.changed(root, Some(root)).units(), 2);
         assert_eq!(
             state
                 .changed(Path::new("/games/warmane"), Some(root))
                 .units(),
-            0,
+            1,
             "another client: when next shown"
+        );
+    }
+
+    #[test]
+    fn lumenveil_found_in_a_client_read_says_above_the_addons_what_it_needs() {
+        let (mut state, mut config) = opened(None);
+        let root = Path::new(WOTLK);
+        assert!(
+            state.banner(Some(root), false).is_none(),
+            "not looked for yet"
+        );
+
+        let found = crate::core::lumenveil::Status {
+            version: Some("0.1.1".to_owned()),
+            loaded: false,
+            problems: vec![crate::core::lumenveil::Problem::Unchecked],
+        };
+        let _ = update(
+            &mut state,
+            &mut config,
+            Message::Lumenveil(lumenveil::Message::Found(root.into(), Some(found))),
+        );
+        state.close();
+
+        let mut ui = simulator(state.banner(Some(root), false).expect("a banner"));
+        assert!(
+            ui.find(
+                "Lumenveil is in this client. The launcher needs to check it before starting the \
+                 game."
+            )
+            .is_ok()
+        );
+        assert!(
+            state
+                .banner(Some(Path::new("/games/warmane")), false)
+                .is_none(),
+            "about the client shown only"
         );
     }
 

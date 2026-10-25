@@ -92,6 +92,8 @@ sevenz-rust2 = { version = "0.24", default-features = false, features = ["util",
 rars = "0.12"
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
+# Checks downloads against the checksums their publishers give.
+sha2 = "0.10"
 # Lists running processes outside Windows, to tell whether a client's game
 # is running under Wine or Proton.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }

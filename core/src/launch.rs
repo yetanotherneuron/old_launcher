@@ -2,6 +2,7 @@
 //! command the client is set up with (Wine, Proton through umu-launcher,
 //! Lutris, Steam, …), the way Steam runs a game's launch options.
 
+use std::ops::Range;
 #[cfg(windows)]
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::{Path, PathBuf};
@@ -11,7 +12,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Installation};
+use crate::{Error, Installation, lumenveil};
 
 /// What stands for the client's `Wow.exe` in a [`Launch`] command.
 pub const PLACEHOLDER: &str = "%command%";
@@ -72,6 +73,35 @@ impl Launch {
     ///
     /// Nothing else is quoted, so `~` and `$HOME` expand as in a terminal.
     pub fn line(&self, executable: &Path) -> Result<String, Error> {
+        self.line_running(executable, &[])
+    }
+
+    /// The shell command line that runs another Windows program of the
+    /// client, `program` with `arguments`, the way [`Launch::line`] starts
+    /// the game: in place of [`PLACEHOLDER`], all of them quoted. A command
+    /// without the placeholder starts the game some way of its own (Lutris
+    /// does), so it can't run anything else.
+    pub fn tool_line(&self, program: &Path, arguments: &[String]) -> Result<String, Error> {
+        let command = match self.command.trim() {
+            "" => DEFAULT_COMMAND,
+            command => command,
+        };
+        if !command.contains(PLACEHOLDER) {
+            return Err(Error::Launch {
+                setting: "command",
+                problem: format!(
+                    "It has no {PLACEHOLDER}, so it can't run {} instead of the game.",
+                    program.file_name().unwrap_or_default().to_string_lossy()
+                ),
+            });
+        }
+
+        self.line_running(program, arguments)
+    }
+
+    /// The shell command line of the command with `program` and `arguments`,
+    /// quoted, in place of [`PLACEHOLDER`], after the environment variables.
+    fn line_running(&self, program: &Path, arguments: &[String]) -> Result<String, Error> {
         let names = self.names().map_err(|problem| Error::Launch {
             setting: "environment variables",
             problem,
@@ -83,22 +113,27 @@ impl Launch {
             });
         }
 
-        let quoted = executable
+        let quoted = program
             .to_str()
             .and_then(|path| shlex::try_quote(path).ok())
             .ok_or_else(|| Error::Launch {
                 setting: "client folder",
-                problem: format!(
-                    "{} can't be written in a command line.",
-                    executable.display()
-                ),
+                problem: format!("{} can't be written in a command line.", program.display()),
             })?;
+        let words = std::iter::once(Ok(quoted))
+            .chain(arguments.iter().map(|argument| shlex::try_quote(argument)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| Error::Launch {
+                setting: "command",
+                problem: error.to_string(),
+            })?
+            .join(" ");
 
         let command = match self.command.trim() {
             "" => DEFAULT_COMMAND,
             command => command,
         }
-        .replace(PLACEHOLDER, &quoted);
+        .replace(PLACEHOLDER, &words);
 
         // Assigned, then exported: set before a command, they would only
         // reach its first part (`A=1 cp … && printenv A` prints nothing).
@@ -108,6 +143,130 @@ impl Launch {
             format!("{}; export {}; {command}", self.env.trim(), names.join(" "))
         })
     }
+
+    /// Whether Wine loads `dll` (`version`, say) from the game's folder
+    /// before its own: `WINEDLLOVERRIDES` sets it to native (`n`) first.
+    /// Without that, Wine loads its own `version.dll`, and a mod in its
+    /// place never runs.
+    fn loads_native(&self, dll: &str) -> bool {
+        self.overrides().is_some_and(|(_, value)| {
+            value.split(';').any(|entry| {
+                entry.split_once('=').is_some_and(|(dlls, mode)| {
+                    dlls.split(',')
+                        .any(|name| name.trim().eq_ignore_ascii_case(dll))
+                        && mode.trim_start().starts_with('n')
+                })
+            })
+        })
+    }
+
+    /// These settings with Wine loading `dll` from the game's folder first:
+    /// `dll=n,b` in `WINEDLLOVERRIDES`, which is set if it wasn't, in place
+    /// of any other setting for `dll`. The rest of the environment
+    /// variables stays as written.
+    fn with_native(&self, dll: &str) -> Self {
+        if self.loads_native(dll) {
+            return self.clone();
+        }
+
+        let native = format!("{dll}=n,b");
+        let env = match self.overrides() {
+            Some((range, value)) => {
+                let mut entries: Vec<String> = value
+                    .split(';')
+                    .filter(|entry| !entry.trim().is_empty())
+                    .filter_map(|entry| {
+                        let (dlls, mode) = entry.split_once('=').unwrap_or((entry, ""));
+                        let others: Vec<&str> = dlls
+                            .split(',')
+                            .filter(|name| !name.trim().eq_ignore_ascii_case(dll))
+                            .collect();
+
+                        (!others.is_empty()).then(|| format!("{}={mode}", others.join(",")))
+                    })
+                    .collect();
+                entries.push(native);
+
+                let word = assignment(&entries.join(";"));
+                [&self.env[..range.start], &word, &self.env[range.end..]].concat()
+            }
+            None => {
+                let word = assignment(&native);
+                match self.env.trim_end() {
+                    "" => word,
+                    env => format!("{env} {word}"),
+                }
+            }
+        };
+
+        Self {
+            env,
+            command: self.command.clone(),
+        }
+    }
+
+    /// Where `WINEDLLOVERRIDES` is set among the environment variables (the
+    /// last time, the one the shell keeps), and to what.
+    fn overrides(&self) -> Option<(Range<usize>, String)> {
+        words(&self.env).into_iter().rev().find_map(|range| {
+            let word = shlex::split(&self.env[range.clone()])?.into_iter().next()?;
+            let value = word.strip_prefix(OVERRIDES)?.strip_prefix('=')?.to_owned();
+
+            Some((range, value))
+        })
+    }
+}
+
+/// The variable that tells Wine which DLLs to load from a program's folder
+/// before its own.
+const OVERRIDES: &str = "WINEDLLOVERRIDES";
+
+/// `WINEDLLOVERRIDES` set to `value`, quoted as the shell needs (its `;`
+/// would end the assignment).
+fn assignment(value: &str) -> String {
+    let quoted = shlex::try_quote(value).map_or_else(|_| format!("'{value}'"), Into::into);
+
+    format!("{OVERRIDES}={quoted}")
+}
+
+/// Where the shell words of `text` are, quotes and escapes included.
+fn words(text: &str) -> Vec<Range<usize>> {
+    let mut words = Vec::new();
+    let mut start = None;
+    let mut quote = None;
+    let mut escaped = false;
+
+    for (index, character) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match (quote, character) {
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('"'), '\\') => escaped = true,
+            (Some(_), _) => {}
+            (None, space) if space.is_whitespace() => {
+                if let Some(start) = start.take() {
+                    words.push(start..index);
+                }
+            }
+            (None, other) => {
+                let _ = start.get_or_insert(index);
+                match other {
+                    '\'' | '"' => quote = Some(other),
+                    '\\' => escaped = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if let Some(start) = start {
+        words.push(start..text.len());
+    }
+
+    words
 }
 
 /// The variable `word` sets, if it is `NAME=value`: a name of letters,
@@ -124,19 +283,61 @@ fn name(word: &str) -> Option<&str> {
     valid.then_some(name)
 }
 
+/// `launch`, with what the mods in `installation`'s folder need on top of
+/// the client's own environment variables: while Lumenveil is installed
+/// with nothing to repair ([`lumenveil::working`]), Wine loading its
+/// loader, `version.dll`, from there.
+fn with_mods(installation: &Installation, launch: &Launch) -> Launch {
+    if lumenveil::working(installation.root()) {
+        launch.with_native("version")
+    } else {
+        launch.clone()
+    }
+}
+
 /// The process that starts `installation`'s client, from its folder:
 /// `Wow.exe` on Windows, where `launch` is not used, and elsewhere
-/// `launch`'s [`line`](Launch::line), run by `sh`.
+/// `launch`'s [`line`](Launch::line), with what the mods in the folder
+/// need (see [`with_mods`]), run by `sh`.
 pub fn command(installation: &Installation, launch: &Launch) -> Result<Command, Error> {
     let mut command = if cfg!(windows) {
         Command::new(installation.executable())
     } else {
         let mut shell = Command::new("sh");
-        shell.arg("-c").arg(launch.line(installation.executable())?);
+        shell
+            .arg("-c")
+            .arg(with_mods(installation, launch).line(installation.executable())?);
         shell
     };
 
     command.current_dir(installation.root());
+
+    Ok(command)
+}
+
+/// The process that runs another Windows program of `installation`'s client,
+/// `program` (relative to the client folder, in which it runs) with
+/// `arguments`: itself on Windows, and elsewhere the way the game starts
+/// (see [`Launch::tool_line`]), run by `sh`.
+pub fn tool(
+    installation: &Installation,
+    launch: &Launch,
+    program: &str,
+    arguments: &[String],
+) -> Result<Command, Error> {
+    let program = installation.root().join(program);
+
+    let mut command = if cfg!(windows) {
+        let mut tool = Command::new(&program);
+        let _ = tool.args(arguments);
+        tool
+    } else {
+        let mut shell = Command::new("sh");
+        let _ = shell.arg("-c").arg(launch.tool_line(&program, arguments)?);
+        shell
+    };
+
+    let _ = command.current_dir(installation.root());
 
     Ok(command)
 }
@@ -466,6 +667,113 @@ mod tests {
             .unwrap();
 
         assert_eq!(line, "lutris lutris:rungameid/3");
+    }
+
+    #[test]
+    fn a_tool_runs_the_way_the_game_does_with_its_arguments() {
+        let arguments = ["--data".to_owned(), "Data".to_owned(), "a b".to_owned()];
+        let tool = Path::new("/games/World of Warcraft/Lumenveil/lamp_extract.exe");
+
+        assert_eq!(
+            launch("WINEPREFIX=~/wow", "")
+                .tool_line(tool, &arguments)
+                .unwrap(),
+            "WINEPREFIX=~/wow; export WINEPREFIX; \
+             wine '/games/World of Warcraft/Lumenveil/lamp_extract.exe' --data Data 'a b'"
+        );
+        assert!(matches!(
+            launch("", "lutris lutris:rungameid/3").tool_line(tool, &arguments),
+            Err(Error::Launch {
+                setting: "command",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn wine_is_told_to_load_a_dll_from_the_games_folder() {
+        for (env, loads) in [
+            ("", false),
+            ("WINEDLLOVERRIDES=version=n,b", true),
+            ("WINEDLLOVERRIDES='d3d9,Version=native,builtin'", true),
+            ("WINEDLLOVERRIDES=version=b,n", false),
+            ("WINEDLLOVERRIDES=version=n WINEDLLOVERRIDES=d3d9=n", false),
+        ] {
+            assert_eq!(launch(env, "").loads_native("version"), loads, "{env}");
+        }
+
+        for (env, with) in [
+            ("", "WINEDLLOVERRIDES='version=n,b'"),
+            (
+                "WINEPREFIX=~/wow  DXVK_HUD=1 ",
+                "WINEPREFIX=~/wow  DXVK_HUD=1 WINEDLLOVERRIDES='version=n,b'",
+            ),
+            (
+                "WINEPREFIX=~/wow WINEDLLOVERRIDES=\"d3d9,version=b;dxgi=n\" A=1",
+                "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=b;dxgi=n;version=n,b' A=1",
+            ),
+            (
+                "WINEDLLOVERRIDES=version=b",
+                "WINEDLLOVERRIDES='version=n,b'",
+            ),
+        ] {
+            let launch = launch(env, "umu-run %command%").with_native("version");
+
+            assert_eq!(launch.env, with, "{env}");
+            assert!(launch.loads_native("version"), "{env}");
+            assert_eq!(launch.env_problem(), None, "{env}");
+            assert_eq!(launch.command, "umu-run %command%");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn while_lumenveil_works_wine_loads_it_whatever_the_client_sets() {
+        let files = ["version.dll", "CoAVolFog.dll", "Lumenveil/lamp_extract.exe"];
+        let (_root, installation) =
+            crate::testing::client(&[&files[..], &["lampdata.bin", "liquiddata.bin"]].concat());
+        let client = launch(
+            "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
+            "umu-run %command%",
+        );
+        let line = |command: Command| command.get_args().nth(1).unwrap().to_owned();
+        let game = || line(command(&installation, &client).unwrap());
+        let own = "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'; export WINEPREFIX \
+                   WINEDLLOVERRIDES; umu-run ";
+
+        assert!(
+            game().to_str().unwrap().starts_with(own),
+            "not until its files are checked against its release"
+        );
+        let sums: String = files
+            .iter()
+            .map(|file| format!("{}  {file}\n", lumenveil::sha256(b"")))
+            .collect();
+        lumenveil::keep(installation.root(), &lumenveil::Sums::parse(&sums)).unwrap();
+
+        assert!(
+            game().to_str().unwrap().starts_with(
+                "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=n,b'; export WINEPREFIX \
+                 WINEDLLOVERRIDES; umu-run "
+            ),
+            "{:?}",
+            game()
+        );
+        assert_eq!(
+            client.env, "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
+            "the client's own settings stay as they are"
+        );
+        let setup = tool(&installation, &client, "Lumenveil/lamp_extract.exe", &[]).unwrap();
+        assert!(
+            line(setup).to_str().unwrap().starts_with(own),
+            "not the game"
+        );
+
+        // Not while it needs repairing, nor once it's gone.
+        std::fs::remove_file(installation.root().join(lumenveil::LAMPS)).unwrap();
+        assert!(game().to_str().unwrap().starts_with(own));
+        lumenveil::uninstall(&installation, false).unwrap();
+        assert!(game().to_str().unwrap().starts_with(own));
     }
 
     #[test]

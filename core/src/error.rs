@@ -57,6 +57,15 @@ pub enum Error {
     #[error("{} is in Interface/AddOns already", .0.display())]
     InAddOns(PathBuf),
 
+    /// A file of a release that doesn't match the checksum the release
+    /// gives for it.
+    #[error("{0} doesn't match the checksum its release gives")]
+    Checksum(String),
+
+    /// A file the release's checksums name that its archive lacks.
+    #[error("{0} is missing from the release's archive")]
+    NotInRelease(String),
+
     /// An addon folder name that is not a single, plain path component.
     #[error("invalid addon folder name: {0:?}")]
     InvalidName(String),

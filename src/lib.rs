@@ -453,7 +453,8 @@ impl App {
                 }
             }
             Message::Clients(message) => {
-                if !self.clients.is_open() {
+                // Lumenveil's work may end after the dialog closed.
+                if !self.clients.is_open() && !matches!(message, clients::Message::Lumenveil(_)) {
                     return Task::none();
                 }
                 let current = self.selected.path().map(Path::to_path_buf);
@@ -465,6 +466,7 @@ impl App {
                     current.as_deref(),
                     installation,
                     playing,
+                    self.client.as_ref().map_err(String::as_str),
                     &mut self.errors,
                 );
                 let task = action.task.map(Message::Clients);
@@ -594,6 +596,9 @@ impl App {
                 let Selected::Open { installation, .. } = &self.selected else {
                     return Task::none();
                 };
+                if self.clients.holds_back(installation.root()) {
+                    return Task::none();
+                }
                 let launch = self.config.launch(installation.root());
 
                 self.game
@@ -936,8 +941,13 @@ impl App {
             .padding([6, 26])
             .style(button::primary)
             .on_press_maybe(
-                (matches!(self.selected, Selected::Open { .. }) && game.is_none())
-                    .then_some(Message::Play),
+                (matches!(self.selected, Selected::Open { .. })
+                    && game.is_none()
+                    && !self
+                        .selected
+                        .path()
+                        .is_some_and(|root| self.clients.holds_back(root)))
+                .then_some(Message::Play),
             ),
         ]
         .spacing(10)
@@ -1030,6 +1040,11 @@ impl App {
             .style(style::banner(style::Tone::Success))
         });
 
+        let graphics = self
+            .clients
+            .banner(self.selected.path(), game.is_some())
+            .map(|banner| banner.map(Message::Clients));
+
         let proposal = self
             .recognize
             .banner()
@@ -1054,7 +1069,7 @@ impl App {
         // iced's keyed diff mistakes a child inserted before the last one for
         // one appended after it, and hands out the wrong widget states.
         let content = column![
-            column![header, client, error, notice, proposal].spacing(14),
+            column![header, client, error, notice, graphics, proposal].spacing(14),
             container(body).height(Fill),
         ]
         .spacing(14)
@@ -1245,6 +1260,7 @@ impl App {
             .cloned()
             .zip(self.direct.clone())
             .map(|(token, client)| github::Signed::new(client, token));
+        self.clients.sign_in(signed.clone());
         self.addons.sign_in(signed);
         self.github = login;
     }
@@ -1919,6 +1935,43 @@ mod tests {
         let _ = app.update(Message::Game(game::Message::Watched(Ok(Vec::new()))));
         assert!(play_button(&app, "Play"));
         assert!(app.errors.messages().is_empty(), "a normal exit");
+    }
+
+    #[test]
+    fn the_game_waits_for_the_launcher_to_check_lumenveil() {
+        let (_root, installation) = crate::testing::client(&["CoAVolFog.dll"]);
+        let root = installation.root().to_path_buf();
+        let mut app = opened(installation);
+        let found = |problems| {
+            Message::Clients(clients::Message::Lumenveil(
+                clients::lumenveil::Message::Found(
+                    root.clone(),
+                    Some(crate::core::lumenveil::Status {
+                        version: Some("0.1.1".to_owned()),
+                        loaded: false,
+                        problems,
+                    }),
+                ),
+            ))
+        };
+
+        let _ = app.update(found(vec![crate::core::lumenveil::Problem::Unchecked]));
+        let mut ui = simulator(app.view());
+        assert!(
+            ui.find(
+                "Lumenveil is in this client. The launcher needs to check it before starting the \
+                 game."
+            )
+            .is_ok()
+        );
+        drop(ui);
+        assert!(!play_button(&app, "Play"));
+        let _ = app.update(Message::Play);
+        assert!(app.game.phase(&root).is_none(), "nothing was started");
+
+        // Checked, its files as released.
+        let _ = app.update(found(Vec::new()));
+        assert!(play_button(&app, "Play"));
     }
 
     #[cfg(not(windows))]

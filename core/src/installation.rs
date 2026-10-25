@@ -108,17 +108,32 @@ impl Installation {
     }
 
     /// Makes the client play in `locale`, one it has data for, from its next
-    /// start: `WTF/Config.wtf` gets one `SET locale` line, in place of any it
-    /// had, and is made if missing. Every other line stays byte for byte, and
-    /// the file keeps its permissions.
-    ///
-    /// The file is written beside itself and renamed over, so a crash
-    /// mid-write never leaves the client's settings truncated.
+    /// start, as [`Installation::set`] sets it.
     pub fn set_locale(&mut self, locale: &str) -> Result<(), Error> {
         if !locales(&self.root).iter().any(|known| known == locale) {
             return Err(Error::NoLocale(locale.to_owned()));
         }
 
+        self.set("locale", locale)?;
+
+        self.locale = Some(locale.to_owned());
+        Ok(())
+    }
+
+    /// What `WTF/Config.wtf` sets `name` to (`gxApi`, …), the way the client
+    /// reads it, if anything.
+    pub fn setting(&self, name: &str) -> Option<String> {
+        config_setting(&self.root, name)
+    }
+
+    /// Sets `name` to `value` from the client's next start: `WTF/Config.wtf`
+    /// gets one `SET` line for it, in place of any it had, and is made if
+    /// missing. Every other line stays byte for byte, and the file keeps its
+    /// permissions.
+    ///
+    /// The file is written beside itself and renamed over, so a crash
+    /// mid-write never leaves the client's settings truncated.
+    pub fn set(&self, name: &str, value: &str) -> Result<(), Error> {
         let wtf = self.wtf_directory();
         fs::create_dir_all(&wtf).map_err(io_at(&wtf))?;
         let path = child(&wtf, "Config.wtf");
@@ -132,15 +147,12 @@ impl Installation {
         };
 
         let partial = path.with_extension("wtf.partial");
-        fs::write(&partial, with_setting(&config, "locale", locale)).map_err(io_at(&partial))?;
+        fs::write(&partial, with_setting(&config, name, value)).map_err(io_at(&partial))?;
         // The file it replaces keeps its permissions.
         if let Some(permissions) = permissions {
             fs::set_permissions(&partial, permissions).map_err(io_at(&partial))?;
         }
-        fs::rename(&partial, &path).map_err(io_at(&path))?;
-
-        self.locale = Some(locale.to_owned());
-        Ok(())
+        fs::rename(&partial, &path).map_err(io_at(&path))
     }
 
     /// `Interface/AddOns`, whether or not it exists yet.
@@ -500,6 +512,12 @@ fn locales(root: &Path) -> Vec<String> {
     locales.sort();
 
     locales
+}
+
+/// What `WTF/Config.wtf` of the client at `root` sets `name` to, if
+/// anything; see [`Installation::setting`].
+pub(crate) fn config_setting(root: &Path, name: &str) -> Option<String> {
+    setting(&child(&child(root, "WTF"), "Config.wtf"), name)
 }
 
 /// What the `.wtf` file at `path` sets `name` to, the way the client reads
