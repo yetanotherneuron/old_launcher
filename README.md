@@ -2,10 +2,10 @@
 
 A launcher and addon manager for World of Warcraft 3.3.5a clients.
 
-**[Download for Linux](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-x86_64?job=linux-x86_64)**
-**[Download for Windows](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows)**
+**[Download for Linux](https://old-launcher.icarns.xyz/old_launcher-linux-x86_64)**
+**[Download for Windows](https://old-launcher.icarns.xyz/old_launcher.exe)**
 
-[Linux on ARM64](https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher-linux-arm64?job=linux-arm64)
+[Linux on ARM64](https://old-launcher.icarns.xyz/old_launcher-linux-arm64)
 · [Arch Linux (AUR)](https://aur.archlinux.org/packages/old-launcher-git)
 
 It's a portable program: nothing to install, just run it.

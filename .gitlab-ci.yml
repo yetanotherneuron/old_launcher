@@ -1,7 +1,10 @@
 # Checks the formatting, lints and tests every push, and every merge request.
-# Pushes to the default branch that pass also build the downloadable binaries,
-# which the README links to, publish the project page and keep the AUR
-# package up to date.
+# A push to the default branch that changes the version in Cargo.toml is a
+# release: when it passes, it also builds the downloadable binaries and
+# publishes them with the project page, which the README links to, so the
+# page offers the builds it describes and nothing pushed later replaces them.
+# Every push to the default branch that passes keeps the AUR package up to
+# date.
 # A scheduled pipeline regenerates the catalog instead, and commits it
 # without starting another: the launchers read it from the repository.
 #
@@ -123,10 +126,10 @@ test-windows:
     - cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
     - cargo test --workspace --locked --target x86_64-pc-windows-gnu --no-fail-fast
 
-# The binaries people download. Each job's latest successful artifact on the
-# default branch is kept however old it gets (GitLab's "keep artifacts from
-# most recent successful jobs"), which is what the README's links point at:
-# https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/<file>?job=<job>
+# The binaries people download, built when a push to the default branch
+# changes Cargo.toml: a release if it changed the version, which `pages`
+# tells. They are published with the page; their artifacts only take them
+# there.
 .release:
   extends: .cargo
   stage: release
@@ -134,6 +137,8 @@ test-windows:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - Cargo.toml
   artifacts:
     expire_in: 30 days
 
@@ -240,27 +245,49 @@ aur:
     - git -c user.name="$GITLAB_USER_NAME" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update to $pkgver"
     - git push origin HEAD:master
 
-# The project page on GitLab Pages: the README, styled like the launcher,
-# with its icon, its version and a footer back to the repository, plus the
-# description of what is published (release.json), which the binaries check
-# for a newer version. The address shows under Deploy > Pages.
+# The project page on GitLab Pages, published by a release: the README,
+# styled like the launcher, with its icon, its version and a footer back to
+# the repository, the release's binaries, which the README's links download
+# from beside it, and the description of what is published (release.json),
+# which the launchers check for a newer version. The page and its binaries
+# are one deployment, so they never disagree, and it stays until the next
+# release replaces it. The address shows under Deploy > Pages.
+#
+# Only a version not published yet is: a change to Cargo.toml that leaves
+# the version alone (a dependency updated) stops here, with exit code 3, a
+# warning rather than a failure. A release whose pipeline failed goes out
+# once fixed, from a pipeline run on the default branch by hand (Build >
+# Pipelines > Run pipeline): those count every file as changed.
 pages:
   extends: .ordered
   stage: release
   image:
     name: pandoc/core:3.11
     entrypoint: [""]
-  # The binaries, to describe them.
+  # The binaries, to publish and describe them.
   needs: [windows, linux-x86_64, linux-arm64]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - Cargo.toml
+  allow_failure:
+    exit_codes: [3]
   script:
-    - mkdir -p public
     # The version is the workspace's, the first `version = "…"` in the
     # manifest; the page's footer says it.
     - version=$(awk -F'"' '/^version = "/ { print $2; exit }' Cargo.toml)
+    # The page's address, where the binaries are downloaded from.
+    - homepage=$(awk -F'"' '/^homepage = "/ { print $2; exit }' Cargo.toml)
+    # The version the page offers now.
+    - wget -qO published.json "${homepage}release.json"
+    - published=$(awk -F'"' '/"version"/ { print $4; exit }' published.json)
+    - >-
+      if [ "$published" = "$version" ]; then
+      echo "Version $version is published already: nothing to release.";
+      exit 3; fi
+    - mkdir -p public
     - sed "s/@VERSION@/$version/" pages/footer.html > footer.html
     # The stylesheet's address changes with every commit, so a browser that
     # cached the previous one doesn't style the new page with it.
@@ -277,9 +304,10 @@ pages:
     # The README's screenshots, at the same relative path.
     - mkdir -p public/assets
     - cp -r assets/screenshots public/assets/
+    - cp old_launcher.exe old_launcher-linux-x86_64 old_launcher-linux-arm64 public/
     # The version and each binary's address, checksum and size, for the
     # launcher's update check.
-    - sh pages/release.sh "$version" > public/release.json
+    - sh pages/release.sh "$version" "$homepage" > public/release.json
     - cat public/release.json
   artifacts:
     paths:
@@ -312,8 +340,6 @@ index:
     - git add index/wotlk.json index/archives.json
     - >-
       if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
-    # No pipeline for it: nothing built depends on the catalog, and the
-    # binaries' download links point at the newest successful pipeline,
-    # which must stay one that built them.
+    # No pipeline for it: nothing built depends on the catalog.
     - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog [skip ci]"
     - git push "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"

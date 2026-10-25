@@ -243,3 +243,13 @@ podman run --rm -v "$PWD:$PWD:ro" -v old_launcher-target:/target \
 ```
 
 The launcher says what it does on stderr; `RUST_LOG=old_launcher=debug` says more.
+
+## Releasing
+
+Pushes are only checked. A release is a push to `main` that changes the
+version in `Cargo.toml` (render the screenshots again with it): its
+pipeline builds the binaries and publishes them with the project page and
+the `release.json` the launchers check for a newer version, all in one
+Pages deployment that stays until the next release. If that pipeline
+fails, push the fix and run a pipeline on `main` by hand (Build >
+Pipelines > Run pipeline): a version not published yet is released then.

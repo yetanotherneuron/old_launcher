@@ -88,7 +88,7 @@ mod tests {
   "version": "0.4.0",
   "binaries": {
     "windows-x86_64": {
-      "url": "https://gitlab.com/juxuanu/old_launcher/-/jobs/artifacts/main/raw/old_launcher.exe?job=windows",
+      "url": "https://old-launcher.icarns.xyz/old_launcher.exe",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "size": 16120832
     }
