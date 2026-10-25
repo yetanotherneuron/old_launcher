@@ -22,7 +22,9 @@ version and interface), when it was last updated, and the addon's own page
 and history of changes at the source when it has them. Listings that install
 the same folders are merged into one entry whose downloads are ordered
 newest first (by version when the versions have the same shape, by date
-otherwise), those made for 3.3.5a before the rest. Entries whose download
+otherwise), those made for 3.3.5a before the rest. An entry no source
+describes takes the `## Notes` of its first folder that has some, as the
+game's own addon list shows them. Entries whose download
 is dead, holds no addon or declares a later expansion's interface are left
 out and reported, and links to dead or hijacked sites are dropped.
 

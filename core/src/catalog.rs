@@ -114,6 +114,10 @@ pub struct Contents {
     /// The addon folders, as [`Installation::install`](crate::Installation::install)
     /// would place them.
     pub folders: Vec<Folder>,
+    /// What the addon says it does: the `.toc` notes of the first folder
+    /// that has some, without UI escape sequences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
     /// When the newest file in the archive was modified (`YYYY-MM-DD`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
@@ -261,21 +265,32 @@ impl Contents {
 
         let updated = archive::extract(archive, staging.path())?;
 
-        let folders = layout::find(staging.path())?
-            .into_iter()
-            .map(|folder| {
-                let toc = Toc::parse(&fs::read(&folder.toc).map_err(io_at(&folder.toc))?);
+        let mut folders = Vec::new();
+        let mut notes = None;
 
-                Ok(Folder {
-                    name: folder.name,
-                    title: toc.title,
-                    version: toc.version,
-                    interface: toc.interface,
-                })
-            })
-            .collect::<Result<_, Error>>()?;
+        for folder in layout::find(staging.path())? {
+            let toc = Toc::parse(&fs::read(&folder.toc).map_err(io_at(&folder.toc))?);
 
-        Ok(Self { folders, updated })
+            if notes.is_none() {
+                notes = toc
+                    .notes
+                    .map(|notes| notes.trim().to_owned())
+                    .filter(|notes| !notes.is_empty());
+            }
+
+            folders.push(Folder {
+                name: folder.name,
+                title: toc.title,
+                version: toc.version,
+                interface: toc.interface,
+            });
+        }
+
+        Ok(Self {
+            folders,
+            notes,
+            updated,
+        })
     }
 }
 
@@ -468,6 +483,37 @@ mod tests {
             ]
         );
         assert_eq!(contents.updated, None);
+    }
+
+    #[test]
+    fn an_archive_says_what_it_does_with_the_first_notes_of_its_folders() {
+        let archive = zip_of(&[
+            (
+                "Kekator-main/addon/Kekator/Kekator.toc",
+                "## Title: Kekator\n",
+            ),
+            (
+                "Kekator-main/addon/Kekator_NPC/Kekator_NPC.toc",
+                "## Notes: |cff00ff00Scripted NPC lines.|r \n",
+            ),
+            (
+                "Kekator-main/addon/Kekator_Zone/Kekator_Zone.toc",
+                "## Notes: Zones.\n",
+            ),
+        ]);
+
+        assert_eq!(
+            Contents::inspect(&archive).unwrap().notes.as_deref(),
+            Some("Scripted NPC lines."),
+            "the first folder has none, the second's lose their escapes"
+        );
+        assert_eq!(
+            Contents::inspect(&zip_of(&[("A/A.toc", "## Notes:  \n")]))
+                .unwrap()
+                .notes,
+            None,
+            "blank notes say nothing"
+        );
     }
 
     #[test]

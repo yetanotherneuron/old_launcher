@@ -208,12 +208,7 @@ async fn main() -> anyhow::Result<()> {
             listings.sort_by_key(|item| item.priority);
 
             let name = listings[0].listing.name.clone();
-            let description = listings
-                .iter()
-                .map(|item| &item.listing.description)
-                .find(|description| !description.is_empty())
-                .cloned()
-                .unwrap_or_default();
+            let description = description(&listings);
             let image = listings.iter().find_map(|item| item.listing.image.clone());
 
             let mut urls = HashSet::new();
@@ -337,6 +332,23 @@ fn earlier(listing: &Listing, known: &BTreeMap<String, Contents>) -> Option<Cont
     }
 
     known.get(&listing.download).cloned()
+}
+
+/// What an addon does, as the first of its `listings` that says so tells
+/// it (they are in order of preference), or else as its own `.toc` notes
+/// do: the game shows those in its addon list too.
+fn description(listings: &[Inspected]) -> String {
+    listings
+        .iter()
+        .map(|item| &item.listing.description)
+        .find(|description| !description.is_empty())
+        .or_else(|| {
+            listings
+                .iter()
+                .find_map(|item| item.contents.notes.as_ref())
+        })
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// Lists everything `source` offers, with how the catalog presents it.
@@ -496,6 +508,7 @@ mod tests {
                     version: Some(version.to_owned()),
                     interface: Some(Toc::WOTLK_INTERFACE),
                 }],
+                notes: None,
                 updated: None,
             },
             updated: updated.map(str::to_owned),
@@ -515,8 +528,39 @@ mod tests {
                     interface: *interface,
                 })
                 .collect(),
+            notes: None,
             updated: None,
         }
+    }
+
+    #[test]
+    fn an_addon_no_source_describes_says_what_it_does_with_its_toc_notes() {
+        let mut preferred = inspected(0, "1.0", None);
+        let mut other = inspected(1, "1.0", None);
+        preferred.contents.notes = Some("What its .toc says.".into());
+        other.contents.notes = Some("What the other .toc says.".into());
+
+        assert_eq!(
+            description(&[preferred, other]),
+            "What its .toc says.",
+            "the preferred listing's notes"
+        );
+
+        let mut preferred = inspected(0, "1.0", None);
+        let mut other = inspected(1, "1.0", None);
+        preferred.contents.notes = Some("What its .toc says.".into());
+        other.listing.description = "What the source says.".into();
+
+        assert_eq!(
+            description(&[preferred, other]),
+            "What the source says.",
+            "any source's description first"
+        );
+        assert_eq!(
+            description(&[inspected(0, "1.0", None)]),
+            "",
+            "nothing to say"
+        );
     }
 
     #[test]
