@@ -236,9 +236,9 @@ client sits at `/home/player/Games/World of Warcraft 3.3.5a` and the text
 is drawn with iced's bundled font rather than the system's:
 
 ```sh
-podman run --rm -v "$PWD:$PWD:ro" -v old_launcher-target:/target \
+podman run --rm -v "$PWD:/src:ro" -v old_launcher-target:/target \
     -v ~/.cargo/registry:/usr/local/cargo/registry -v ~/.cargo/git:/usr/local/cargo/git \
-    -v /tmp/shots:/out -w "$PWD" -e CARGO_TARGET_DIR=/target -e ICED_TEST_BACKEND=tiny-skia \
+    -v /tmp/shots:/out -w /src -e CARGO_TARGET_DIR=/target -e ICED_TEST_BACKEND=tiny-skia \
     -e "SCREENSHOT_CLIENT=/home/player/Games/World of Warcraft 3.3.5a" -e SCREENSHOT_OUT=/out \
     docker.io/library/rust:1.98.1 cargo test --locked --lib screenshots -- --ignored
 ```
