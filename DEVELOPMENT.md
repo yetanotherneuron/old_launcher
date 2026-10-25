@@ -36,8 +36,9 @@ describes it):
 - [locus313/WoW-3.3.5a-Addons](https://github.com/locus313/WoW-3.3.5a-Addons),
   a curated collection of backports.
 - Backport maintainers on GitHub (ElvUI-WotLK, bkader, Bunny67, Zidras,
-  s0h2x, KhalGH, Sattva-108, Xurkon): their own repositories that declare
-  the 3.3.5a interface.
+  s0h2x, KhalGH, Sattva-108, Xurkon, Wrath-AddOns): their own repositories
+  that declare the 3.3.5a interface, and the forks named in `github::FORKS`,
+  which carry backports of their own.
 - Addon authors on GitLab (juxuanu): only the projects named in
   `gitlab::AUTHORS`, since GitLab doesn't tell anonymous callers how big a
   project is, and listing every project of an author would download them

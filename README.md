@@ -51,7 +51,7 @@ every week:
 - [locus313/WoW-3.3.5a-Addons](https://github.com/locus313/WoW-3.3.5a-Addons),
   a curated collection of backports.
 - Backport maintainers on GitHub: ElvUI-WotLK, bkader, Bunny67, Zidras,
-  s0h2x, KhalGH, Sattva-108, Xurkon.
+  s0h2x, KhalGH, Sattva-108, Xurkon, Wrath-AddOns.
 - Addon authors on GitLab: juxuanu (Kekator).
 - [WoWInterface](https://www.wowinterface.com), for the addons whose last
   version was made for patch 3.3.

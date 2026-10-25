@@ -1,11 +1,12 @@
 //! Backport maintainers on GitHub: every repository of theirs that holds a
 //! 3.3.5a addon.
 //!
-//! Each of the maintainer's own repositories (not forks) is listed, and the
-//! indexer keeps those whose archive has a folder declaring the 3.3.5a
-//! interface. Listing costs one GitHub API call per hundred repositories;
-//! archive downloads don't count against the API limits. Setting
-//! `GITHUB_TOKEN` raises the limits if they ever get in the way.
+//! Each of the maintainer's own repositories (not forks, but for those named
+//! in `FORKS`) is listed, and the indexer keeps those whose archive has a
+//! folder declaring the 3.3.5a interface. Listing costs one GitHub API call
+//! per hundred repositories; archive downloads don't count against the API
+//! limits. Setting `GITHUB_TOKEN` raises the limits if they ever get in the
+//! way.
 
 use anyhow::Context;
 use old_launcher_core::catalog;
@@ -25,6 +26,15 @@ pub const MAINTAINERS: &[&str] = &[
     "KhalGH",
     "Sattva-108",
     "Xurkon",
+    "Wrath-AddOns",
+];
+
+/// Forks listed like the maintainer's own repositories: most forks are
+/// copies, but these carry backports of their own.
+const FORKS: &[&str] = &[
+    "Wrath-AddOns/TradeSkillMaster",
+    "Wrath-AddOns/Pawn-WOTLK",
+    "Wrath-AddOns/Tale-WotLK",
 ];
 
 /// Collections of addons, which are read through their own index instead.
@@ -57,8 +67,9 @@ impl Source for Maintainer {
 }
 
 /// Every repository of `owner`'s that may hold an addon: their own (not
-/// forks), minus collections and oversized ones. Only those whose archive
-/// has a folder declaring the 3.3.5a interface are kept by the indexer.
+/// forks, but for those in `FORKS`), minus collections and oversized ones.
+/// Only those whose archive has a folder declaring the 3.3.5a interface are
+/// kept by the indexer.
 pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Result<Vec<Listing>> {
     #[derive(Deserialize)]
     struct Repository {
@@ -85,7 +96,7 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
             repositories
                 .into_iter()
                 .filter(|repository| {
-                    !repository.fork
+                    (!repository.fork || FORKS.contains(&repository.full_name.as_str()))
                         && repository.size <= MAX_SIZE
                         && !EXCLUDED.contains(&repository.full_name.as_str())
                 })
