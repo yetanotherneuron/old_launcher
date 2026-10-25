@@ -440,6 +440,15 @@ impl App {
                         self.catalog.prefer(&self.config.sources);
                         Task::batch([task, self.save()])
                     }
+                    Some(addons::Instruction::Installed { folders, from }) => {
+                        let from = from.file_name().map_or_else(
+                            || from.display().to_string(),
+                            |name| name.to_string_lossy().into_owned(),
+                        );
+                        self.notice =
+                            Some(format!("Installed {} from {from}.", folders.join(", ")));
+                        Task::batch([task, self.rescan()])
+                    }
                     None => task,
                 }
             }

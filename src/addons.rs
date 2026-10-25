@@ -3,8 +3,10 @@
 
 mod card;
 mod confirm;
+mod external;
 
 pub use confirm::Confirm;
+use external::External;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -23,6 +25,7 @@ use iced::{Center, Element, Fill, FillPortion, Function, Task, Widget, padding};
 use crate::action::Action;
 use crate::catalog::{self, Catalog, Entry};
 use crate::core::catalog::Download;
+use crate::core::installation::Found;
 use crate::core::library::{Filter, Library, Order, Origin, Status};
 use crate::core::search::Query;
 use crate::core::{Installation, Snapshot};
@@ -43,6 +46,8 @@ pub struct State {
     confirm: Option<Confirm>,
     /// Whether a confirmed deletion is running.
     working: bool,
+    /// The dialog installing an addon from an archive or folder, while open.
+    external: Option<External>,
     /// How downloads sign in to GitHub, when they do.
     github: Option<github::Signed>,
 }
@@ -150,6 +155,22 @@ pub enum Message {
     Done(Result<(), String>),
     /// Open a web page about an addon or its source.
     OpenLink(String),
+    /// Open the dialog installing an addon from an archive or folder.
+    OpenExternal,
+    /// Pick an archive to install an addon from.
+    PickArchive,
+    /// Pick a folder to install an addon from.
+    PickFolder,
+    /// The archive or folder picked, unless the picker was closed.
+    Picked(Option<PathBuf>),
+    /// What the archive or folder at the path holds, or why it can't be read.
+    Previewed(PathBuf, Result<Vec<Found>, String>),
+    /// Choose to install the folder of the pick named so, or leave it out.
+    Choose(String, bool),
+    /// Install the folders chosen from the pick.
+    InstallPicked,
+    /// What was picked installed these folders, or failed.
+    InstalledPicked(PathBuf, Result<Vec<String>, String>),
 }
 
 /// What the addons screen asks of its parent.
@@ -165,6 +186,14 @@ pub enum Instruction {
         key: Key,
         /// The source id, or none.
         source: Option<String>,
+    },
+    /// Addon folders were installed from an archive or folder: to say so,
+    /// and to read the client again.
+    Installed {
+        /// The folders.
+        folders: Vec<String>,
+        /// The archive or folder.
+        from: PathBuf,
     },
 }
 
@@ -189,6 +218,7 @@ impl State {
             jobs: HashMap::new(),
             confirm: None,
             working: false,
+            external: None,
             github: None,
         }
     }
@@ -377,6 +407,10 @@ impl State {
             }
             Message::Cancel => {
                 self.confirm = None;
+                // An install from the dialog runs to its end in view.
+                if !matches!(self.external, Some(External::Installing(_))) {
+                    self.external = None;
+                }
                 Action::none()
             }
             Message::Confirm => {
@@ -419,6 +453,106 @@ impl State {
                 }
 
                 Action::none()
+            }
+            Message::OpenExternal => {
+                if installation.is_some() && self.external.is_none() {
+                    self.external = Some(External::Choosing);
+                }
+
+                Action::none()
+            }
+            Message::PickArchive => Action::task(pick(false)),
+            Message::PickFolder => Action::task(pick(true)),
+            Message::Picked(path) => {
+                let (Some(path), Some(installation)) = (path, installation) else {
+                    return Action::none();
+                };
+                // Once open, and between reads and installs.
+                if !matches!(
+                    self.external,
+                    Some(External::Choosing | External::Review { .. })
+                ) {
+                    return Action::none();
+                }
+
+                log::info!("Reading {} to install from it", path.display());
+                self.external = Some(External::Reading(path.clone()));
+                let installation = installation.clone();
+
+                Action::task(Task::perform(
+                    blocking({
+                        let path = path.clone();
+                        move || installation.preview(&path)
+                    }),
+                    Message::Previewed.with(path),
+                ))
+            }
+            Message::Previewed(path, found) => {
+                if let Some(External::Reading(reading)) = &self.external
+                    && *reading == path
+                {
+                    self.external = Some(External::review(path, found, snapshot));
+                }
+
+                Action::none()
+            }
+            Message::Choose(name, chosen) => {
+                if let Some(external) = &mut self.external {
+                    external.choose(name, chosen);
+                }
+
+                Action::none()
+            }
+            Message::InstallPicked => {
+                let (
+                    Some(External::Review {
+                        path,
+                        found: Ok(_),
+                        chosen,
+                    }),
+                    Some(installation),
+                ) = (&self.external, installation)
+                else {
+                    return Action::none();
+                };
+                if chosen.is_empty() {
+                    return Action::none();
+                }
+                let path = path.clone();
+                let chosen = chosen.clone();
+                let installation = installation.clone();
+
+                log::info!("Installing {} from {}", chosen.join(", "), path.display());
+                self.external = Some(External::Installing(path.clone()));
+
+                Action::task(Task::perform(
+                    blocking({
+                        let path = path.clone();
+                        move || installation.import(&path, &chosen)
+                    }),
+                    Message::InstalledPicked.with(path),
+                ))
+            }
+            Message::InstalledPicked(path, result) => {
+                self.external = None;
+
+                match result {
+                    Ok(folders) => {
+                        log::info!("Installed {} from {}", folders.join(", "), path.display());
+                        Action::instruction(Instruction::Installed {
+                            folders,
+                            from: path,
+                        })
+                    }
+                    Err(error) => {
+                        errors.report(format!(
+                            "Could not install from {}: {error}",
+                            path.display()
+                        ));
+                        // It may have replaced folders before failing.
+                        Action::instruction(Instruction::Changed)
+                    }
+                }
             }
         }
     }
@@ -527,6 +661,24 @@ impl State {
         .align_y(Center);
 
         let filtered = !query.is_empty() || self.filter.origin != Origin::Any;
+        // Addons the list lacks come in from an archive or folder, to show
+        // among those installed by hand.
+        let external = || {
+            (self.filter.origin == Origin::Manual).then(|| {
+                container(
+                    row![
+                        text("Got an external addon?").width(Fill),
+                        button("Install…")
+                            .style(button::secondary)
+                            .on_press_maybe(can_install.then_some(Message::OpenExternal)),
+                    ]
+                    .spacing(8)
+                    .align_y(Center),
+                )
+                .padding([8, 14])
+                .style(style::card)
+            })
+        };
         let needs_client = matches!(
             self.filter.status,
             Status::Installed | Status::Attention | Status::LeftoverData
@@ -564,12 +716,18 @@ impl State {
                     Status::LeftoverData => ("No leftover data.", None),
                 };
 
-                empty(message, action).boxed()
+                column![external(), empty(message, action)]
+                    .spacing(8)
+                    .boxed()
             } else {
                 scrollable(
-                    column(shown.into_iter().map(|item| {
-                        self.card(&library, item, catalog, snapshot, can_install, playing)
-                    }))
+                    column![
+                        external(),
+                        column(shown.into_iter().map(|item| {
+                            self.card(&library, item, catalog, snapshot, can_install, playing)
+                        }))
+                        .spacing(8),
+                    ]
                     .spacing(8)
                     .padding(padding::right(14)),
                 )
@@ -581,14 +739,15 @@ impl State {
 
         let content = column![toolbar, container(list).height(Fill)].spacing(12);
 
-        style::modal(
-            content,
-            self.confirm
-                .as_ref()
-                .zip(installation)
-                .map(|(confirm, installation)| confirm.view(installation.root(), playing)),
-            Message::Cancel,
-        )
+        let dialog = match (&self.confirm, installation, &self.external) {
+            (Some(confirm), Some(installation), _) => {
+                Some(confirm.view(installation.root(), playing).boxed())
+            }
+            (None, _, Some(external)) => Some(external.view(snapshot, catalog).boxed()),
+            _ => None,
+        };
+
+        style::modal(content, dialog, Message::Cancel)
     }
 
     /// The data that removed addons left behind, by addon name, which can't
@@ -706,6 +865,30 @@ fn empty<'a>(message: &'a str, action: Option<(&'a str, Message)>) -> impl Widge
 /// `error` is why.
 pub fn unavailable(error: &str) -> String {
     format!("Downloads are unavailable: {error}")
+}
+
+/// Asks for an archive to install an addon from, or a folder (`folder`).
+fn pick(folder: bool) -> Task<Message> {
+    Task::perform(
+        async move {
+            let dialog = rfd::AsyncFileDialog::new();
+            let picked = if folder {
+                dialog
+                    .set_title("Install an addon from a folder")
+                    .pick_folder()
+                    .await
+            } else {
+                dialog
+                    .set_title("Install an addon from an archive")
+                    .add_filter("Archive (zip, 7z, rar)", &["zip", "7z", "rar"])
+                    .pick_file()
+                    .await
+            };
+
+            picked.map(|picked| picked.path().to_path_buf())
+        },
+        Message::Picked,
+    )
 }
 
 /// Scrolls the list back to the top, for a list that changed contents.

@@ -6,7 +6,9 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::io_at;
-use crate::{Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Version, archive, layout};
+use crate::{
+    Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Toc, Version, archive, layout,
+};
 
 /// A validated 3.3.5a client directory.
 ///
@@ -178,17 +180,88 @@ impl Installation {
         marker: &Marker,
         replacing: &[String],
     ) -> Result<Vec<String>, Error> {
-        let addons = self.addons_directory();
-        fs::create_dir_all(&addons).map_err(io_at(&addons))?;
-
-        let staging = tempfile::Builder::new()
-            .prefix(".old_launcher-")
-            .tempdir_in(&addons)
-            .map_err(io_at(&addons))?;
+        let staging = self.staging()?;
 
         archive::extract(archive, staging.path())?;
 
-        let folders = layout::find(staging.path())?;
+        self.place(staging.path(), |_| true, Some(marker), replacing)
+    }
+
+    /// What [`Installation::import`] would install from `path`, an archive
+    /// or a folder the user picked, without changing anything: its addon
+    /// folders, each under the name its `.toc` declares, wherever it sits.
+    pub fn preview(&self, path: &Path) -> Result<Vec<Found>, Error> {
+        if path.is_dir() {
+            self.outside_addons(path)?;
+
+            return found(path);
+        }
+
+        let temporary = std::env::temp_dir();
+        let staging = tempfile::tempdir().map_err(io_at(&temporary))?;
+
+        archive::extract(&fs::read(path).map_err(io_at(path))?, staging.path())?;
+
+        found(staging.path())
+    }
+
+    /// Installs the addon folders named `chosen` (as [`Installation::preview`]
+    /// names them) from `path`, an archive or a folder the user picked, as
+    /// installed by hand: without a marker. As [`Installation::install`]
+    /// does, each goes into place under its `.toc` name, wherever it sits,
+    /// replacing any folder already there. Only a folder's chosen addon
+    /// folders are copied, not the rest of it (a repository's `.git`, its
+    /// sources). Returns their folder names.
+    pub fn import(&self, path: &Path, chosen: &[String]) -> Result<Vec<String>, Error> {
+        let staging = self.staging()?;
+        let is_chosen = |name: &str| {
+            chosen
+                .iter()
+                .any(|chosen| chosen.eq_ignore_ascii_case(name))
+        };
+
+        if path.is_dir() {
+            self.outside_addons(path)?;
+
+            for folder in layout::find(path)? {
+                if is_chosen(&folder.name) {
+                    copy_folder(&folder.path, &staging.path().join(plain(&folder.name)?))?;
+                }
+            }
+        } else {
+            archive::extract(&fs::read(path).map_err(io_at(path))?, staging.path())?;
+        }
+
+        // What isn't placed goes with the staging folder.
+        self.place(staging.path(), is_chosen, None, &[])
+    }
+
+    /// A staging folder inside `Interface/AddOns`, so moving out of it is a
+    /// rename on the same filesystem. It goes when dropped.
+    fn staging(&self) -> Result<tempfile::TempDir, Error> {
+        let addons = self.addons_directory();
+        fs::create_dir_all(&addons).map_err(io_at(&addons))?;
+
+        tempfile::Builder::new()
+            .prefix(STAGING_PREFIX)
+            .tempdir_in(&addons)
+            .map_err(io_at(&addons))
+    }
+
+    /// Moves the addon folders in `staging` whose names are `chosen` into
+    /// `Interface/AddOns`, under the name their `.toc` declares, replacing
+    /// any folder already there, once the `replacing` folders are gone. Each
+    /// gets `marker`, when there is one. Returns their folder names.
+    fn place(
+        &self,
+        staging: &Path,
+        chosen: impl Fn(&str) -> bool,
+        marker: Option<&Marker>,
+        replacing: &[String],
+    ) -> Result<Vec<String>, Error> {
+        let addons = self.addons_directory();
+        let mut folders = layout::find(staging)?;
+        folders.retain(|folder| chosen(&folder.name));
 
         if folders.is_empty() {
             return Err(Error::NoAddon);
@@ -203,12 +276,31 @@ impl Installation {
 
             remove_folder(&target)?;
             fs::rename(&folder.path, &target).map_err(io_at(&target))?;
-            marker.write(&target)?;
+            if let Some(marker) = marker {
+                marker.write(&target)?;
+            }
 
             installed.push(folder.name);
         }
 
         Ok(installed)
+    }
+
+    /// Refuses `path` when it is in `Interface/AddOns`: its addons are
+    /// installed already, and importing them again would only copy them onto
+    /// themselves, dropping the markers of those installed from the list.
+    fn outside_addons(&self, path: &Path) -> Result<(), Error> {
+        let addons = self.addons_directory();
+        let inside = match (dunce::canonicalize(path), dunce::canonicalize(&addons)) {
+            (Ok(path), Ok(addons)) => path.starts_with(addons),
+            _ => false,
+        };
+
+        if inside {
+            Err(Error::InAddOns(path.to_path_buf()))
+        } else {
+            Ok(())
+        }
     }
 
     /// Fixes a folder the client cannot load because the addon inside is
@@ -553,6 +645,72 @@ fn plain(name: &str) -> Result<&str, Error> {
     } else {
         Err(Error::InvalidName(name.to_owned()))
     }
+}
+
+/// An addon folder in an archive or folder the user picked to install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    /// The name it gets in `Interface/AddOns`: its `.toc` file's stem.
+    pub name: String,
+    /// Where it is in the archive or folder, with `/` between folders: the
+    /// same as `name` unless it moves or is renamed on the way in.
+    pub from: String,
+    /// Its `.toc`.
+    pub toc: Toc,
+}
+
+/// The addon folders in `root`, as installing them would place them, with
+/// their `.toc` read.
+fn found(root: &Path) -> Result<Vec<Found>, Error> {
+    let folders = layout::find(root)?;
+
+    if folders.is_empty() {
+        return Err(Error::NoAddon);
+    }
+
+    folders
+        .into_iter()
+        .map(|folder| {
+            let toc = Toc::parse(&fs::read(&folder.toc).map_err(io_at(&folder.toc))?);
+            let from = match folder.path.strip_prefix(root) {
+                // The folder picked is the addon folder itself.
+                Ok(relative) if relative.as_os_str().is_empty() => root
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                Ok(relative) => relative
+                    .components()
+                    .map(|component| component.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+                Err(_) => folder.path.display().to_string(),
+            };
+
+            Ok(Found {
+                name: folder.name,
+                from,
+                toc,
+            })
+        })
+        .collect()
+}
+
+/// Copies the folder `from`, and everything in it, to `to`.
+fn copy_folder(from: &Path, to: &Path) -> Result<(), Error> {
+    fs::create_dir_all(to).map_err(io_at(to))?;
+
+    for entry in fs::read_dir(from).map_err(io_at(from))? {
+        let source = entry.map_err(io_at(from))?.path();
+        let target = to.join(source.file_name().unwrap_or_default());
+
+        if source.is_dir() {
+            copy_folder(&source, &target)?;
+        } else {
+            let _ = fs::copy(&source, &target).map_err(io_at(&source))?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Removes an addon folder, or just the link if it is a symlink.
@@ -952,6 +1110,217 @@ mod tests {
 
         assert!(!manual.join("stale.lua").exists());
         assert!(manual.join("ACP.toc").exists());
+    }
+
+    /// A repository holding two addons a few folders down, as a branch
+    /// snapshot of it is: `kekator-master/addon/…`.
+    fn kekator() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                "kekator-master/addon/Kekator/Kekator.toc",
+                "## Title: Kekator\n## Version: 0.3\n## Interface: 30300\n",
+            ),
+            ("kekator-master/addon/Kekator/Kekator.lua", ""),
+            (
+                "kekator-master/addon/Kekator_NPC/Kekator_NPC.toc",
+                "## Dependencies: Kekator\n",
+            ),
+            ("kekator-master/README.md", ""),
+        ]
+    }
+
+    #[test]
+    fn a_preview_says_what_an_archive_would_install_and_from_where() {
+        let (_root, installation) = client();
+        let picked = tempfile::tempdir().unwrap();
+        let archive = picked.path().join("kekator-master.zip");
+        fs::write(&archive, zip_of(&kekator())).unwrap();
+
+        let found = installation.preview(&archive).unwrap();
+
+        assert_eq!(
+            found
+                .iter()
+                .map(|found| (found.name.as_str(), found.from.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("Kekator", "kekator-master/addon/Kekator"),
+                ("Kekator_NPC", "kekator-master/addon/Kekator_NPC"),
+            ]
+        );
+        assert_eq!(found[0].toc.version.as_deref(), Some("0.3"));
+        assert_eq!(found[1].toc.dependencies, ["Kekator"]);
+        assert!(folders(&installation).is_empty(), "nothing installed yet");
+    }
+
+    #[test]
+    fn an_imported_archive_is_installed_as_by_hand() {
+        let (_root, installation) = client();
+        let picked = tempfile::tempdir().unwrap();
+        let archive = picked.path().join("kekator-master.zip");
+        fs::write(&archive, zip_of(&kekator())).unwrap();
+
+        let installed = installation
+            .import(&archive, &["Kekator".into(), "Kekator_NPC".into()])
+            .unwrap();
+
+        assert_eq!(installed, ["Kekator", "Kekator_NPC"]);
+        assert_eq!(folders(&installation), ["Kekator", "Kekator_NPC"]);
+        assert!(
+            installation
+                .scan()
+                .unwrap()
+                .addons
+                .iter()
+                .all(|addon| addon.marker.is_none()),
+            "no marker: installed manually"
+        );
+        assert!(
+            installation
+                .addons_directory()
+                .join("Kekator/Kekator.lua")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn an_imported_folder_gives_its_addons_and_nothing_else() {
+        let (_root, installation) = client();
+        let picked = tempfile::tempdir().unwrap();
+        for (file, contents) in kekator() {
+            let path = picked.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+        fs::create_dir_all(picked.path().join("kekator-master/.git")).unwrap();
+        fs::write(picked.path().join("kekator-master/.git/HEAD"), "").unwrap();
+        let repository = picked.path().join("kekator-master");
+
+        assert_eq!(installation.preview(&repository).unwrap().len(), 2);
+        let installed = installation
+            .import(&repository, &["Kekator".into(), "Kekator_NPC".into()])
+            .unwrap();
+
+        assert_eq!(installed, ["Kekator", "Kekator_NPC"]);
+        let entries: Vec<_> = fs::read_dir(installation.addons_directory())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            entries.len(),
+            2,
+            "no README, no .git, no staging: {entries:?}"
+        );
+        assert!(
+            installation
+                .addons_directory()
+                .join("Kekator/Kekator.lua")
+                .exists()
+        );
+        assert!(
+            repository.join("addon/Kekator/Kekator.lua").exists(),
+            "copied, not moved"
+        );
+    }
+
+    #[test]
+    fn a_misnamed_folder_goes_in_under_its_toc_name() {
+        let (_root, installation) = client();
+        let picked = tempfile::tempdir().unwrap();
+        let folder = picked.path().join("Foo-master");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("Foo.toc"), "").unwrap();
+
+        let found = installation.preview(&folder).unwrap();
+        assert_eq!(
+            (found[0].name.as_str(), found[0].from.as_str()),
+            ("Foo", "Foo-master")
+        );
+
+        installation.import(&folder, &["Foo".into()]).unwrap();
+        assert_eq!(folders(&installation), ["Foo"]);
+    }
+
+    #[test]
+    fn only_the_chosen_folders_are_imported() {
+        let picked = tempfile::tempdir().unwrap();
+        let archive = picked.path().join("kekator-master.zip");
+        fs::write(&archive, zip_of(&kekator())).unwrap();
+        for (file, contents) in kekator() {
+            let path = picked.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        for path in [archive.clone(), picked.path().join("kekator-master")] {
+            let (_root, installation) = client();
+
+            let installed = installation.import(&path, &["kekator".into()]).unwrap();
+
+            assert_eq!(installed, ["Kekator"], "{}", path.display());
+            assert_eq!(folders(&installation), ["Kekator"], "{}", path.display());
+        }
+
+        // An archive whose root is the addon folder, left out.
+        let (_root, installation) = client();
+        let root = picked.path().join("root.zip");
+        fs::write(&root, zip_of(&[("Root.toc", "")])).unwrap();
+        assert!(matches!(
+            installation.import(&root, &[]),
+            Err(Error::NoAddon)
+        ));
+        assert!(
+            fs::read_dir(installation.addons_directory())
+                .unwrap()
+                .next()
+                .is_none(),
+            "nothing installed, no staging folder left"
+        );
+    }
+
+    #[test]
+    fn a_folder_in_addons_is_not_imported_again() {
+        let (_root, installation) = client();
+        installation
+            .install(&zip_of(&[("Foo/Foo.toc", "")]), &marker("Foo"), &[])
+            .unwrap();
+        let foo = installation.addons_directory().join("Foo");
+
+        for folder in [foo.clone(), installation.addons_directory()] {
+            assert!(matches!(
+                installation.preview(&folder),
+                Err(Error::InAddOns(_))
+            ));
+            assert!(matches!(
+                installation.import(&folder, &["Foo".into()]),
+                Err(Error::InAddOns(_))
+            ));
+        }
+        assert_eq!(Marker::read(&foo), Some(marker("Foo")), "left as it was");
+    }
+
+    #[test]
+    fn a_pick_without_an_addon_installs_nothing() {
+        let (_root, installation) = client();
+        let picked = tempfile::tempdir().unwrap();
+        fs::write(picked.path().join("readme.txt"), "").unwrap();
+        let archive = picked.path().join("readme.zip");
+        fs::write(&archive, zip_of(&[("readme.txt", "")])).unwrap();
+
+        for path in [picked.path(), archive.as_path()] {
+            assert!(matches!(installation.preview(path), Err(Error::NoAddon)));
+            assert!(matches!(
+                installation.import(path, &["readme".into()]),
+                Err(Error::NoAddon)
+            ));
+        }
+        assert!(
+            fs::read_dir(installation.addons_directory())
+                .unwrap()
+                .next()
+                .is_none(),
+            "no staging folder left either"
+        );
     }
 
     #[test]

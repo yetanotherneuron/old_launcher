@@ -49,9 +49,13 @@ pub enum Error {
     #[error("archive entry escapes the extraction directory: {0}")]
     UnsafeEntry(String),
 
-    /// The archive holds no folder with a `.toc` file.
-    #[error("the archive contains no addon (no .toc file found)")]
+    /// The archive or folder holds no folder with a `.toc` file.
+    #[error("no addon in it: no folder holds a .toc file")]
     NoAddon,
+
+    /// A folder to install from that is in `Interface/AddOns` already.
+    #[error("{} is in Interface/AddOns already", .0.display())]
+    InAddOns(PathBuf),
 
     /// An addon folder name that is not a single, plain path component.
     #[error("invalid addon folder name: {0:?}")]

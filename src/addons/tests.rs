@@ -6,7 +6,7 @@ use iced::widget::Id;
 use iced_test::simulator;
 
 use super::*;
-use crate::core::{Addon, Marker};
+use crate::core::{Addon, Marker, Toc};
 use crate::testing::{self, offsets};
 
 const CATALOG: &str = r#"{
@@ -1680,4 +1680,272 @@ async fn catalog_entries_install_into_a_real_client() {
             "{name}: uninstalled"
         );
     }
+}
+
+/// Applies `message` with `installation` open as `snapshot` saw it, and
+/// returns what it asked of the launcher and what it reported.
+fn apply_to(
+    state: &mut State,
+    catalog: &Catalog,
+    installation: &Installation,
+    snapshot: &Snapshot,
+    message: Message,
+) -> (Option<Instruction>, Errors) {
+    let mut errors = Errors::default();
+    let action = state.update(
+        message,
+        catalog,
+        Ok(&client()),
+        Some(installation),
+        Some(snapshot),
+        false,
+        &mut errors,
+    );
+
+    (action.instruction, errors)
+}
+
+#[test]
+fn the_manual_installs_offer_to_install_an_external_addon() {
+    let catalog = catalog();
+    let mut state = State::new();
+    let (_root, installation) = client_with_skada(&catalog);
+    let snapshot = installation.scan().unwrap();
+
+    assert!(
+        open(&state, &catalog, &installation, &snapshot)
+            .find("Got an external addon?")
+            .is_err(),
+        "only among the manual installs"
+    );
+
+    apply(
+        &mut state,
+        &catalog,
+        Message::OriginSelected(Origin::Manual),
+    );
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(ui.find("Got an external addon?").is_ok());
+    assert!(ui.find("Manual").is_ok(), "above the manual installs");
+    let _ = ui.click("Install…").unwrap();
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert!(
+        matches!(messages[..], [Message::OpenExternal]),
+        "{messages:?}"
+    );
+
+    // Without a client open, there is nowhere to install to.
+    let mut ui = simulator(state.view(&catalog, None, None, catalog::Refresh::Idle, false));
+    assert!(ui.find("Got an external addon?").is_ok());
+    let _ = ui.click("Install…").unwrap();
+    assert_eq!(ui.into_messages().count(), 0);
+}
+
+#[test]
+fn an_external_addon_is_shown_before_it_installs() {
+    let catalog = catalog();
+    let mut state = State::new();
+    let (_root, installation) = client_with_skada(&catalog);
+    let snapshot = installation.scan().unwrap();
+    let path = PathBuf::from("/downloads/skada-master.zip");
+    let update =
+        |state: &mut State, message| apply_to(state, &catalog, &installation, &snapshot, message);
+    // Only the manual installs behind the dialog, so its buttons are the
+    // only ones of their names.
+    apply(
+        &mut state,
+        &catalog,
+        Message::OriginSelected(Origin::Manual),
+    );
+
+    let shows = |state: &State, line: &str| {
+        open(state, &catalog, &installation, &snapshot)
+            .find(line)
+            .is_ok()
+    };
+    let clicked = |state: &State, button: &str| -> Vec<Message> {
+        let mut ui = open(state, &catalog, &installation, &snapshot);
+        let _ = ui.click(button).unwrap();
+        ui.into_messages().collect()
+    };
+
+    let _ = update(&mut state, Message::OpenExternal);
+    assert!(shows(&state, "Install an addon"));
+    assert!(clicked(&state, "Install").is_empty(), "nothing picked yet");
+    for (button, expected) in [
+        ("Choose a file…", "PickArchive"),
+        ("Choose a folder…", "PickFolder"),
+    ] {
+        let messages = clicked(&state, button);
+        assert_eq!(format!("{messages:?}"), format!("[{expected}]"));
+    }
+
+    let _ = update(&mut state, Message::Picked(Some(path.clone())));
+    assert!(shows(&state, "Reading…"));
+    assert!(shows(&state, path.display().to_string().as_str()));
+
+    let _ = update(
+        &mut state,
+        Message::Previewed(PathBuf::from("/downloads/other.zip"), Err("late".into())),
+    );
+    assert!(
+        shows(&state, "Reading…"),
+        "another pick's reading is ignored"
+    );
+
+    let found = vec![
+        Found {
+            name: "Skada".into(),
+            from: "skada-master/Skada".into(),
+            toc: Toc {
+                version: Some("2.0".into()),
+                interface: Some(Toc::WOTLK_INTERFACE),
+                ..Toc::default()
+            },
+        },
+        Found {
+            name: "Fresh".into(),
+            from: "skada-master/Fresh".into(),
+            toc: Toc {
+                title: Some("Fresh Meat".into()),
+                interface: Some(40000),
+                dependencies: vec!["Missing".into(), "skada".into()],
+                ..Toc::default()
+            },
+        },
+    ];
+    let _ = update(&mut state, Message::Previewed(path.clone(), Ok(found)));
+    let replaces =
+        "Replaces Skada, installed from Other Source: it won't update from there anymore.";
+    for line in [
+        "Choose the folders to install into Interface/AddOns:",
+        "2.0 · from skada-master/Skada · already installed from Other Source",
+        "Fresh Meat · from skada-master/Fresh",
+        "Fresh was made for Cataclysm: it might not work on 3.3.5a.",
+        "Fresh requires Missing, which won't be installed.",
+    ] {
+        assert!(shows(&state, line), "{line}");
+    }
+    assert!(
+        !shows(&state, replaces),
+        "Skada starts left out: the list's version stays"
+    );
+    assert!(
+        !shows(&state, "Fresh requires skada, which won't be installed."),
+        "Skada is installed"
+    );
+
+    let messages = clicked(&state, "Skada");
+    assert!(
+        matches!(&messages[..], [Message::Choose(name, true)] if name == "Skada"),
+        "{messages:?}"
+    );
+    let _ = update(&mut state, Message::Choose("Skada".into(), true));
+    assert!(shows(&state, replaces), "chosen, so it warns");
+
+    let _ = update(&mut state, Message::Choose("Fresh".into(), false));
+    assert!(
+        !shows(&state, "Fresh requires Missing, which won't be installed."),
+        "left out, so no warning"
+    );
+    let _ = update(&mut state, Message::Choose("Skada".into(), false));
+    assert!(
+        clicked(&state, "Install").is_empty(),
+        "nothing chosen, nothing to install"
+    );
+
+    let _ = update(&mut state, Message::Choose("Fresh".into(), true));
+    let messages = clicked(&state, "Install");
+    assert!(
+        matches!(messages[..], [Message::InstallPicked]),
+        "{messages:?}"
+    );
+
+    let _ = update(&mut state, Message::InstallPicked);
+    let _ = update(&mut state, Message::Cancel);
+    assert!(
+        shows(&state, "Installing…"),
+        "an install runs to its end in view"
+    );
+
+    let (instruction, errors) = update(
+        &mut state,
+        Message::InstalledPicked(path.clone(), Ok(vec!["Fresh".into()])),
+    );
+    assert!(matches!(
+        instruction,
+        Some(Instruction::Installed { folders, from }) if folders == ["Fresh"] && from == path
+    ));
+    assert!(errors.messages().is_empty());
+    assert!(!shows(&state, "Install an addon"), "closed");
+}
+
+#[test]
+fn an_external_pick_without_an_addon_says_why_and_a_failure_is_reported() {
+    let catalog = catalog();
+    let mut state = State::new();
+    let (_root, installation) = client_with_skada(&catalog);
+    let snapshot = installation.scan().unwrap();
+    let path = PathBuf::from("/downloads/junk.zip");
+    let update =
+        |state: &mut State, message| apply_to(state, &catalog, &installation, &snapshot, message);
+    apply(
+        &mut state,
+        &catalog,
+        Message::OriginSelected(Origin::Manual),
+    );
+
+    let _ = update(&mut state, Message::OpenExternal);
+    let _ = update(&mut state, Message::Picked(Some(path.clone())));
+    let _ = update(
+        &mut state,
+        Message::Previewed(
+            path.clone(),
+            Err("no addon in it: no folder holds a .toc file".into()),
+        ),
+    );
+    {
+        let mut ui = open(&state, &catalog, &installation, &snapshot);
+        assert!(
+            ui.find("No addon in it: no folder holds a .toc file")
+                .is_ok(),
+            "as a sentence of its own"
+        );
+        let _ = ui.click("Install").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "nothing to install");
+    }
+
+    let _ = update(&mut state, Message::Cancel);
+    assert!(
+        open(&state, &catalog, &installation, &snapshot)
+            .find("Install an addon")
+            .is_err(),
+        "closed"
+    );
+
+    let fresh = Found {
+        name: "Fresh".into(),
+        from: "Fresh".into(),
+        toc: Toc::default(),
+    };
+    let _ = update(&mut state, Message::OpenExternal);
+    let _ = update(&mut state, Message::Picked(Some(path.clone())));
+    let _ = update(
+        &mut state,
+        Message::Previewed(path.clone(), Ok(vec![fresh])),
+    );
+    let _ = update(&mut state, Message::InstallPicked);
+    let (instruction, errors) = update(
+        &mut state,
+        Message::InstalledPicked(path.clone(), Err("disk full".into())),
+    );
+
+    assert!(matches!(instruction, Some(Instruction::Changed)));
+    assert_eq!(
+        errors.messages(),
+        [format!(
+            "Could not install from {}: disk full",
+            path.display()
+        )]
+    );
 }
