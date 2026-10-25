@@ -223,10 +223,21 @@ impl Installation {
         if path.is_dir() {
             self.outside_addons(path)?;
 
-            for folder in layout::find(path)? {
-                if is_chosen(&folder.name) {
-                    copy_folder(&folder.path, &staging.path().join(plain(&folder.name)?))?;
-                }
+            let folders = layout::find(path)?;
+
+            for folder in folders.iter().filter(|folder| is_chosen(&folder.name)) {
+                // Its modules are copied on their own, when chosen.
+                let modules: Vec<&Path> = folders
+                    .iter()
+                    .map(|other| other.path.as_path())
+                    .filter(|other| *other != folder.path && other.starts_with(&folder.path))
+                    .collect();
+
+                copy_folder(
+                    &folder.path,
+                    &staging.path().join(plain(&folder.name)?),
+                    &modules,
+                )?;
             }
         } else {
             archive::extract(&fs::read(path).map_err(io_at(path))?, staging.path())?;
@@ -251,7 +262,9 @@ impl Installation {
     /// Moves the addon folders in `staging` whose names are `chosen` into
     /// `Interface/AddOns`, under the name their `.toc` declares, replacing
     /// any folder already there, once the `replacing` folders are gone. Each
-    /// gets `marker`, when there is one. Returns their folder names.
+    /// gets `marker`, when there is one. A module left out is deleted from
+    /// inside its addon, where the client wouldn't load it anyway. Returns
+    /// their folder names.
     fn place(
         &self,
         staging: &Path,
@@ -260,8 +273,9 @@ impl Installation {
         replacing: &[String],
     ) -> Result<Vec<String>, Error> {
         let addons = self.addons_directory();
-        let mut folders = layout::find(staging)?;
-        folders.retain(|folder| chosen(&folder.name));
+        let (folders, left_out): (Vec<_>, Vec<_>) = layout::find(staging)?
+            .into_iter()
+            .partition(|folder| chosen(&folder.name));
 
         if folders.is_empty() {
             return Err(Error::NoAddon);
@@ -269,9 +283,19 @@ impl Installation {
 
         self.uninstall(replacing)?;
 
+        for folder in &left_out {
+            if folders
+                .iter()
+                .any(|chosen| folder.path.starts_with(&chosen.path))
+            {
+                fs::remove_dir_all(&folder.path).map_err(io_at(&folder.path))?;
+            }
+        }
+
         let mut installed = Vec::with_capacity(folders.len());
 
-        for folder in folders {
+        // Modules come after their addon: they move out of it first.
+        for folder in folders.into_iter().rev() {
             let target = addons.join(plain(&folder.name)?);
 
             remove_folder(&target)?;
@@ -282,6 +306,8 @@ impl Installation {
 
             installed.push(folder.name);
         }
+
+        installed.reverse();
 
         Ok(installed)
     }
@@ -329,7 +355,8 @@ impl Installation {
 
             let mut repaired = Vec::with_capacity(folders.len());
 
-            for folder in folders {
+            // Modules come after their addon: they move out of it first.
+            for folder in folders.into_iter().rev() {
                 let target = addons.join(plain(&folder.name)?);
 
                 remove_folder(&target)?;
@@ -337,6 +364,8 @@ impl Installation {
 
                 repaired.push(folder.name);
             }
+
+            repaired.reverse();
 
             Ok(repaired)
         });
@@ -695,16 +724,21 @@ fn found(root: &Path) -> Result<Vec<Found>, Error> {
         .collect()
 }
 
-/// Copies the folder `from`, and everything in it, to `to`.
-fn copy_folder(from: &Path, to: &Path) -> Result<(), Error> {
+/// Copies the folder `from`, and everything in it but the folders `leaving`,
+/// to `to`.
+fn copy_folder(from: &Path, to: &Path, leaving: &[&Path]) -> Result<(), Error> {
     fs::create_dir_all(to).map_err(io_at(to))?;
 
     for entry in fs::read_dir(from).map_err(io_at(from))? {
         let source = entry.map_err(io_at(from))?.path();
         let target = to.join(source.file_name().unwrap_or_default());
 
+        if leaving.contains(&source.as_path()) {
+            continue;
+        }
+
         if source.is_dir() {
-            copy_folder(&source, &target)?;
+            copy_folder(&source, &target, leaving)?;
         } else {
             let _ = fs::copy(&source, &target).map_err(io_at(&source))?;
         }
@@ -1323,6 +1357,87 @@ mod tests {
         );
     }
 
+    /// A repository whose root is its addon, with its modules inside it, as
+    /// a branch snapshot of it is: `Overachiever-master/Overachiever_Tabs/…`.
+    fn overachiever() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                "Overachiever-master/Overachiever.toc",
+                "## Interface: 30300\n",
+            ),
+            ("Overachiever-master/Overachiever.lua", ""),
+            ("Overachiever-master/libs/LibStub/LibStub.toc", ""),
+            (
+                "Overachiever-master/Overachiever_Tabs/Overachiever_Tabs.toc",
+                "## Dependencies: Overachiever\n",
+            ),
+            (
+                "Overachiever-master/Overachiever_Trade/Overachiever_Trade.toc",
+                "## Dependencies: Overachiever\n",
+            ),
+        ]
+    }
+
+    #[test]
+    fn modules_kept_inside_their_addon_go_in_beside_it() {
+        let (_root, installation) = client();
+
+        let installed = installation
+            .install(&zip_of(&overachiever()), &marker("Overachiever"), &[])
+            .unwrap();
+
+        let all = ["Overachiever", "Overachiever_Tabs", "Overachiever_Trade"];
+        assert_eq!(installed, all);
+        assert_eq!(folders(&installation), all);
+        let addons = installation.addons_directory();
+        assert!(!addons.join("Overachiever/Overachiever_Tabs").exists());
+        assert!(
+            addons
+                .join("Overachiever/libs/LibStub/LibStub.toc")
+                .exists(),
+            "its libraries stay inside it"
+        );
+        assert!(
+            installation
+                .scan()
+                .unwrap()
+                .addons
+                .iter()
+                .all(|addon| addon.marker == Some(marker("Overachiever")))
+        );
+    }
+
+    #[test]
+    fn a_module_left_out_is_not_installed_inside_its_addon_either() {
+        let picked = tempfile::tempdir().unwrap();
+        let archive = picked.path().join("Overachiever-master.zip");
+        fs::write(&archive, zip_of(&overachiever())).unwrap();
+        for (file, contents) in overachiever() {
+            let path = picked.path().join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        for path in [archive, picked.path().join("Overachiever-master")] {
+            let (_root, installation) = client();
+
+            let installed = installation
+                .import(&path, &["Overachiever".into(), "Overachiever_Trade".into()])
+                .unwrap();
+
+            let addons = installation.addons_directory();
+            assert_eq!(installed, ["Overachiever", "Overachiever_Trade"]);
+            assert_eq!(folders(&installation), installed, "{}", path.display());
+            for module in ["Overachiever_Tabs", "Overachiever_Trade"] {
+                assert!(
+                    !addons.join("Overachiever").join(module).exists(),
+                    "{module} from {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
     #[test]
     fn archives_without_addons_change_nothing() {
         let (_root, installation) = client();
@@ -1370,6 +1485,24 @@ mod tests {
                 .join("Bartender4/Bartender4.lua")
                 .exists()
         );
+    }
+
+    #[test]
+    fn repairing_moves_modules_out_of_their_addon() {
+        let (_root, installation) = client();
+        let addons = installation.addons_directory();
+        for (file, contents) in overachiever() {
+            let path = addons.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        let repaired = installation.repair("Overachiever-master").unwrap();
+
+        let all = ["Overachiever", "Overachiever_Tabs", "Overachiever_Trade"];
+        assert_eq!(repaired, all);
+        assert_eq!(folders(&installation), all);
+        assert!(addons.join("Overachiever/Overachiever.lua").exists());
     }
 
     #[test]
