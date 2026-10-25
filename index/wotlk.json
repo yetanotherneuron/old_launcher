@@ -32,6 +32,11 @@
       "homepage": "https://github.com/Sattva-108"
     },
     {
+      "id": "github-wrath-addons",
+      "name": "Wrath-AddOns on GitHub",
+      "homepage": "https://github.com/Wrath-AddOns"
+    },
+    {
       "id": "github-xurkon",
       "name": "Xurkon on GitHub",
       "homepage": "https://github.com/Xurkon"
@@ -40,6 +45,11 @@
       "id": "github-zidras",
       "name": "Zidras on GitHub",
       "homepage": "https://github.com/Zidras"
+    },
+    {
+      "id": "gitlab-juxuanu",
+      "name": "juxuanu on GitLab",
+      "homepage": "https://gitlab.com/juxuanu"
     },
     {
       "id": "locus313",
@@ -173,6 +183,7 @@
     {
       "name": "_Corpse",
       "description": "_Corpse zeigt im Tooltip von Leichen an, welcher Fraktion diese angehören und ob der Charakter online ist.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/636141530616842783%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -257,9 +268,24 @@
       ]
     },
     {
-      "name": "ACE3",
+      "name": "AceAddon-3.0",
       "description": "Ace ist eine Bibliothek, die Funktionen für andere AddOns bereitstellt.",
       "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "AceAddon-3.0",
+          "url": "https://github.com/Wrath-AddOns/AceAddon-3.0/archive/refs/heads/master.zip",
+          "updated": "2010-10-06",
+          "page": "https://github.com/Wrath-AddOns/AceAddon-3.0",
+          "changes": "https://github.com/Wrath-AddOns/AceAddon-3.0/commits/master",
+          "folders": [
+            {
+              "name": "Ace3",
+              "title": "Lib: Ace3",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "rising-gods",
           "name": "ACE3",
@@ -535,22 +561,17 @@
       ]
     },
     {
-      "name": "AddFriend",
-      "description": "AddFriend is a simple addon that adds an Add Friend or Add Guild option to the context menu of player options.",
+      "name": "AddFriend-3.3.5a",
+      "description": "AddFriend is a simple addon that adds an \"Add Friend\" and \"Invite Guild\" option to the context menu of player options.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/AddFriend.jpeg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "AddFriend",
+          "name": "AddFriend-3.3.5a",
           "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/refs/heads/main.zip",
           "updated": "2024-07-07",
+          "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
-          "links": [
-            {
-              "label": "Curseforge",
-              "url": "https://www.curseforge.com/wow/addons/addfriend"
-            }
-          ],
           "folders": [
             {
               "name": "AddFriend",
@@ -667,6 +688,7 @@
     {
       "name": "AdiBags",
       "description": "AdiBags backport with improved UI and functions for 3.3.5 WoTLK client.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-05/636142224551012649%5B1%5D.jpg",
       "downloads": [
         {
           "source": "github-sattva-108",
@@ -743,6 +765,7 @@
     },
     {
       "name": "AdiBags-ItemOverlayPlus",
+      "description": "Adds red overlay for unusable items.",
       "downloads": [
         {
           "source": "github-sattva-108",
@@ -1122,6 +1145,7 @@
     {
       "name": "AlphaMap",
       "description": "AlphaMap ist eine skalierbare, frei verschiebbare und transparente Weltkarte. Der Spieler kann sich weiterhin frei bewegen und interagieren, während er diese Karte eingeblendet hat. Verschieben lässt sich AlphaMap durch festhalten von [STRG] + [ALT], während man es an den gelben Bewegungsleisten oben oder unten mit de Maus zieht.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/MFWM%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -1181,6 +1205,34 @@
               "name": "AlphaMap3QuestHelper",
               "title": "AlphaMap3QuestHelper (v1.01.30100)",
               "version": "1.01.30100",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Altoholic",
+      "description": "Provides information about your alts",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "Altoholic",
+          "url": "https://github.com/Wrath-AddOns/Altoholic/archive/refs/heads/master.zip",
+          "updated": "2010-07-06",
+          "page": "https://github.com/Wrath-AddOns/Altoholic",
+          "changes": "https://github.com/Wrath-AddOns/Altoholic/commits/master",
+          "folders": [
+            {
+              "name": "Altoholic",
+              "title": "Altoholic",
+              "version": "3.3.002b",
+              "interface": 30300
+            },
+            {
+              "name": "Altoholic_Achievements",
+              "title": "Altoholic_Achievements",
+              "version": "3.3.002",
               "interface": 30300
             }
           ]
@@ -1563,6 +1615,28 @@
       ]
     },
     {
+      "name": "AnnouncerFilter",
+      "description": "Filters BG Queue Announcer in server system messages",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "AnnouncerFilter",
+          "url": "https://github.com/Wrath-AddOns/AnnouncerFilter/archive/refs/heads/master.zip",
+          "updated": "2021-04-04",
+          "page": "https://github.com/Wrath-AddOns/AnnouncerFilter",
+          "changes": "https://github.com/Wrath-AddOns/AnnouncerFilter/commits/master",
+          "folders": [
+            {
+              "name": "AnnouncerFilter",
+              "title": "AnnouncerFilter",
+              "version": "0.0.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "AnyCheck",
       "description": "AnyCheck does exactly what ReadyCheck does, but in a more generic fashion. Instead of always giving you only two options \"yes\" or \"no\", a generic poll can be issued to members of the party or raid.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw37222.jpg",
@@ -1652,6 +1726,7 @@
     {
       "name": "Ardent Defender",
       "description": "Ardent Defender ist ein Addon, das Schutzpalas unterstüzt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/ardentdefender.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -1695,6 +1770,7 @@
     {
       "name": "Ark Inventory",
       "description": "Ark Inventory fasst deine einzelnen Taschen, sowie Bank- und Gildenfächer zusammen. Ähnlich wie Bagnon.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ArkInventory.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -1902,6 +1978,58 @@
       "description": "AtlasLoot Enhanced is an UI mod allowing for loot tables of bosses to be browsed whenever needed within the game.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Atlasloot.jpeg",
       "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "AtlasLoot_ChromieCraft",
+          "url": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft/archive/refs/heads/master.zip",
+          "updated": "2023-09-24",
+          "page": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft",
+          "changes": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft/commits/master",
+          "folders": [
+            {
+              "name": "AtlasLoot",
+              "title": "AtlasLoot",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLoot_BurningCrusade",
+              "title": "AtlasLoot_BurningCrusade",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLoot_Crafting",
+              "title": "AtlasLoot_Crafting",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLoot_OriginalWoW",
+              "title": "AtlasLoot_OriginalWoW",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLoot_WorldEvents",
+              "title": "AtlasLoot_WorldEvents",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLoot_WrathoftheLichKing",
+              "title": "AtlasLoot_WrathoftheLichKing",
+              "version": "v5.11.04",
+              "interface": 30300
+            },
+            {
+              "name": "AtlasLootFu",
+              "title": "AtlasLootFu",
+              "version": "v5.11.04",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "AtlasLoot Enhanced",
@@ -2314,12 +2442,28 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "github-wrath-addons",
+          "name": "AuctionHouseDepositFixer",
+          "url": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer/archive/refs/heads/master.zip",
+          "updated": "2021-07-02",
+          "page": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer",
+          "changes": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer/commits/master",
+          "folders": [
+            {
+              "name": "AuctionHouseDepositFixer",
+              "title": "AH Deposit Fixer",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
     {
       "name": "AuctionLite",
       "description": "Dieses AddOn bietet dir die Möglichkeit, Items aus dem Auktionshaus einfacher und schneller zu kaufen, indem die angezeigte Liste viel länger ist und du einstellen kannst, ob du die Stapel- oder Einzelpreise sehen möchtest.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/auctionlite.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -2404,6 +2548,7 @@
     {
       "name": "Autobar",
       "description": "Mit AutoBar erstellt ihr kleine Aktionsleisten zusätzlich zu euren normalen Actionbars. Je nach Konfiguration füllt sich die Leiste mit unterschiedlichen Gegenständen wie beispielsweise Gesundheitssteine, Manatränke, Questgegenstände und vieles mehr. Selbst Zaubersprüche, Schmuckstücke und Makros lassen sich auf die Zusatzleiste ziehen und werden automatich nach Bedarf abgeändert.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/autobar.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -2716,6 +2861,7 @@
     {
       "name": "AzCastBar",
       "description": "AzCastBar ersetzt die Castbar und kann Leisten für Buffs, Debuffs und über Plugins auch diverse Timer (Totems, Autohits etc.) anzeigen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/6b3dd9eeb76ccca39304d103603e41f9%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -2811,6 +2957,7 @@
     {
       "name": "BadKitty",
       "description": "Eine Krücke für all jene, die mit der Rotation des Feral-Druiden ins Schleudern geraten. Es werden wahlweise Balken oder Symbole eingeblendet, die die Dauer der eigenen Debuffs anzeigen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/BK_screenshot_1%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -2831,6 +2978,7 @@
     {
       "name": "Baggins",
       "description": "Baggins ist ein frei einstellbarer Satz virtueller Taschen. Jede Tasche kann beliebig viele Abschnitte für verschiedene Gegenstands-Gruppen besitzen. Eigenen Regeln für diese Gruppen können über das Interface definiert werden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/baggins%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -2852,6 +3000,7 @@
     {
       "name": "Bagnon",
       "description": "Combines all bags into a single window; also shows bank and keyring",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/bagnon2-classic%5B1%5D.png",
       "downloads": [
         {
           "source": "locus313",
@@ -2989,6 +3138,7 @@
     {
       "name": "BamMod",
       "description": "Dieses AddOn gibt dir jedes Mal einen \"Bämsound\" aus, wenn du einen kritischen Treffer erlangst.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/bammod.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -3007,6 +3157,7 @@
     {
       "name": "BankItems",
       "description": "BankItems speichert die Inhalte von Bank, Gildenbank und deiner Post ab und ermöglicht es dir, diese jederzeit einzusehen. Weiterhin werden die Tooltips von Gegenständen ergänzt und zeigen, welcher deine Charaktere diese ebenfalls besitzt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/pvw12493%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -3222,14 +3373,14 @@
           "source": "github-khalgh",
           "name": "BattlegroundTargets-WotLK",
           "url": "https://github.com/KhalGH/BattlegroundTargets-WotLK/archive/refs/heads/main.zip",
-          "updated": "2025-12-15",
+          "updated": "2026-10-23",
           "page": "https://github.com/KhalGH/BattlegroundTargets-WotLK",
           "changes": "https://github.com/KhalGH/BattlegroundTargets-WotLK/commits/main",
           "folders": [
             {
               "name": "BattlegroundTargets",
               "title": "BattlegroundTargets",
-              "version": "40300-12",
+              "version": "1.2.4",
               "interface": 30300
             }
           ]
@@ -3239,6 +3390,7 @@
     {
       "name": "Baud Bag",
       "description": "Baud Bag erlaubt es dir selbstbestimmte Taschen zu einer einzigen Großen zusammenzufassen. Die Bank kann jederzeit eingesehen werden, bis zu 5 Währungen werden an der Tasche mit angezeigt. Der automatische Verkauf von grauen Gegenständen ist möglich.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/BaudBagOptions%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -3260,6 +3412,7 @@
     {
       "name": "Bayi's Extended Questlog",
       "description": "Bay´s Extended QuestLog ist ein erweiterter QuestLog. Es hat ein neues größeres Layout und erlaubt es dir alle 25 Quests auf einmal anzusehen anstatt nur 10.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/WoWScrnShot_110408_162320%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -3495,6 +3648,7 @@
     {
       "name": "BigWigs",
       "description": "Obwohl Deadly Boss Mods das beliebteste Boss-AddOn für World of Warcraft ist, kommt BigWigs Bossmods in ein nahes zweites. Das AddOn zeigt Ihnen die wichtigsten Ereignisse in Bosskämpfen an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/BigWigs_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -3565,6 +3719,7 @@
     },
     {
       "name": "BigWigs-WoTLK",
+      "description": "Modular, lightweight, non-intrusive approach to boss encounter warnings.",
       "downloads": [
         {
           "source": "github-bkader",
@@ -3914,6 +4069,7 @@
     {
       "name": "BossTactics",
       "description": "Dieses überaus praktische AddOn zeigt dir ingame an, welche Taktiken an den Bossen benötigt werden, vor denen ihr gerade steht, zeigt die Positionen an, wo die Bosse stehen und sich die Spieler positionieren sollten, gibt Texte zur Taktik in den Raidchat aus, etc. Es kann darüber hinaus deine eigenen Taktikten abspeichern und sie so für später zur Verfügung stellen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/BossTactics.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -4304,6 +4460,7 @@
     {
       "name": "Broker_Portals",
       "description": "Mit Broker_Portals erhältst du ein Dropdownmenü am Ort deiner Wahl, aus dem du auswählen kannst, welches Portal als nächstest erstellt werden soll. Zudem kannst du dort deinen Ruhestein und andere Items mit Teleportationsfähigkeit hinterlegen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/brokerportals.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -4484,6 +4641,7 @@
     {
       "name": "BugSack",
       "description": "BugSack ermöglicht es dir, LUA-Fehler einsehen zu können, ohne dass es zu unübersichtlich wird. Zudem hast du die Möglichkeit, die Fehlermeldung zu markieren, zu kopieren und in eine Quelle außerhalb des Spieles abzulegen, sodass du sie beispielsweise in einem externen Forum posten kannst, wo dir geholfen werden kann, den Fehler zu lokalisieren und zu beheben.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/bugsack.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -4526,6 +4684,7 @@
     {
       "name": "Button Forge",
       "description": "Mit Button Forge kann man weitere Leisten zum Standardinterface hinzufügen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-03/Cols%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -4547,6 +4706,7 @@
     {
       "name": "ButtonFacade",
       "description": "ButtonFacade for WoTLK with 28 Skins - All In One.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw28128%5B1%5D_0.jpg",
       "downloads": [
         {
           "source": "github-bkader",
@@ -4822,6 +4982,27 @@
       ]
     },
     {
+      "name": "CallbackHandler-1.0",
+      "description": "Callback handling Library, normally embedded inside other libraries",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "CallbackHandler-1.0",
+          "url": "https://github.com/Wrath-AddOns/CallbackHandler-1.0/archive/refs/heads/master.zip",
+          "updated": "2010-08-08",
+          "page": "https://github.com/Wrath-AddOns/CallbackHandler-1.0",
+          "changes": "https://github.com/Wrath-AddOns/CallbackHandler-1.0/commits/master",
+          "folders": [
+            {
+              "name": "CallbackHandler-1.0",
+              "title": "Lib: CallbackHandler-1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "CandyDice",
       "description": "CandyDice is inspired by the venerable and widely used DiscoDice rogue timer mod.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw3811.png",
@@ -4852,6 +5033,7 @@
     {
       "name": "Capping",
       "description": "Capping zeigt diverse Timer für BGs an. Z. B. wie lange es noch dauert bis das BG startet, wie lange es dauert bis eine Fraktion das BG gewinnt etc.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/bc59c69fbcb5dbee72085e8efbd1fca9%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5222,6 +5404,7 @@
     {
       "name": "Cast Time Analysis",
       "description": "Cast Time Analysis ist ein AddOn, das Feedback für Caster gibt, wie gut sie im PvE sind. Das Ziel eines jeden Casters ist es, in Bosskämpfen die richtigen Cooldowns einzuhalten um Ihre Rotation möglichst unterbrechungsfrei fahren zu können. CastTimeAnalysis wertet nach dem Kampf diese Daten aus.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WoWScrnShot_092110_211415%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5263,6 +5446,7 @@
     {
       "name": "Castbars",
       "description": "Castbars ist eine leichte, effiziente und einfach zu bedienen Verbesserung der Blizzard Castbars, die sowohl die Spieler / Vehicle Castbar, die Pet Castbar und der Spiegel Timerbars.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WoWScrnShot_013111_213944%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5332,7 +5516,7 @@
           "source": "nom0re",
           "name": "Cell",
           "url": "https://github.com/NoM0Re/Cell-WotLK/releases/latest/download/Cell.zip",
-          "updated": "2026-09-27",
+          "updated": "2026-10-20",
           "changes": "https://github.com/NoM0Re/Cell-WotLK/releases",
           "links": [
             {
@@ -5353,7 +5537,7 @@
           "source": "nom0re",
           "name": "Cell-WotLK",
           "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-09-27",
+          "updated": "2026-10-20",
           "page": "https://github.com/NoM0Re/Cell-WotLK",
           "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
@@ -5370,6 +5554,7 @@
     {
       "name": "Cellular",
       "description": "Cellular erzeugt, wie z. B. ICQ, eigene Chat-Fenster für jeden Spieler mit dem Ihr flüstert. Die Chat-Fenster lassen sich frei verschieben, in der Größe verändern und haben für die wichtigsten Funktionen (/invite, /who, /friend, etc.) kleine Buttons. Weiterhin hat das AddOn einen eigenen Verlauf, der auch Tage später noch angezeigt wird.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw18843%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5413,6 +5598,7 @@
     {
       "name": "Chat Event Monitor",
       "description": "Chat Event Monitor ist ein ausgeklügeltes AddOn, welches Chat, Kampflog oder System-Nachrichten nach spezifischem Text durchsucht und eine beliebige Kombination der folgenden Aktionen ausführt, falls der Text gefunden wurde:",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/CEM.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5554,6 +5740,7 @@
     {
       "name": "Chinchilla",
       "description": "Chinchilla lässt deine Haustiere und Begleiter miteinander agieren und auf Emotes reagieren, sofern sie sich nicht in einem Kampf befinden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/chinchilla.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5617,6 +5804,7 @@
     {
       "name": "Cirk's Notebook",
       "description": "Mit Cirk's Notebook könnt ihr schnell und einfach Notizen festhalten und diese auf Wunsch auch mit anderen austauschen, die das AddOn ebenfalls besitzen. Es ist sehr schlank und speicherschonend und erfüllt seinen Zweck in jeder Hinsicht.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/cirksnotebook.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5664,7 +5852,7 @@
           "source": "nom0re",
           "name": "ClassicAPI",
           "url": "https://gitlab.com/tsoukie-3.3.5/classicapi/-/archive/main/classicapi-main.zip",
-          "updated": "2026-10-18",
+          "updated": "2026-10-23",
           "links": [
             {
               "label": "GitLab",
@@ -5675,7 +5863,7 @@
             {
               "name": "!!!ClassicAPI",
               "title": "!!!ClassicAPI",
-              "version": "1.30",
+              "version": "1.32",
               "interface": 30300
             }
           ]
@@ -5862,6 +6050,7 @@
     {
       "name": "Colortools",
       "description": "Dieses kleine AddOn bietet dir eine größere Auswahl an individuellen Modifikationen der verschiedenen Fensterfarben und anderen Dingen. Man muss lediglich die Farbe und danach das Fenster auswählen, welches man einfärben möchte.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/colortool.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -5941,6 +6130,7 @@
     {
       "name": "Comergy",
       "description": "Comergy kombiniert die Energieleiste und Kombopunktanzeige von Schurken und Katzen in einer einzigen Anzeige.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/comergy.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -6145,6 +6335,7 @@
     {
       "name": "CooldownCount",
       "description": "Cooldowncount zaubert dir auf deine Castbuttons einen Countdown in Textform, sodass du besser erkennen kannst, wann deine Zauber wieder bereit sind.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/cooldowncounter.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -6529,6 +6720,7 @@
     {
       "name": "CT Raidtracker",
       "description": "Der CT-Raidtracker hilft aktuelle Raids schnell und einfach in das DKP-System einzufügen. Hierbei wird geloggt, wann welcher Boss gefallen ist, welche Spieler anwesend waren und welche Gegenstände verteilt wurden (inklusive der DKP).",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/raidtracker.gif",
       "downloads": [
         {
           "source": "rising-gods",
@@ -7963,6 +8155,7 @@
     {
       "name": "Deadly Boss Mods (DBM)",
       "description": "Deadly Boss Mods gibt dir Warnungen aus, die du während eines Raids oder einer Instanz beachten sollest und die Bossmechanik betrifft.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/dbm.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8065,6 +8258,7 @@
     {
       "name": "Debuff Filter",
       "description": "Debuff Filter lagert die für dich uninteressanten Buffs und Debuffs aus und setzt sie an einen anderen Ort deines Bildschirms, wo sie weniger stören, damit deine Buffs übersichtlich bleiben. Zusätzlich können Cooldowns verwaltet werden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/debufffilter.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8354,6 +8548,7 @@
     {
       "name": "Deus Vox Encounter",
       "description": "Warnt bei Bosskämpfen vor Ereignissen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/DXEInAction_Annotated%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8484,6 +8679,7 @@
     {
       "name": "DiminishingReturns",
       "description": "Dieses AddOn ist vor allem für PvPler interessant, da es dir eine Übersicht über den Status deines Mitspielers liefert als auch über den des Gegners; zeitgleich ermöglicht es dir, selber darüber zu bestimmen, was angezeigt werden soll und was nicht.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/diminishing.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8731,6 +8927,7 @@
     {
       "name": "Dominos",
       "description": "Dominos ist der Nachfolger von Bongos 3 und eine Alternative zu Bartender4. Das Actionbar-AddOn ermöglicht auf einfache Weise das Erstellen von Leisten nach individuellem Geschmack.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/Domnios_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8854,6 +9051,7 @@
     {
       "name": "Doom_CooldownPulse",
       "description": "Doom_CooldownPulse macht über ein Icon in der Mitte des Bildes auf ausgelaufene Cooldowns aufmerksam.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-02/ff4bce798ddad8e37ad94ec89bc6f00d%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8874,6 +9072,7 @@
     {
       "name": "DoTimer",
       "description": "DoTimer (von Dot Timer) ist eine AddOn-Suite bestehen aus: * DoTimer - Stellt Buffs und Debuffs auf dem Ziel dar * PlayerAuras - stellt Buffs und Debuffs auf dem Spieler dar * Cooldowns - stellt die eigenen Abklingzeiten dar * Notifications - Ereignissen wie Aggro, Zauber wirken, Aura erhalten/verlieren, ect. können mit Nachrichten verknüpft werden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/dot.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -8927,7 +9126,7 @@
           "source": "nom0re",
           "name": "DragonUI",
           "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-10-18",
+          "updated": "2026-10-24",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -9064,6 +9263,7 @@
     {
       "name": "DroodFocus",
       "description": "DroodFocus erleichtert das spielen des Druiden, indem es verschiedene Informationen anzeigt, z. B. Procs, Cooldowns Kombopunkte und Casts.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-01/9f34163eebd2f496847ad0ae9d0dcbc2%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -9084,6 +9284,7 @@
     },
     {
       "name": "DropTheCheapestThing",
+      "description": "Drop the cheapest thing you're carrying",
       "downloads": [
         {
           "source": "github-sattva-108",
@@ -9505,6 +9706,7 @@
     {
       "name": "Elephant",
       "description": "Bei Elephant ist der Name Programm - das AddOn besitzt tatsächlich ein Gedächtnis wie ein Elefant. Es protokolliert Eure Chats in separaten Fenstern mit - egal ob Gruppen-, Raid-, Gilden- oder Offiziers-Chat. Auch selbst erstellte Kanäle lassen sich auslesen. Dabei werden bis zu 1.000 Zeilen pro Kanal mitgeloggt. Auf die Protokolle habt Ihr natürlich jederzeit vollen Zugriff. Klickt einfach auf das Elephant-Logo, das sich an Eure Minikarte klammert oder sich in AddOns wie FuBar integrieren lässt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/main_window%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -9625,6 +9827,7 @@
     {
       "name": "Elkano's BuffBars",
       "description": "Elkano's BuffBars ersetzt die Standardanzeige von Buffs und Debuffs und zeigt diese geordnet und übersichtlich an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/ElkanoBuffBar_1%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -9850,6 +10053,7 @@
     },
     {
       "name": "ElvUI_AddOnSkins",
+      "description": "AddOn skins for ElvUI :)",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9871,6 +10075,7 @@
     },
     {
       "name": "ElvUI_AuraBarsMovers",
+      "description": "Moveble unit aura bars for ElvUI",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9892,6 +10097,7 @@
     },
     {
       "name": "ElvUI_BagControl",
+      "description": "ElvUI Plugin Framework.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9913,6 +10119,7 @@
     },
     {
       "name": "ElvUI_CastBarOverlay",
+      "description": "Allows you to overlay castbars on other frames.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9934,6 +10141,7 @@
     },
     {
       "name": "ElvUI_CustomTags",
+      "description": "A collection of custom unitframe tags requested by users.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9955,6 +10163,7 @@
     },
     {
       "name": "ElvUI_CustomTweaks",
+      "description": "A collection of various tweaks to ElvUI, requested by the users.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9976,6 +10185,7 @@
     },
     {
       "name": "ElvUI_DataTextColors",
+      "description": "a plugin for ElvUI, that changes the DataText text colors.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -9997,6 +10207,7 @@
     },
     {
       "name": "ElvUI_DTBars2",
+      "description": "The plugin to create and manage additional datatext panels.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10018,6 +10229,7 @@
     },
     {
       "name": "ElvUI_Enhanced",
+      "description": "Plugin-Enhancements for ElvUI.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10060,6 +10272,7 @@
     },
     {
       "name": "ElvUI_ExtraActionBars",
+      "description": "Adds 4 extra actionbars to ElvUI.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10103,6 +10316,7 @@
     },
     {
       "name": "ElvUI_LocPlus",
+      "description": "a plugin for ElvUI 10+, that adds location, coords, 2 Datatexts and a tooltip full of info.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10189,6 +10403,7 @@
     },
     {
       "name": "ElvUI_RaidMarkers",
+      "description": "Adds a small raid marker bar below the minimap.",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10210,6 +10425,7 @@
     },
     {
       "name": "ElvUI_Sirus",
+      "description": "User Interface replacement AddOn for World of Warcraft.",
       "downloads": [
         {
           "source": "github-bunny67",
@@ -10252,6 +10468,7 @@
     },
     {
       "name": "ElvUI_VisualProcs",
+      "description": "Cataclysm Visual Procs",
       "downloads": [
         {
           "source": "github-elvui-wotlk",
@@ -10648,6 +10865,7 @@
     {
       "name": "ErrorFilter",
       "description": "ErrorFilter ermöglicht es dir, die Fehlermeldungen (Zauber nicht bereit, Fertigkeit zu niedrig, etc.), die während des Spielens aufzutauchen, entweder ganz abzuschalten oder nach deinem Belieben zu verändern.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/errorfilter.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -10690,6 +10908,7 @@
     {
       "name": "ESN_Rare",
       "description": "ESN_Rare zeigt einen Hinweis, sobald ein Rares Mob gesichtet wurde.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/636141459789352337%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -10711,6 +10930,7 @@
     {
       "name": "EventAlert",
       "description": "Das AddOn macht nix anderes als in der Mitte vom Bildschirm das jeweilige Icon des Zaubers zu zeigen, den man gerade als Freizauber erhalten hat. Beim Krieger z.B. Zerschmettern, beim Priester die spontanen Zauber, ect. Dieses AddOn funktioniert mit allen Klassen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/eventalert.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -10873,6 +11093,7 @@
     {
       "name": "Every Quest",
       "description": "EveryQuest2 ist ein AddOn, welches dir eine Auflistung aller Quests gibt, und dir gleichzeitig anzeigt, welche Quests du bereits absolviert hast.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/EveryQuest.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11108,6 +11329,7 @@
     {
       "name": "Examiner",
       "description": "Examiner fasst Daten zu Ausrüstung, Talente, Erfolge und PvP anderer Spieler übersichtlich zusammen. Diese Zusammenfassung wird durch Benutzung von /inspect aufgerufen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/1f81f06e1d5b3fd0ea426342ce45f7a2%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11129,6 +11351,7 @@
     {
       "name": "Extra Bars",
       "description": "Extra Bars ermöglicht es euch, 4 zusätzliche Leisten auf euren bildschirm zu zaubern, welche Platz für Zauber und Makros geben.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/extrabars.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11265,6 +11488,7 @@
     {
       "name": "Factionizer",
       "description": "Dieses AddOn verbessert eure Fraktions- und Ruf-Anzeige. So zeigt es beispielsweise an, über welche wiederholbaren Quests man Ruf farmen könnte. Des weiteren ändert es die Ruf-erhalten-Meldung und ergänzt diese um mehr Deteils.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ReputationExtended%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11412,6 +11636,7 @@
     {
       "name": "Feral By Night",
       "description": "Krücke für All jene, die mit der Rotation des Feral-Druiden ins Schleudern geraten. Feral By Night schlägt anhand der aktiven Cooldowns, Procs, verbleibenden Zeit an Debuffs und vorhandenen Energie vor, welche Fähigkeit als nächstes benutzt werden sollte um die eigene DPS zu maximieren.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/FBN_screen%5B1%5D.jpeg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11479,6 +11704,7 @@
     {
       "name": "Fish Warden",
       "description": "Fish Warden plündert automatisch nur die Fische, die du auch wirklich haben willst und wirft den Rest automatisch weg. Das spart Inventarplatz und Nerven.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/FWMain%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11541,6 +11767,7 @@
     {
       "name": "FishingBuddy",
       "description": "Assists with fishing: auto-equip fishing gear, fish info, and more",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/fb1%5B1%5D.jpg",
       "downloads": [
         {
           "source": "locus313",
@@ -11600,6 +11827,7 @@
     {
       "name": "Fizzle",
       "description": "Fizzle färbt Items im Charakterfenster nach Seltenheit ein und zeigt die Haltbarkeit.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ddc722bac07a7d1a6a12102a9daf7303%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -11613,6 +11841,25 @@
               "title": "Fizzle",
               "version": "v1.5.1",
               "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fizzwidget Disenchant Predictor",
+      "description": "Dieses AddOn versucht vorherzusagen welche Materialien beim Entzaubern eines bestimmten Gegenstandes gewonnen werden könnten. Es ist klein, unkompliziert und vor allem kompakt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/pvw672%5B1%5D.jpeg",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "Fizzwidget Disenchant Predictor",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/gfw-disenchantpredictor-3-3-1.zip",
+          "updated": "2010-04-05",
+          "page": "https://addons.rising-gods.de/addons/fizzwidget-disenchant-predictor",
+          "folders": [
+            {
+              "name": "GFW_DisenchantPredictor"
             }
           ]
         }
@@ -11685,6 +11932,7 @@
     {
       "name": "Fontain",
       "description": "Mit Fontain ist es nun ganz einfach, die Schriftart seines Interfaces zu ändern.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/fontain.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -12130,6 +12378,7 @@
     {
       "name": "FuBar",
       "description": "FuBar erstellt eine kleine Leiste am oberen und wahlweise auch an weiteren Rändern des Bildschirms, in die sich weitere Addons einklinken können, um euch z.B. den Status eurer Taschen oder eurer Rüstung anzuzeigen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/fubar.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -12594,6 +12843,7 @@
     {
       "name": "GatherMate",
       "description": "GatherMate und seine Datenbank GatherMate_Data fügen der Weltkarte detaillierte Informationen über die Spawnpunkte von Kräutern und Erzvorkommen, sowie Fischschwärme und Schatzkisten hinzu.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/GatherMate_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -12628,6 +12878,12 @@
               "name": "GatherMate2",
               "title": "GatherMate2",
               "version": "asc-1.0.8 (v1.0.3 base)",
+              "interface": 30300
+            },
+            {
+              "name": "GatherMate2_Data",
+              "title": "GatherMate2Data",
+              "version": "asc-1.0.3 (v1.4.0 base)",
               "interface": 30300
             }
           ]
@@ -12929,6 +13185,7 @@
     {
       "name": "Gladius",
       "description": "Gladius ist ein AddOn, welches speziell auf Arenaspieler angepasst wurde und bietet dir ein einmaliges Interface, welches ganz individuell anpassbar ist und dir nur das Allerwichtigste anzeigen kann. Zusätzlich kann du darüber entscheiden, ob der Spieler, den du im Target hast, gekennzeichnet werden soll oder nicht und vieles mehr.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/gladius.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13035,6 +13292,7 @@
     {
       "name": "Gnomish Yellow Pages",
       "description": "The Gnomish Yellow Pages durchsucht den Chat nach Handels-Links. Diese werden zur späteren Verwendung gespeichert",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/gyp.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13054,6 +13312,7 @@
     },
     {
       "name": "GoAgainAH",
+      "description": "Guild Auction House for Go Again",
       "downloads": [
         {
           "source": "github-sattva-108",
@@ -13120,6 +13379,7 @@
     {
       "name": "Grid",
       "description": "Grid zeigt Gruppen- und Raidmitglieder in einem übersichtlichen, konfigurierbaren Raster an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/8795d44157820ca2f7e7ff4b724a0e9d%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13181,6 +13441,7 @@
     {
       "name": "Grid2",
       "description": "Grid2 ist eine Alternative zu Grid. Es zeigt Gruppen- und Raidmitglieder in einem übersichtlichen, konfigurierbaren Raster an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-03/grid2-example.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13308,6 +13569,7 @@
     {
       "name": "Group Calendar 5",
       "description": "Group Calendar erweitert die Funktionen des regulären Ingame-Kalenders.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/Group%20Calendar.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13732,6 +13994,7 @@
     {
       "name": "Handy Notes",
       "description": "Handy Notes für deine Map. Das AddOn bieten einen kleinen und simplen Ersatz für [ Cartographer_Notes ]. Es hat so ziemlich die gleichen Funktionen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/HandyNotes%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -13872,6 +14135,7 @@
     {
       "name": "Healers Have To Die",
       "description": "Healers Have to Die ist ausschließlich für PvP gedacht und markiert dir in einem Schlachtfeld jene Spieler, die eine heilende Aufgabe übernehmen mit einem roten, leicht erkennbaren \"+\".",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/hhtd.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14127,6 +14391,7 @@
     {
       "name": "HoloFriends",
       "description": "Dieses AddOn modifiziert das Freundfenster von WoW, um ein besseres Management der Freundes- und Ignorierenliste zu ermöglichen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/faction_add_de%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14306,6 +14571,7 @@
     {
       "name": "IceHUD",
       "description": "IceHUD ist eine der beliebtesten HUD-Mods. Kurvenförmige Balken direkt neben dem Charakter ersetzen die normalen Unitframes für Spieler und Ziel. Lebenspunkte, Mana und sogar die Zauberleiste werden in verschiedenen Layouts direkt in der Mitte des Bildschirms angezeigt, um Euch den Blick zu den Spielerportrait oben rechts zu ersparen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/IceHUD_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14349,6 +14615,7 @@
     {
       "name": "IDs",
       "description": "IDs zeigt in Tooltips die IDs von NPCs, Items, Spells etc. sowie GUIDs von Spielern und Pets an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ids1.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14532,7 +14799,7 @@
           "source": "nom0re",
           "name": "Improved Profession Capper",
           "url": "https://github.com/DarkChimu/Improved-Profession-Capper/archive/refs/heads/master.zip",
-          "updated": "2026-03-21",
+          "updated": "2026-10-21",
           "changes": "https://github.com/DarkChimu/Improved-Profession-Capper/commits/master",
           "links": [
             {
@@ -14544,7 +14811,7 @@
             {
               "name": "Profession_Capper",
               "title": "Profession Capper",
-              "version": "v2.0.0",
+              "version": "v2.1.0",
               "interface": 30300
             }
           ]
@@ -14576,6 +14843,7 @@
     {
       "name": "Inline Aura",
       "description": "Inline Aura zeigt die verbleibende Laufzeit und Anzahl aufgetragener Stacks von Buffs und Debuffs auf den zugehörigen Buttons der Action Bars an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-03/636142132979931763%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14631,6 +14899,7 @@
     {
       "name": "Instance Loot",
       "description": "Instance Loot zeigt euch, ähnlich wie AtlasLoot, den Loot von Instanzen und Raids an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/InstanceLoot.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14853,6 +15122,7 @@
     {
       "name": "ItemRack",
       "description": "Dieses AddOn erleichtert den Wechsel von Ausrüstung durch kontextuelle PopUps, extra Interface Buttons, definierbare Ausrüstungssets und automatischen Ausrüstungswechsel.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw14331%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -14944,6 +15214,7 @@
     {
       "name": "JebusMail",
       "description": "JebusMail vereinfacht dir das Senden und Empfangen von Briefen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/jebusmail1.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -15049,6 +15320,34 @@
       ]
     },
     {
+      "name": "kekator",
+      "description": "Guesses what the other faction (or an NPC) said, by inverting the WoW 3.3.5a language scrambler.",
+      "downloads": [
+        {
+          "source": "gitlab-juxuanu",
+          "name": "kekator",
+          "url": "https://gitlab.com/juxuanu/kekator/-/archive/master/kekator-master.zip",
+          "updated": "2026-10-25",
+          "page": "https://gitlab.com/juxuanu/kekator",
+          "changes": "https://gitlab.com/juxuanu/kekator/-/commits/master",
+          "folders": [
+            {
+              "name": "Kekator",
+              "title": "Kekator",
+              "version": "0.3",
+              "interface": 30300
+            },
+            {
+              "name": "Kekator_NPC",
+              "title": "Kekator NPC lines",
+              "version": "0.3",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Key Bind Profiles",
       "description": "This addon allows you to save keybind settings into different profiles, these profiles can be loaded and used again later. Each profile can be assigned to a specialization such that it automatically loads upon switching specs. Accessable through /kbp help",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/KeyBindProfiles.jpg",
@@ -15122,6 +15421,7 @@
     {
       "name": "kgPanels",
       "description": "Dieses AddOn bietet euch die Möglichkeit, die Buttons von anderen AddOns an einem Ort zu versammeln und per Klick zu öffnen. Das Aussehen und die Transparenz lassen sich individuell einstellen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/kgpanels.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -15149,6 +15449,7 @@
     {
       "name": "Kharthus' Hunter Timer",
       "description": "Dieses AddOn gibt dir ein zusätzliches Fenster, welches dir die Abkling- und Wirkungszeiten deiner Zauber anzeigt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/kharthus.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -15299,6 +15600,7 @@
     {
       "name": "Konfer - Suicide Kings",
       "description": "Helfer für das Suicide Kings Loot-System.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ksk-config.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -15516,6 +15818,7 @@
     {
       "name": "Larger Macro Icon Selection",
       "description": "Mit diesem AddOn kannst du dir die Größe deiner Makrosymbole bestimmen. Es wird allerdings nur geladen, wenn du vorher das Makrofenster via /makro aufgerufen hast.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/largermacro.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -15675,7 +15978,7 @@
           "source": "nom0re",
           "name": "Leatrix Maps",
           "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/refs/heads/main.zip",
-          "updated": "2026-10-18",
+          "updated": "2026-10-19",
           "changes": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/commits/main",
           "links": [
             {
@@ -16175,6 +16478,7 @@
     {
       "name": "LossofControl",
       "description": "LossOfControl zeigt in einem neuen Interfaceelement gut sichtbar an, wenn der eigene Charakter von einschränkenden Effekten betroffen ist. (Stille, Betäubung, Entwaffnet, etc.) Verbleibende Dauer, Symbol und Name des Effektes werden angezeigt standardmäßig angezeigt und können nach eigenem Ermessen eingestellt werden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2022-10/68747470733a2f2f6d656469612e7761676f2e696f2f63617264732f3246784a6a465557772f632d313631333233393432303233372e6a7067.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -16246,6 +16550,7 @@
     {
       "name": "LUI v3",
       "description": "LUI ersetzt das Standardinterface von Blizzard vollständig und bietet dir ein alternatives, anpassbares Interface im Gegenzug.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/LUIv3.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -16702,6 +17007,7 @@
     {
       "name": "MailTips",
       "description": "MailTips zeigt als Tooltip, was einem Brief angehängt wurde.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/mt_new%5B1%5D.jpeg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -16789,6 +17095,7 @@
     {
       "name": "MapNotes",
       "description": "Ist ein AddOn, mit dem man sich Notizen auf der Weltkarte anlegen kann.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WotLK_Full%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -17137,6 +17444,7 @@
     {
       "name": "MetaMap",
       "description": "Neben Atlas hat sich MetaMap inzwischen zu DER Landkarten-Applikation für World of Warcraft gemausert. Und das ist kein Zufall, denn die Features dieses AddOns sind mächtig. Neben Standards wie vergrößerbaren Welt-, Stadt- und Instanzkarten könnt ihr euch mit MetaMap im Hintergrund im Spiel fortbewegen, bekommt Koordinaten, dürft beliebige Notizen in Karten einfügen und sogar ein Wegpunkte-System nutzen. Darüber hinaus wird auf Wunsch Beute von Bossen angezeigt. MetaMap harmoniert zudem mit Titan Bar und wird komfortabel über ein Mausmenü angesteuert.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw26106%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -17346,6 +17654,27 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "github-wrath-addons",
+          "name": "MiksScrollingBattleText-WotLK",
+          "url": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK/archive/refs/heads/master.zip",
+          "updated": "2021-03-17",
+          "page": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK",
+          "changes": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK/commits/master",
+          "folders": [
+            {
+              "name": "MikScrollingBattleText",
+              "title": "Mik's Scrolling Battle Text",
+              "version": "5.4.wowi:revision",
+              "interface": 30300
+            },
+            {
+              "name": "MSBTOptions",
+              "title": "MSBT [Options]",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -17418,6 +17747,7 @@
     {
       "name": "MinimapButtonFrame (MBF)",
       "description": "Dieses AddOn verschiebt all eure Minimapsymbole in einen Rahmen, welchen ihr dann selber an eurer Lieblingsstelle arrangieren könnt, sodass das Interface übersichtlicher bleibt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/mbf.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -17488,6 +17818,7 @@
     {
       "name": "MobInfo2",
       "description": "Adds detailed mob stats (health, mana, drops) to tooltips and target frame",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/Mobinfo.jpg",
       "downloads": [
         {
           "source": "locus313",
@@ -17525,6 +17856,7 @@
     {
       "name": "MobMap",
       "description": "Das AddOn MobMapist ist eine Art Ingame-Datenbankbrowser. Es zeigt dir die Positionen aller gespeicherter NPCs auf der Ingame-Karte und auf Wunsch auch auf der Minimap an. Es integriert sich außerdem ins Questlog und macht mit einem Klick die Position vieler Questmobs ausfindig. Darüber hinaus erschließt es dir die MobMap-Questdatenbank, die Händlerdatenbank und die Rezeptdatenbank.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/Mobmap_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -18213,6 +18545,7 @@
     {
       "name": "ncHoverBind",
       "description": "Dieses AddOn bindet Tastenbefehle an deine Mausklicks und ist einfach einzustellen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/nchoverbind.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -18341,6 +18674,7 @@
     {
       "name": "Necrosis 3",
       "description": "Necrosis ist ein Addon, welches Hexenmeister bei der Nutzung von ihren Steinen, Splittern und Dämonen unterstüzt. Nicht mehr, aber auch nicht weniger...",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/necrosis1.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -18660,6 +18994,7 @@
     {
       "name": "NPCScan",
       "description": "NPCScn ein AddOn, das euch dabei hilft, die Raritäten zu finden, die sich in der Scherbenwelt und in Nordend verstecken. Das ist vor allem für die Erfolge \"Verflucht selten\" und \"Gnadenloser Spürhund\" interessant. Die Rare Mobs werden beim Überfliegen erfasst und ein entsprechendes Warnfenster öffnet sich. Ein Klick darauf nimmt die Kreatur auch gleich ins Ziel. Über einen Eintrag in Blizzards AddOnmenü lässt sich die Modifikation weiter konfigurieren, beispielsweise, wenn ihr nur eine Meldung für ganz bestimmte Mobs haben wollt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/npcscan.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -19203,6 +19538,7 @@
     {
       "name": "oRA 3",
       "description": "oRA erleichtert dir als Raidlead die Übersicht über die Gruppe, wie zum Beispiel fehlende gesockelte Edelsteine oder Verzauberungen, reparatursbedürftige Rüstung und ähnliches (erfordert, dass der andere Spieler ebenso dieses AddOn nutzt).",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/ora3.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -20065,6 +20401,34 @@
           ]
         },
         {
+          "source": "github-wrath-addons",
+          "name": "Overachiever",
+          "url": "https://github.com/Wrath-AddOns/Overachiever/archive/refs/heads/master.zip",
+          "updated": "2010-08-06",
+          "page": "https://github.com/Wrath-AddOns/Overachiever",
+          "changes": "https://github.com/Wrath-AddOns/Overachiever/commits/master",
+          "folders": [
+            {
+              "name": "Overachiever",
+              "title": "Overachiever",
+              "version": "0.56",
+              "interface": 30300
+            },
+            {
+              "name": "Overachiever_Tabs",
+              "title": "Overachiever - Tabs",
+              "version": "0.56",
+              "interface": 30300
+            },
+            {
+              "name": "Overachiever_Trade",
+              "title": "Overachiever - Trade",
+              "version": "0.56",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "rising-gods",
           "name": "Overachiever",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/Overachiever-v0.56.zip",
@@ -20116,49 +20480,6 @@
       ]
     },
     {
-      "name": "PallyPower Improved",
-      "description": "Pally Power the must have for a Paladin, provides an interactive and easy to use interface that allows you to set your own blessings (Righteous Fury, Aura, Seal and Blessings) and automatically checks for missing buffs with an easy to read indicator.",
-      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
-      "downloads": [
-        {
-          "source": "nom0re",
-          "name": "PallyPower Improved",
-          "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/refs/heads/main.zip",
-          "updated": "2026-10-07",
-          "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
-          "links": [
-            {
-              "label": "Github",
-              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
-            }
-          ],
-          "folders": [
-            {
-              "name": "PallyPower",
-              "title": "PallyPower",
-              "version": "v3.2.21",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "rising-gods",
-          "name": "PallyPower",
-          "url": "https://addons.rising-gods.de/sites/default/files/addons/PallyPower-v3.2.20.zip",
-          "updated": "2010-08-20",
-          "page": "https://addons.rising-gods.de/addons/pallypower",
-          "folders": [
-            {
-              "name": "PallyPower",
-              "title": "PallyPower",
-              "version": "v3.2.20",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "PallyPower Skinner",
       "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
@@ -20174,6 +20495,60 @@
               "name": "!PPSkinner",
               "title": "PP Skinner",
               "version": "1.0.1.r",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PallyPower-Improved-3.3.5",
+      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "PallyPower-Improved-3.3.5",
+          "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/refs/heads/main.zip",
+          "updated": "2026-10-07",
+          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
+          "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
+          "folders": [
+            {
+              "name": "PallyPower",
+              "title": "PallyPower",
+              "version": "v3.2.21",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "github-wrath-addons",
+          "name": "PallyPower",
+          "url": "https://github.com/Wrath-AddOns/PallyPower/archive/refs/heads/master.zip",
+          "updated": "2021-04-10",
+          "page": "https://github.com/Wrath-AddOns/PallyPower",
+          "changes": "https://github.com/Wrath-AddOns/PallyPower/commits/master",
+          "folders": [
+            {
+              "name": "PallyPower",
+              "title": "PallyPower",
+              "version": "v3.2.20",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "PallyPower",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/PallyPower-v3.2.20.zip",
+          "updated": "2010-08-20",
+          "page": "https://addons.rising-gods.de/addons/pallypower",
+          "folders": [
+            {
+              "name": "PallyPower",
+              "title": "PallyPower",
+              "version": "v3.2.20",
               "interface": 30300
             }
           ]
@@ -20205,6 +20580,7 @@
     {
       "name": "Parrot",
       "description": "Floating Combat Text of awesomeness.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/74284f0d7c9e593fcb9854462c9225fe%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -20260,6 +20636,28 @@
             {
               "name": "DayvePartyXP",
               "title": "Party XP Share v1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Pawn-WOTLK",
+      "description": "Pawn - Wrath of the Lich King (WotLK) 3.3.5a - Chromiecraft",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "Pawn-WOTLK",
+          "url": "https://github.com/Wrath-AddOns/Pawn-WOTLK/archive/refs/heads/main.zip",
+          "updated": "2023-11-19",
+          "page": "https://github.com/Wrath-AddOns/Pawn-WOTLK",
+          "changes": "https://github.com/Wrath-AddOns/Pawn-WOTLK/commits/main",
+          "folders": [
+            {
+              "name": "Pawn",
+              "title": "Pawn",
+              "version": "1.3.12",
               "interface": 30300
             }
           ]
@@ -20493,6 +20891,7 @@
     {
       "name": "pErrors",
       "description": "Dieses kleine AddOn erlaubt es dir, die ausgegebenen UI-Meldungen auszublenden, sodass keine störende rote Schrift im Bild erscheint. Du bestimmst selbst, was eingeblendet werden darf und was nicht (z.B. \"Fertigkeit zu niedrig.\" darf eingeblendet werde, \"Zauber ist noch nicht bereit.\" soll ausgeblendet werden).",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/pError1.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -21174,6 +21573,7 @@
     {
       "name": "PowerAuras",
       "description": "Displays configurable visual effects for buffs, debuffs, and game events",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw6615%5B1%5D.jpg",
       "downloads": [
         {
           "source": "locus313",
@@ -21233,6 +21633,7 @@
     {
       "name": "Prat",
       "description": "Prat 3.0 ist ein Chat-Addon, mit dem man umfangreiche Funktionen für die Chatfenster erhält.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/Prat_0.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -21286,6 +21687,7 @@
     {
       "name": "pretty_lootalert",
       "description": "Loot Alert Addon 3.3.5",
+      "image": "https://addons.rising-gods.de/sites/default/files/2022-10/68747470733a2f2f7468756d62732e6766796361742e636f6d2f466f726d616c53656c6672656c69616e7448656e2d73697a655f726573747269637465642e676966.gif",
       "downloads": [
         {
           "source": "github-s0h2x",
@@ -21428,6 +21830,7 @@
     {
       "name": "ProfessionsBook",
       "description": "ProfessionsBook speichert die Berufe, die deine Charaktere beherrschen, sodass man jederzeit sehen kann, welche Gegenstände man selbst Herstellen oder Verzaubern kann und welche Reagenzien dies erfordert.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/ProfessionsBook2%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22184,6 +22587,7 @@
     {
       "name": "RaidAchievement",
       "description": "Dieses AddOn informiert dich beim Betreten einer Instanz oder eines Raids darüber, welche Erfolge hier erlangt werden können und gibt ebenso in den Gruppenchat aus, ob ein Erfolg erlangt wurde oder ob ihr versagt habt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/raidachievement.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22331,6 +22735,7 @@
     {
       "name": "RaidMobMarker HUD",
       "description": "Dieses AddOn vereinfacht dir die Markierung der Mobs.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/raidmob.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22446,6 +22851,7 @@
     {
       "name": "RaidWatch2",
       "description": "RaidWatch ist ein Addon zur Verfolgung von Ereignissen während Bosskämpfen in Raids und 5-Mann Dungeons. Es gibt einen Überblick über wichtige Bosscooldowns, warnt über Ereignisse, die von den Teilnehmern Aufmerksamkeit erfordern und informiert über einige weitere Dinge.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/raidwatch.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22702,6 +23108,7 @@
     {
       "name": "RareSpawnOverlay",
       "description": "RareSpawnOverlay zeigt auf der Karte an, in welchen Gebieten sich Rare Mobs aufhalten.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/8f93a83403d4ebe281de2cc61e6ab060%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22813,6 +23220,7 @@
     {
       "name": "RazerNaga",
       "description": "Dieses AddOn funktioniert ausschließlich mit Mäusen von RazerNaga!",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/razernaga.JPG",
       "downloads": [
         {
           "source": "rising-gods",
@@ -22995,6 +23403,7 @@
     {
       "name": "Recount",
       "description": "Damage meter with graph-based display of DPS, HPS, and more",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/Recount_0.jpg",
       "downloads": [
         {
           "source": "locus313",
@@ -23127,14 +23536,14 @@
           "source": "github-khalgh",
           "name": "RefinedBlizzPlates-WotLK",
           "url": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-10-03",
+          "updated": "2026-10-25",
           "page": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK",
           "changes": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/commits/main",
           "folders": [
             {
               "name": "!!RefinedBlizzPlates",
               "title": "RefinedBlizzPlates",
-              "version": "1.11.4",
+              "version": "1.11.6",
               "interface": 30300
             }
           ]
@@ -23323,6 +23732,7 @@
     {
       "name": "Routes",
       "description": "Routes addon for WoW 3.3.5a - Draw optimized farming routes on your minimap and world map",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/pvw19594%5B1%5D.jpg",
       "downloads": [
         {
           "source": "github-xurkon",
@@ -23413,6 +23823,7 @@
     {
       "name": "Rupture Tourney",
       "description": "Rupture Tourney ersetzt die originale Unitframes.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-02/pvw24372%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -23542,6 +23953,7 @@
     {
       "name": "Satrina Buff Frame",
       "description": "Satrina Buff Frame ermöglicht es dir, deine Buffs und die Anzeige dieser so zu verändern, wie du es dir wünschst.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/satrina.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -23597,6 +24009,7 @@
     {
       "name": "Scorchio! 2",
       "description": "Scorchio! 2 zeigt euch die Debuffs von Versengen, Lebende Bombe, Eislanze und Verwandlung auf sämtlichen Zielen von allen Magiern im Schlachtzug und warnt euch, wenn die Debuffs auslaufen. Die zahlreichen Einstellungsmöglichkeiten findet ihr in einem neuen Eintrag im Interfacemenü.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/scorchio2.PNG",
       "downloads": [
         {
           "source": "rising-gods",
@@ -23705,6 +24118,7 @@
     {
       "name": "Sell-O-Matic",
       "description": "Mit diesem AddOn kannst du jeglichen Plunder (aka Graue Gegenstände) aus deinem Inventar automatisch verkaufen lassen, sobald du einen Händler ansprichst. Möchtest du, dass jedes Mal auch gewisse Gegenstände, die kein Plunder sind, mitverkauft werden, so kannst du dies mit diesem AddOn ebenfalls einstellen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/sellomatic.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -23964,6 +24378,7 @@
     },
     {
       "name": "ShadowedUnitFrames",
+      "description": "An apple a day keeps the raptor away, or so they say",
       "downloads": [
         {
           "source": "github-xurkon",
@@ -24168,6 +24583,7 @@
     {
       "name": "ShockAndAwe",
       "description": "ShockAndAwe hilft Verstärkerschamanen, indem es Timer für die verschiedenen Buffs, Debuffs und Totems sowie weitere Informationen anzeigt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/shockandawe.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24276,6 +24692,7 @@
     {
       "name": "SilverDragon",
       "description": "Silver Dragon ist ein nützliches AddOn, welches das Finden von raren NPCs erleichtert. Das AddOn zeigt auf der Karte die Standorte an denen die NPCs erscheinen. Wenn man sich in die Nähe eines solchen NPcs bewegt erhält man eine einstellbare Benachrichtigung (PopUp, Raid-Warnung, Chat-Nachricht, Audio)",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WoWScrnShot_112716_143631.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24325,6 +24742,7 @@
     {
       "name": "Simple Mouseover Target",
       "description": "Dieses AddOn zeigt in einem zusätzlichen Tooltip das Ziel des Mouseover-Ziels.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/simplemouseovertarget.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24389,6 +24807,7 @@
     {
       "name": "simpleMinimap",
       "description": "Mit simpleMinimap könnt ihr eure Minimap auf dem ganzen Bildschirm verschieben und sowohl Form als auch Aussehen verändern. Mögliche Formen sind beispielsweise Quadrat oder Quadrate mit abgerundeten Ecken. Zudem kann man verschiedene Ränder um die Minimap machen und noch ein paar andere Spielereien nutzen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/simpleMinimap_0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24575,6 +24994,7 @@
     {
       "name": "Skada",
       "description": "Skada ist ein CPU sparendes AddOn, welches dir den Schaden des gesamten Raids als auch diverse andere Fehler wie Fails der Spieler anzeigt. Du kannst zudem nur jene Anzeigen aktivieren, die für dich von Belang sind. Somit kann dieses AddOn diverse andere AddOns wie Omen, Recount als auch Failboat ersetzen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/skada1.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24734,6 +25154,7 @@
     {
       "name": "SmartBuff",
       "description": "SmartBuff ist ein Addon, mit dem du schnell und einfach sämtliche Buffs auf die Gruppe verteilen kannst. Per Knopfdruck checkt das Addon, welche Buffs bei welchen Gruppenmitgliedern fehlen und zaubert den entsprechenden Buff.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/smartbuff.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24755,6 +25176,7 @@
     {
       "name": "SmartDebuff",
       "description": "Die praktische SmartDebuff-Liste zeigt alle Spieler an, die mit schädlichen Zaubern, Giften oder einer Krankheit belegt sind.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/smartdebuff1.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -24820,6 +25242,7 @@
     {
       "name": "SmartRes2",
       "description": "SmartRes bietet dir auf Knopfdruck einen Rezz auf beliebige Mitspieler, sodass die Gefahr verringert wird, dass du sie übersiehst. Zudem erhältst du eine Liste aller Spieler, welche gerade gerezzt werden.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/smartres2.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -25023,7 +25446,7 @@
           "source": "nom0re",
           "name": "Soulstone",
           "url": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases/latest/download/Soulstone.zip",
-          "updated": "2026-09-30",
+          "updated": "2026-10-21",
           "changes": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases",
           "links": [
             {
@@ -25035,7 +25458,7 @@
             {
               "name": "Soulstone",
               "title": "Soulstone",
-              "version": "1.0.0",
+              "version": "1.1.0",
               "interface": 30300
             }
           ]
@@ -25095,6 +25518,7 @@
     {
       "name": "Spamalyzer",
       "description": "Spamalyzer zeigt gesendete und empfangene AddOn-Nachrichten, die von AddOns verwendet werden, um Daten mit anderen Spielern auszutauschen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/c3b5f32ed871897018669a16845969ab%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -25158,6 +25582,7 @@
     },
     {
       "name": "SpellActivationOverlay",
+      "description": "Display overlays and glow buttons to improve your gameplay!",
       "downloads": [
         {
           "source": "locus313",
@@ -25333,6 +25758,7 @@
     {
       "name": "Squeenix",
       "description": "Squeenix ist ein kleines Minimap-AddOn mit folgenden Features:",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WoW_Addon_Squeenix_01%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -25574,6 +26000,27 @@
       ]
     },
     {
+      "name": "SummonRandomCritter",
+      "description": "A stupidly simple AddOn that summons a random critter after every load screen",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "SummonRandomCritter",
+          "url": "https://github.com/Wrath-AddOns/SummonRandomCritter/archive/refs/heads/master.zip",
+          "updated": "2026-01-07",
+          "page": "https://github.com/Wrath-AddOns/SummonRandomCritter",
+          "changes": "https://github.com/Wrath-AddOns/SummonRandomCritter/commits/master",
+          "folders": [
+            {
+              "name": "SummonRandomCritter",
+              "title": "Summon Random Critter",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Sunn - Viewport Art",
       "description": "Sunn's Viewport Art allows you to change the size of the rendered world area (viewport) and adds textured artwork in the non-rendered areas.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw18041.jpg",
@@ -25631,6 +26078,28 @@
               "name": "TabBinder",
               "title": "TabBinder",
               "version": "1.02",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tale-WotLK",
+      "description": "An extension of the Memoria World of Warcraft addon. Includes a log of notable events and continuous location data.",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "Tale-WotLK",
+          "url": "https://github.com/Wrath-AddOns/Tale-WotLK/archive/refs/heads/master.zip",
+          "updated": "2021-03-20",
+          "page": "https://github.com/Wrath-AddOns/Tale-WotLK",
+          "changes": "https://github.com/Wrath-AddOns/Tale-WotLK/commits/master",
+          "folders": [
+            {
+              "name": "Tale",
+              "title": "Tale",
+              "version": "1.2",
               "interface": 30300
             }
           ]
@@ -25946,6 +26415,7 @@
     {
       "name": "Tidy Plates",
       "description": "Tidy Plates ersetzt und erweitert die Nameplates und kann darin z. B. Debuffs oder Casts anzeigen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/636141352218161611%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -26020,6 +26490,7 @@
     },
     {
       "name": "TidyPlates_ThreatPlates",
+      "description": "Threat-reactive nameplates.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw32674.jpg",
       "downloads": [
         {
@@ -26080,6 +26551,7 @@
     {
       "name": "TimeToDie",
       "description": "TimeToDie zeigt eine geschätzte Zeitangabe wann dein Ziel sterben wird. Oder das Ziel deines Ziels. Oder dein Fokus. Das neue Interface-Element ist frei positionierbar. Schrift, Zeit-Format und Algorithmus anpassbar.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/ttd.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -26792,6 +27264,7 @@
     {
       "name": "tomQuest2",
       "description": "Grundlegende Überarbeitung des QuestLogs, QuestTracker und der Quest-Tooltips ähnlich dem AddOn QuestFu. Dieser zeigen nun deutlich mehr Informationen an, sind frei platzierbar und mit haben viele Funktionen in Form von <Modifikator> + Mausklick bekommen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/dettached_lh_ql%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -26819,6 +27292,7 @@
     {
       "name": "TomTom",
       "description": "Wie das gleichnamige Navigationssystem nur für WoW Das Addon blendet einen “Crazy Taxi”-Richtungspfeil ein, der zum gewählten Zielpunkt führt. Dieser lässt sich auf der Weltkarte anwählen. Oder man aktiviert ihn über den Questverfolger von [ Mobmap ].",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/tomtom%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -26962,6 +27436,7 @@
     {
       "name": "TotemManager",
       "description": "TotemManager ermöglicht es dir, eine Übersicht deines Cooldowns deines Ankhs, deiner Totems und Zauber.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/totem.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -26983,6 +27458,7 @@
     {
       "name": "TotemTimers",
       "description": "TotemTimers hilft dem Schamanen, indem es Timer und andere Informationen zu Totems, Schilden, Cooldowns etc. anzeigt.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2017-01/628a37b573b337dadac3c929136c87e2%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27105,6 +27581,154 @@
               "title": "TradeSkillMaster: Revived",
               "version": "v2.9.2-PA",
               "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Accounting",
+              "title": "TradeSkillMaster_Accounting",
+              "version": "v2.3",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_AuctionDB",
+              "title": "TradeSkillMaster_AuctionDB",
+              "version": "v2.3.10",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Auctioning",
+              "title": "TradeSkillMaster_Auctioning",
+              "version": "v2.3.3",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Crafting",
+              "title": "TradeSkillMaster_Crafting",
+              "version": "v2.5.2",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_CRM",
+              "title": "TradeSkillMaster_CRM",
+              "version": "1.0.0",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_CsvExtractor",
+              "title": "TradeSkillMaster_CsvExtractor",
+              "version": "1.0",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Destroying",
+              "title": "TradeSkillMaster_Destroying",
+              "version": "v2.1.1",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_ItemTracker",
+              "title": "TradeSkillMaster_ItemTracker",
+              "version": "v2.2.0",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Mailing",
+              "title": "TradeSkillMaster_Mailing",
+              "version": "v2.2.1",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_RecraftOnSale",
+              "title": "TradeSkillMaster_RecraftOnSale",
+              "version": "1.0.0",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Shopping",
+              "title": "TradeSkillMaster_Shopping",
+              "version": "v2.3.6",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Warehousing",
+              "title": "TradeSkillMaster_Warehousing",
+              "version": "v2.0.10",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TradeSkillMaster",
+      "description": "TradeSkillMaster 2.8 backported to 3.3.5",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "TradeSkillMaster",
+          "url": "https://github.com/Wrath-AddOns/TradeSkillMaster/archive/refs/heads/master.zip",
+          "updated": "2023-03-28",
+          "page": "https://github.com/Wrath-AddOns/TradeSkillMaster",
+          "changes": "https://github.com/Wrath-AddOns/TradeSkillMaster/commits/master",
+          "folders": [
+            {
+              "name": "TradeSkillMaster",
+              "title": "TradeSkillMaster: Revived",
+              "version": "Rev668",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Accounting",
+              "title": "TradeSkillMaster_Accounting",
+              "version": "v2.3",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_AuctionDB",
+              "title": "TradeSkillMaster_AuctionDB",
+              "version": "v2.3.10",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Auctioning",
+              "title": "TradeSkillMaster_Auctioning",
+              "version": "v2.3.3",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Crafting",
+              "title": "TradeSkillMaster_Crafting",
+              "version": "v2.5.2",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Destroying",
+              "title": "TradeSkillMaster_Destroying",
+              "version": "v2.1.1",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_ItemTracker",
+              "title": "TradeSkillMaster_ItemTracker",
+              "version": "v2.0.8",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Mailing",
+              "title": "TradeSkillMaster_Mailing",
+              "version": "v2.2.1",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Shopping",
+              "title": "TradeSkillMaster_Shopping",
+              "version": "v2.3.6",
+              "interface": 30300
+            },
+            {
+              "name": "TradeSkillMaster_Warehousing",
+              "title": "TradeSkillMaster_Warehousing",
+              "version": "v2.0.10",
+              "interface": 30300
             }
           ]
         }
@@ -27200,6 +27824,7 @@
     {
       "name": "TrinketCDs",
       "description": "TrinketCDs zeigt dynamisch die Abklingzeit der anglegten Schmuckstücke und verzauberten Rüstung (Gürtel, Ring, Umhang, etc.) und Waffen an.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2022-10/showcase_main%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27243,6 +27868,7 @@
     {
       "name": "Triviabot - WoW Quiz",
       "description": "Dieses lustige AddOn hilft dir und deinen Gildenmates, langweilige Stunden zu überbrücken oder das allgegenwärtige Questen zu versüßen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/triviabot.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27312,6 +27938,7 @@
     {
       "name": "TukUI",
       "description": "TukUI ist geeignet für Freunde des Minimalismuses. Es vereinfacht Blizzards Interface und bricht es auf die Funktionen alleine herunter.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/tukui.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27405,6 +28032,7 @@
     {
       "name": "TweakWoW",
       "description": "Das AddOn TweakWoW erweitert die Einstellungen in WoW um eine Vielzahl an Optionen, die sonst nur durch das Editieren der config.wtf erreichbar sind. Über einen neuen Eintrag im Blizzard Interfacemenü könnt Ihr spielend einfach Dinge wie die Screenshotqualität, grünes Blut oder die Anzahl der Bodentexturen verändern.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/tweakwow%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27732,6 +28360,7 @@
     {
       "name": "Watcher",
       "description": "Watcher ist ein praktisches Rotationshilfetool. Es zeigt Jägern, Kriegern, Paladinen, Druiden und Schattenpriestern die nächste Fähigkeit an, die du benutzen solltest, um größtmöglichen Schaden zu verursachen.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/watcher.PNG",
       "downloads": [
         {
           "source": "rising-gods",
@@ -27744,124 +28373,6 @@
               "name": "Watcher",
               "title": "Watcher",
               "version": "2.9",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "WeakAuras",
-      "description": "WeakAuras is a powerful and flexible framework that allows the display of highly customizable graphics on World of Warcraft's user interface to indicate buffs, debuffs, and other relevant information. This addon was created to be a lightweight replacement for Power Auras but has since introduced more functionalities while remaining efficient and easy to use.",
-      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
-      "downloads": [
-        {
-          "source": "nom0re",
-          "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-10-18",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
-          "links": [
-            {
-              "label": "GitHub latest",
-              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
-            },
-            {
-              "label": "GitHub 4.0.0",
-              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
-            }
-          ],
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.1",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-10-18",
-          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.1",
               "interface": 30300
             }
           ]
@@ -27943,6 +28454,7 @@
     {
       "name": "WeakAuras",
       "description": "Ein leistungsfähiges, umfassendes Addon zur grafischen Darstellung von Informationen von Auren, Cooldowns, Timern und vielem mehr.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2022-10/zPxVAbU%5B1%5D.jpeg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28011,6 +28523,124 @@
       ]
     },
     {
+      "name": "WeakAuras-WotLK",
+      "description": "World of Warcraft addon that provides a powerful framework to display customizable graphics on your screen.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "WeakAuras-WotLK",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
+          "updated": "2026-10-18",
+          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "WeakAuras",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
+          "updated": "2026-10-18",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
+          "links": [
+            {
+              "label": "GitHub latest",
+              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
+            },
+            {
+              "label": "GitHub 4.0.0",
+              "url": "https://github.com/Bunny67/WeakAuras-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "WgClock - Wintergrasp Start Time Notifications",
       "description": "At 60, 30, 15, 10, 5, 3, and 1 minute(s) you will be notified a Wintergrasp PvP is about to start. The notification is an \"alert message\"; with the same message appearing in the chat window. See Screen-shot (the screenshot was forced at 78 minutes, you will NOT see an alert at 78 minutes).",
       "image": "https://cdn-wow.mmoui.com/preview/pvw38401.jpg",
@@ -28063,6 +28693,7 @@
     {
       "name": "WhereToNow",
       "description": "WhereToNow zeigt dir, welches Gebiet für dich als nächstes am besten geeignet zum Leveln ist und welche Instanzen sich in deinem Levelbereich befinden. Zusätzlich wird dir angezeigt, was die maximale Stufe des Gebietes wäre. Dieses AddOn befindet sich als Minibar an deiner Map und zeigt dir die Informationen via Mouseover.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/wheretonow.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28389,6 +29020,7 @@
     {
       "name": "WoWQuote2",
       "description": "Dieses AddOn spielt lustige Soundzitate über den Gruppen-, Gilden- und Raidchannel ab. Die Textnachrichten und Sounds werden nur von Spielern empfangen, die ebenfalls dieses AddOn besitzen. Der Empfang ist für alle Channels einzel an- und abschaltbar.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/WQ2%2520UI%5B1%5D_4.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28466,6 +29098,7 @@
     {
       "name": "X-Perl",
       "description": "Ein hervorragendes AddOn für Raids, welches dir anschaulich zeigt, welche Spieler gerade Aggro oder keine Buffs haben, zudem lässt sich jeder Teilnehmer problemlos ins Target nehmen, sodass ein Porten am Portstein um einiges einfacher wird (vor allem bei Spielern mit Sonderzeichen).",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/xperl1.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28567,6 +29200,7 @@
     {
       "name": "XBar",
       "description": "Mit XBar erstellt Ihr eigene Aktionsleisten. Über den /-Befehl gelangt Ihr in ein simples Konfigurationsmenü. Dort lassen sich Leisten nach belieben erstellen und konfigurieren. Verschiedene vorgefertigte Bars wie beispielsweise Magierportale, Siegel oder Totemleisten stehen bereits zur Verfügung.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/XBar_Config0%5B1%5D.jpg",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28688,12 +29322,29 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "github-wrath-addons",
+          "name": "xCT_Plus_wotlk",
+          "url": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk/archive/refs/heads/master.zip",
+          "updated": "2021-07-05",
+          "page": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk",
+          "changes": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk/commits/master",
+          "folders": [
+            {
+              "name": "xCT+",
+              "title": "xCT+",
+              "version": "3.7.1",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
     {
       "name": "XLoot",
       "description": "XLoot ist eine Gruppe AddOns, die durch das Ersetzen der Standard-Fenster das Plündern in WoW erleichtert.",
+      "image": "https://addons.rising-gods.de/sites/default/files/2016-11/2013-01-31_07-41-21%5B1%5D.png",
       "downloads": [
         {
           "source": "rising-gods",
@@ -28735,6 +29386,7 @@
     },
     {
       "name": "XtoLevel",
+      "description": "Shows mobs, quests, dungeons and battles needed until you and/or your pet reach your next level.",
       "downloads": [
         {
           "source": "github-xurkon",
@@ -28965,6 +29617,70 @@
               "name": "ZodProc",
               "title": "ZodProc",
               "version": "30300.3",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ZOMGBuffs",
+      "description": "All in one buffing mod for all classes. Paladin buff generated assignments based on Paladin capabilities and raid member sub-classes (druid tank vs. druid healer etc.). Plus overview of important raid buffs, and instant access rebuff on right click.",
+      "downloads": [
+        {
+          "source": "github-wrath-addons",
+          "name": "ZOMGBuffs",
+          "url": "https://github.com/Wrath-AddOns/ZOMGBuffs/archive/refs/heads/WotLK.zip",
+          "updated": "2021-05-19",
+          "page": "https://github.com/Wrath-AddOns/ZOMGBuffs",
+          "changes": "https://github.com/Wrath-AddOns/ZOMGBuffs/commits/WotLK",
+          "folders": [
+            {
+              "name": "ZOMGBuffs",
+              "title": "ZOMGBuffs by Zek",
+              "version": "$Revision: 149 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_Blessings",
+              "title": "ZOMGBuffs [Blessings] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_BlessingsManager",
+              "title": "ZOMGBuffs [Blessings Manager] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_BlessingsPP",
+              "title": "ZOMGBuffs [PallyPower Comms] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_BuffTehRaid",
+              "title": "ZOMGBuffs [Raid Buffer] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_Log",
+              "title": "ZOMGBuffs [Log] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_Portalz",
+              "title": "ZOMGBuffs [Portalz] by Zek",
+              "version": "$Revision: 141 $",
+              "interface": 30300
+            },
+            {
+              "name": "ZOMGBuffs_SelfBuffs",
+              "title": "ZOMGBuffs [Self Buffs] by Zek",
+              "version": "$Revision: 141 $",
               "interface": 30300
             }
           ]
