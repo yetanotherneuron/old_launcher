@@ -538,6 +538,14 @@ impl App {
                         self.config.discord = show;
                         Task::batch([task, self.save()])
                     }
+                    Some(settings::Instruction::OpenLink(url)) => {
+                        log::info!("Opening {url}");
+                        if let Err(error) = open::that_detached(url) {
+                            self.errors.report(format!("Could not open {url}: {error}"));
+                        }
+
+                        task
+                    }
                     None => task,
                 }
             }

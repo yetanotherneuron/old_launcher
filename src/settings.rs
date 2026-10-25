@@ -1,9 +1,9 @@
 //! The settings dialog, opened by the cog in the header: whether downloads
-//! from GitHub may sign in with the GitHub CLI's login, and whether Discord
-//! shows the game.
+//! from GitHub may sign in with the GitHub CLI's login, whether Discord
+//! shows the game, and where to ask for an addon the list lacks.
 
-use iced::widget::{button, checkbox, column, container, row, space, text};
-use iced::{Fill, Widget};
+use iced::widget::{button, checkbox, column, container, row, rule, space, text};
+use iced::{Center, Fill, Widget};
 
 use crate::action::Action;
 use crate::core::Config;
@@ -31,6 +31,17 @@ const ON_DISCORD: &str = "From the next game on, Discord's desktop app shows you
 /// exits.
 const HANDED_OVER: &str = "Not for games handed to Steam or Lutris.";
 
+/// Where to ask for an addon the list lacks: a new issue on the project,
+/// with the template for addon requests.
+pub const REQUEST_ADDON: &str = concat!(
+    env!("CARGO_PKG_REPOSITORY"),
+    "/-/issues/new?issuable_template=Addon%20request"
+);
+
+/// Where to ask on Discord instead: an invite to the Old Launcher server,
+/// which never expires.
+pub const DISCORD: &str = "https://discord.gg/tS35paspnf";
+
 /// Whether the dialog is open.
 #[derive(Debug, Default)]
 pub struct State {
@@ -44,6 +55,8 @@ pub enum Message {
     UseCli(bool),
     /// The Discord checkbox was ticked or unticked.
     ShowOnDiscord(bool),
+    /// A link was clicked: [`REQUEST_ADDON`] or [`DISCORD`].
+    OpenLink(&'static str),
     /// Close the dialog.
     Close,
 }
@@ -55,6 +68,8 @@ pub enum Instruction {
     UseCli(bool),
     /// Show the game on Discord from the next one on, or stop: to remember.
     ShowOnDiscord(bool),
+    /// Open a page in the browser, or Discord's invite in its app.
+    OpenLink(&'static str),
 }
 
 impl State {
@@ -73,6 +88,7 @@ impl State {
         match message {
             Message::UseCli(use_cli) => Action::instruction(Instruction::UseCli(use_cli)),
             Message::ShowOnDiscord(show) => Action::instruction(Instruction::ShowOnDiscord(show)),
+            Message::OpenLink(url) => Action::instruction(Instruction::OpenLink(url)),
             Message::Close => {
                 self.open = false;
                 Action::none()
@@ -136,6 +152,21 @@ impl State {
                     .label(SHOW_ON_DISCORD)
                     .text_size(14)
                     .on_toggle(Message::ShowOnDiscord),
+                // Apart from the settings, in the color of the dialog's border.
+                rule::horizontal(1).style(rule::weak),
+                // Wrapping onto two lines when the dialog is narrow.
+                row![
+                    text("Missing an addon? Ask for it on")
+                        .size(13)
+                        .style(text::secondary),
+                    link("GitLab ↗", REQUEST_ADDON),
+                    text("or on").size(13).style(text::secondary),
+                    link("Discord ↗", DISCORD),
+                ]
+                .spacing(4)
+                .align_y(Center)
+                .wrap()
+                .vertical_spacing(4),
                 row![
                     space::horizontal(),
                     button("Close")
@@ -149,6 +180,14 @@ impl State {
         .width(Fill.max(560))
         .style(style::card)
     }
+}
+
+/// `label` as a link to `url`, in the line's text size.
+fn link(label: &'static str, url: &'static str) -> impl Widget<Message> {
+    button(text(label).size(13))
+        .style(button::text)
+        .padding(0)
+        .on_press(Message::OpenLink(url))
 }
 
 #[cfg(test)]
@@ -252,5 +291,34 @@ mod tests {
             matches!(messages[..], [Message::ShowOnDiscord(false)]),
             "ticked, so unticking: {messages:?}"
         );
+    }
+
+    #[test]
+    fn the_dialog_says_where_to_ask_for_a_missing_addon() {
+        let mut state = State { open: true };
+
+        for (link, url) in [("GitLab ↗", REQUEST_ADDON), ("Discord ↗", DISCORD)] {
+            let mut ui = simulator(state.view(&Config::default(), &Login::Anonymous));
+            assert!(ui.find("Missing an addon? Ask for it on").is_ok());
+            assert!(ui.find("or on").is_ok());
+            let _ = ui.click(link).unwrap();
+            let messages: Vec<Message> = ui.into_messages().collect();
+            assert!(
+                matches!(messages[..], [Message::OpenLink(clicked)] if clicked == url),
+                "{link}: {messages:?}"
+            );
+
+            let action = state.update(Message::OpenLink(url));
+            assert!(matches!(
+                action.instruction,
+                Some(Instruction::OpenLink(opened)) if opened == url
+            ));
+        }
+
+        assert_eq!(
+            REQUEST_ADDON,
+            "https://gitlab.com/juxuanu/old_launcher/-/issues/new?issuable_template=Addon%20request"
+        );
+        assert_eq!(DISCORD, "https://discord.gg/tS35paspnf");
     }
 }

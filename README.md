@@ -61,6 +61,10 @@ every week:
 When several of them offer the same addon, the newest version is installed;
 you can also pick another source instead.
 
+Missing an addon? Ask for it on
+[GitLab](https://gitlab.com/juxuanu/old_launcher/-/issues/new?issuable_template=Addon%20request)
+or on [Discord](https://discord.gg/tS35paspnf).
+
 ## Good to know
 
 - Outside your client folders, the launcher writes only its settings file,
