@@ -21,7 +21,7 @@ It's a portable program: nothing to install, just run it.
 
 ![Every addon in one list, with the search box and the filters above it](assets/screenshots/addons.png)
 
-- **Play**: on Linux through Wine, Proton or any runner, set up per client.
+- **Play**: on Linux through Proton (umu-launcher), Wine or any runner, each client in a Wine prefix of its own.
 - **One list** of every addon, available and installed, to search and filter.
 - **Install** or reinstall with one click, from the freshest source or the one you pick.
 - **Update** addons that have a newer version available, and the launcher itself.
@@ -29,6 +29,7 @@ It's a portable program: nothing to install, just run it.
 - **Recognizes** the addons you installed before the launcher.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
+- **Download a client** from a torrent, and check any client for updates against one.
 - **Switch the language** of a client that has more than one.
 - **4 GB of memory** for a client's game (Large Address Aware), for HD textures and long view distances.
 - **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
@@ -71,12 +72,21 @@ or on [Discord](https://discord.gg/tS35paspnf).
 
 - Outside your client folders, the launcher writes only its settings file,
   `~/.config/old_launcher/config.toml` on Linux and
-  `%APPDATA%\old_launcher\config.toml` on Windows, and a copy of the addon
+  `%APPDATA%\old_launcher\config.toml` on Windows, a copy of the addon
   list in `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`, so the
-  list doesn't need to be downloaded every time you open the launcher.
+  list doesn't need to be downloaded every time you open the launcher, and
+  a copy of each client's torrent, in
+  `~/.local/share/old_launcher/torrents` or
+  `%APPDATA%\old_launcher\torrents`.
+- A client downloading from a torrent goes into a hidden `.download`
+  folder inside the folder you chose, its files into place once complete.
+  It is shared with the others downloading it, as BitTorrent works, until
+  it is done: the launcher listens for them on a port, opened on your
+  router through UPnP, which Windows' firewall may ask about.
 - Every addon folder it installs gets a small `.old_launcher.toml` file
-  saying where it came from. The game ignores it; the launcher uses it to
-  tell what can be updated.
+  saying where it came from, and so does a client folder, beside `Wow.exe`,
+  for its torrent and mods: a client removed and added back keeps them. The
+  game ignores them; the launcher uses them to tell what can be updated.
 - Downloads from GitHub, which limits anonymous ones, can sign in with
   `GH_TOKEN`, `GITHUB_TOKEN` or your GitHub CLI login. The launcher never
   stores a token.

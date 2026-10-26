@@ -25,6 +25,8 @@ flate2 = { workspace = true }
 shlex = { workspace = true }
 dunce = { workspace = true }
 sha2 = { workspace = true }
+sha1 = { workspace = true }
+librqbit-core = { workspace = true }
 
 [target.'cfg(not(windows))'.dependencies]
 sysinfo = { workspace = true }

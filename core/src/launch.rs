@@ -2,11 +2,12 @@
 //! command the client is set up with (Wine, Proton through umu-launcher,
 //! …), the way Steam runs a game's launch options.
 
-use std::ops::Range;
+use std::ffi::OsStr;
 #[cfg(windows)]
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 #[cfg(windows)]
 use std::sync::{Mutex, PoisonError};
 
@@ -18,8 +19,91 @@ use crate::{Error, Installation};
 /// `Wow.exe`, or a mod's setup program.
 pub const PLACEHOLDER: &str = "%command%";
 
-/// The command a client starts with when it has none: Wine running `Wow.exe`.
-pub const DEFAULT_COMMAND: &str = "wine %command%";
+/// The command running `Wow.exe` with the system's Wine.
+const WINE_COMMAND: &str = "wine %command%";
+
+/// The command running `Wow.exe` with Proton, through umu-launcher.
+const UMU_COMMAND: &str = "umu-run %command%";
+
+/// The Wine prefix a client's game runs in unless its environment variables
+/// set `WINEPREFIX`: this folder of the client's, beside `Wow.exe`. Each
+/// client has its own, which goes where the client goes.
+pub const PREFIX: &str = ".prefix";
+
+/// What the launcher sets for a client outside Windows, which the client's
+/// settings may set otherwise: the environment variables, set before the
+/// client's own, and the command, when it has none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Defaults {
+    /// `WINEPREFIX`: [`PREFIX`] in the client folder.
+    pub prefix: PathBuf,
+    /// The DLLs mods put beside `Wow.exe`, by name without `.dll`, which
+    /// `WINEDLLOVERRIDES` tells Wine to load from there before its own:
+    /// without that, Wine loads its own `version.dll`, and a mod in its place
+    /// never runs.
+    pub natives: Vec<String>,
+    /// The command (see [`default_command`]).
+    pub command: &'static str,
+}
+
+impl Defaults {
+    /// Those of the client at `root`, on this system, with no DLLs of mods.
+    pub fn of(root: &Path) -> Self {
+        Self {
+            prefix: root.join(PREFIX),
+            natives: Vec::new(),
+            command: default_command(),
+        }
+    }
+
+    /// The environment variables they set, as written among a client's
+    /// (`NAME=value`, quoted), in the order they are set: `WINEPREFIX`, and
+    /// `WINEDLLOVERRIDES` when mods put DLLs beside `Wow.exe`. An error when
+    /// the prefix can't be written in a command line.
+    pub fn env(&self) -> Result<Vec<String>, Error> {
+        let mut env = vec![format!("{PREFIX_VARIABLE}={}", quoted(&self.prefix)?)];
+        if !self.natives.is_empty() {
+            let natives: Vec<String> = self
+                .natives
+                .iter()
+                .map(|dll| format!("{dll}=n,b"))
+                .collect();
+            env.push(assignment(&natives.join(";")));
+        }
+
+        Ok(env)
+    }
+}
+
+/// The command a client starts with when it has none, on this system:
+/// [`UMU_COMMAND`] where umu-launcher is installed (`umu-run` is on the
+/// `PATH`), or else [`WINE_COMMAND`]. Looked for once.
+pub fn default_command() -> &'static str {
+    static DEFAULT: OnceLock<&str> = OnceLock::new();
+
+    DEFAULT.get_or_init(|| {
+        let umu = std::env::var_os("PATH").is_some_and(|path| installed("umu-run", &path));
+        if umu { UMU_COMMAND } else { WINE_COMMAND }
+    })
+}
+
+/// Whether `program` is in one of the folders of `path` (as the `PATH`
+/// lists them), as a file that may run.
+fn installed(program: &str, path: &OsStr) -> bool {
+    std::env::split_paths(path).any(|folder| {
+        std::fs::metadata(folder.join(program)).is_ok_and(|metadata| {
+            #[cfg(unix)]
+            let runs = {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode() & 0o111 != 0
+            };
+            #[cfg(not(unix))]
+            let runs = true;
+
+            metadata.is_file() && runs
+        })
+    })
+}
 
 /// How a client is started outside Windows: Steam's launch options, with the
 /// environment variables in a field of their own.
@@ -32,13 +116,14 @@ pub struct Launch {
     /// A shell command line in which [`PLACEHOLDER`] stands for the program
     /// the launcher runs, already quoted: `umu-run %command%`. It must have
     /// one: the launcher runs mods' setups through it too, with the game's
-    /// runner. [`DEFAULT_COMMAND`] when empty.
+    /// runner. [`default_command`] when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
 }
 
 impl Launch {
-    /// Whether nothing is set, so the client starts with [`DEFAULT_COMMAND`].
+    /// Whether nothing is set, so the client starts as the launcher's
+    /// [`Defaults`] say.
     pub fn is_default(&self) -> bool {
         self.env.is_empty() && self.command.is_empty()
     }
@@ -76,25 +161,38 @@ impl Launch {
 
     /// The shell command line that starts `executable`: the environment
     /// variables, exported for the whole command, then the command with
-    /// [`PLACEHOLDER`] replaced by `executable`, quoted.
+    /// [`PLACEHOLDER`] replaced by `executable`, quoted. `defaults`' variables
+    /// come first, so the client's own, set after them, win; and its command
+    /// is the client's when it has none.
     ///
     /// Nothing else is quoted, so `~` and `$HOME` expand as in a terminal.
-    pub fn line(&self, executable: &Path) -> Result<String, Error> {
-        self.line_running(executable, &[])
+    pub fn line(&self, defaults: &Defaults, executable: &Path) -> Result<String, Error> {
+        self.line_running(defaults, executable, &[])
     }
 
     /// The shell command line that runs another Windows program of the
     /// client, `program` with `arguments`, the way [`Launch::line`] starts
     /// the game: in place of [`PLACEHOLDER`], all of them quoted, with the
-    /// game's runner. Plain `wine` is no stand-in for it: a Wine other than
-    /// the game's updates the prefix to its own version.
-    pub fn tool_line(&self, program: &Path, arguments: &[String]) -> Result<String, Error> {
-        self.line_running(program, arguments)
+    /// game's runner and prefix. Plain `wine` is no stand-in for it: a Wine
+    /// other than the game's updates the prefix to its own version.
+    pub fn tool_line(
+        &self,
+        defaults: &Defaults,
+        program: &Path,
+        arguments: &[String],
+    ) -> Result<String, Error> {
+        self.line_running(defaults, program, arguments)
     }
 
     /// The shell command line of the command with `program` and `arguments`,
-    /// quoted, in place of [`PLACEHOLDER`], after the environment variables.
-    fn line_running(&self, program: &Path, arguments: &[String]) -> Result<String, Error> {
+    /// quoted, in place of [`PLACEHOLDER`], after the environment variables,
+    /// which `defaults`' come before.
+    fn line_running(
+        &self,
+        defaults: &Defaults,
+        program: &Path,
+        arguments: &[String],
+    ) -> Result<String, Error> {
         let names = self.names().map_err(|problem| Error::Launch {
             setting: "environment variables",
             problem,
@@ -106,14 +204,8 @@ impl Launch {
             });
         }
 
-        let quoted = program
-            .to_str()
-            .and_then(|path| shlex::try_quote(path).ok())
-            .ok_or_else(|| Error::Launch {
-                setting: "client folder",
-                problem: format!("{} can't be written in a command line.", program.display()),
-            })?;
-        let words = std::iter::once(Ok(quoted))
+        let added = defaults.env()?;
+        let words = std::iter::once(Ok(quoted(program)?))
             .chain(arguments.iter().map(|argument| shlex::try_quote(argument)))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| Error::Launch {
@@ -123,90 +215,32 @@ impl Launch {
             .join(" ");
 
         let command = match self.command.trim() {
-            "" => DEFAULT_COMMAND,
+            "" => defaults.command,
             command => command,
         }
         .replace(PLACEHOLDER, &words);
 
+        let mut exported: Vec<String> = Vec::new();
+        for name in added
+            .iter()
+            .filter_map(|word| name(word))
+            .map(str::to_owned)
+            .chain(names)
+        {
+            if !exported.contains(&name) {
+                exported.push(name);
+            }
+        }
+        // The launcher's first: the shell keeps the last value set.
+        let env = added
+            .into_iter()
+            .chain(Some(self.env.trim().to_owned()).filter(|env| !env.is_empty()))
+            .collect::<Vec<_>>()
+            .join(" ");
+
         // Assigned, then exported: set before a command, they would only
         // reach its first part (`A=1 cp … && printenv A` prints nothing).
-        Ok(if names.is_empty() {
-            command
-        } else {
-            format!("{}; export {}; {command}", self.env.trim(), names.join(" "))
-        })
-    }
-
-    /// Whether Wine loads `dll` (`version`, say) from the game's folder
-    /// before its own: `WINEDLLOVERRIDES` sets it to native (`n`) first.
-    /// Without that, Wine loads its own `version.dll`, and a mod in its
-    /// place never runs.
-    fn loads_native(&self, dll: &str) -> bool {
-        self.overrides().is_some_and(|(_, value)| {
-            value.split(';').any(|entry| {
-                entry.split_once('=').is_some_and(|(dlls, mode)| {
-                    dlls.split(',')
-                        .any(|name| name.trim().eq_ignore_ascii_case(dll))
-                        && mode.trim_start().starts_with('n')
-                })
-            })
-        })
-    }
-
-    /// These settings with Wine loading `dll` from the game's folder first:
-    /// `dll=n,b` in `WINEDLLOVERRIDES`, which is set if it wasn't, in place
-    /// of any other setting for `dll`. The rest of the environment
-    /// variables stays as written.
-    fn with_native(&self, dll: &str) -> Self {
-        if self.loads_native(dll) {
-            return self.clone();
-        }
-
-        let native = format!("{dll}=n,b");
-        let env = match self.overrides() {
-            Some((range, value)) => {
-                let mut entries: Vec<String> = value
-                    .split(';')
-                    .filter(|entry| !entry.trim().is_empty())
-                    .filter_map(|entry| {
-                        let (dlls, mode) = entry.split_once('=').unwrap_or((entry, ""));
-                        let others: Vec<&str> = dlls
-                            .split(',')
-                            .filter(|name| !name.trim().eq_ignore_ascii_case(dll))
-                            .collect();
-
-                        (!others.is_empty()).then(|| format!("{}={mode}", others.join(",")))
-                    })
-                    .collect();
-                entries.push(native);
-
-                let word = assignment(&entries.join(";"));
-                [&self.env[..range.start], &word, &self.env[range.end..]].concat()
-            }
-            None => {
-                let word = assignment(&native);
-                match self.env.trim_end() {
-                    "" => word,
-                    env => format!("{env} {word}"),
-                }
-            }
-        };
-
-        Self {
-            env,
-            command: self.command.clone(),
-        }
-    }
-
-    /// Where `WINEDLLOVERRIDES` is set among the environment variables (the
-    /// last time, the one the shell keeps), and to what.
-    fn overrides(&self) -> Option<(Range<usize>, String)> {
-        words(&self.env).into_iter().rev().find_map(|range| {
-            let word = shlex::split(&self.env[range.clone()])?.into_iter().next()?;
-            let value = word.strip_prefix(OVERRIDES)?.strip_prefix('=')?.to_owned();
-
-            Some((range, value))
-        })
+        Ok(format!("{env}; export {}; {command}", exported.join(" ")))
     }
 }
 
@@ -214,52 +248,25 @@ impl Launch {
 /// before its own.
 const OVERRIDES: &str = "WINEDLLOVERRIDES";
 
+/// The variable that tells Wine, and umu-launcher, which prefix to run in.
+const PREFIX_VARIABLE: &str = "WINEPREFIX";
+
+/// `path`, quoted for a command line, if it can be written in one.
+fn quoted(path: &Path) -> Result<std::borrow::Cow<'_, str>, Error> {
+    path.to_str()
+        .and_then(|text| shlex::try_quote(text).ok())
+        .ok_or_else(|| Error::Launch {
+            setting: "client folder",
+            problem: format!("{} can't be written in a command line.", path.display()),
+        })
+}
+
 /// `WINEDLLOVERRIDES` set to `value`, quoted as the shell needs (its `;`
 /// would end the assignment).
 fn assignment(value: &str) -> String {
     let quoted = shlex::try_quote(value).map_or_else(|_| format!("'{value}'"), Into::into);
 
     format!("{OVERRIDES}={quoted}")
-}
-
-/// Where the shell words of `text` are, quotes and escapes included.
-fn words(text: &str) -> Vec<Range<usize>> {
-    let mut words = Vec::new();
-    let mut start = None;
-    let mut quote = None;
-    let mut escaped = false;
-
-    for (index, character) in text.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-
-        match (quote, character) {
-            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
-            (Some('"'), '\\') => escaped = true,
-            (Some(_), _) => {}
-            (None, space) if space.is_whitespace() => {
-                if let Some(start) = start.take() {
-                    words.push(start..index);
-                }
-            }
-            (None, other) => {
-                let _ = start.get_or_insert(index);
-                match other {
-                    '\'' | '"' => quote = Some(other),
-                    '\\' => escaped = true,
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    if let Some(start) = start {
-        words.push(start..text.len());
-    }
-
-    words
 }
 
 /// The variable `word` sets, if it is `NAME=value`: a name of letters,
@@ -278,10 +285,9 @@ fn name(word: &str) -> Option<&str> {
 
 /// The process that starts `installation`'s client, from its folder:
 /// `Wow.exe` on Windows, where `launch` is not used, and elsewhere
-/// `launch`'s [`line`](Launch::line), run by `sh`, with Wine told to load
-/// the `natives` (DLLs by name without `.dll`, which mods put beside
-/// `Wow.exe`) from there before its own, on top of the client's own
-/// environment variables (see [`Launch::with_native`]).
+/// `launch`'s [`line`](Launch::line), run by `sh`, with the client's
+/// [`Defaults`] and Wine told to load the `natives` (DLLs by name without
+/// `.dll`, which mods put beside `Wow.exe`) from there before its own.
 pub fn command(
     installation: &Installation,
     launch: &Launch,
@@ -290,13 +296,14 @@ pub fn command(
     let mut command = if cfg!(windows) {
         Command::new(installation.executable())
     } else {
+        let defaults = Defaults {
+            natives: natives.to_vec(),
+            ..Defaults::of(installation.root())
+        };
         let mut shell = Command::new("sh");
-        shell.arg("-c").arg(
-            natives
-                .iter()
-                .fold(launch.clone(), |launch, dll| launch.with_native(dll))
-                .line(installation.executable())?,
-        );
+        shell
+            .arg("-c")
+            .arg(launch.line(&defaults, installation.executable())?);
         shell
     };
 
@@ -323,7 +330,11 @@ pub fn tool(
         tool
     } else {
         let mut shell = Command::new("sh");
-        let _ = shell.arg("-c").arg(launch.tool_line(&program, arguments)?);
+        let _ = shell.arg("-c").arg(launch.tool_line(
+            &Defaults::of(installation.root()),
+            &program,
+            arguments,
+        )?);
         shell
     };
 
@@ -625,13 +636,53 @@ mod tests {
         }
     }
 
-    #[test]
-    fn without_a_command_wine_runs_the_client() {
-        let line = Launch::default()
-            .line(Path::new("/games/wow/Wow.exe"))
-            .unwrap();
+    /// The defaults of the client at `root`, with Wine.
+    fn wine(root: &str) -> Defaults {
+        Defaults {
+            prefix: Path::new(root).join(PREFIX),
+            natives: Vec::new(),
+            command: WINE_COMMAND,
+        }
+    }
 
-        assert_eq!(line, "wine /games/wow/Wow.exe");
+    #[test]
+    fn without_settings_the_client_runs_in_its_own_prefix_with_umu_or_wine() {
+        let line = |defaults: &Defaults| {
+            Launch::default()
+                .line(defaults, Path::new("/games/wow/Wow.exe"))
+                .unwrap()
+        };
+
+        assert_eq!(
+            line(&wine("/games/wow")),
+            "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; wine /games/wow/Wow.exe"
+        );
+        assert_eq!(
+            line(&Defaults {
+                command: UMU_COMMAND,
+                ..wine("/games/wow")
+            }),
+            "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; umu-run /games/wow/Wow.exe"
+        );
+    }
+
+    #[test]
+    fn umu_run_is_the_default_where_it_is_installed() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = std::env::join_paths([Path::new("/nowhere"), folder.path()]).unwrap();
+        let umu = folder.path().join("umu-run");
+        assert!(!installed("umu-run", &path));
+
+        std::fs::write(&umu, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert!(!installed("umu-run", &path), "a file that can't run");
+            std::fs::set_permissions(&umu, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert!(installed("umu-run", &path));
+        assert!(!installed("umu-run", OsStr::new("")));
+        assert!([UMU_COMMAND, WINE_COMMAND].contains(&default_command()));
     }
 
     #[test]
@@ -640,13 +691,18 @@ mod tests {
             "WINEPREFIX=~/.wine-wow  PROTONPATH='GE Proton'",
             "  gamemoderun umu-run %command% -console ",
         )
-        .line(Path::new("/games/World of Warcraft 3.3.5a/Wow.exe"))
+        .line(
+            &wine("/games/World of Warcraft 3.3.5a"),
+            Path::new("/games/World of Warcraft 3.3.5a/Wow.exe"),
+        )
         .unwrap();
 
         assert_eq!(
             line,
-            "WINEPREFIX=~/.wine-wow  PROTONPATH='GE Proton'; export WINEPREFIX PROTONPATH; \
-             gamemoderun umu-run '/games/World of Warcraft 3.3.5a/Wow.exe' -console"
+            "WINEPREFIX='/games/World of Warcraft 3.3.5a/.prefix' WINEPREFIX=~/.wine-wow  \
+             PROTONPATH='GE Proton'; export WINEPREFIX PROTONPATH; \
+             gamemoderun umu-run '/games/World of Warcraft 3.3.5a/Wow.exe' -console",
+            "the client's own prefix after the launcher's, which it overrides"
         );
     }
 
@@ -659,7 +715,7 @@ mod tests {
             Some("%command% is missing: the launcher puts what it runs there.")
         );
         assert!(matches!(
-            handing_over.line(Path::new("/games/wow/Wow.exe")),
+            handing_over.line(&wine("/games/wow"), Path::new("/games/wow/Wow.exe")),
             Err(Error::Launch {
                 setting: "command",
                 ..
@@ -673,16 +729,17 @@ mod tests {
     fn a_tool_runs_the_way_the_game_does_with_its_arguments() {
         let arguments = ["--data".to_owned(), "Data".to_owned(), "a b".to_owned()];
         let tool = Path::new("/games/World of Warcraft/Lumenveil/lamp_extract.exe");
+        let defaults = wine("/games/World of Warcraft");
 
         assert_eq!(
             launch("WINEPREFIX=~/wow", "")
-                .tool_line(tool, &arguments)
+                .tool_line(&defaults, tool, &arguments)
                 .unwrap(),
-            "WINEPREFIX=~/wow; export WINEPREFIX; \
+            "WINEPREFIX='/games/World of Warcraft/.prefix' WINEPREFIX=~/wow; export WINEPREFIX; \
              wine '/games/World of Warcraft/Lumenveil/lamp_extract.exe' --data Data 'a b'"
         );
         assert!(matches!(
-            launch("", "lutris lutris:rungameid/3").tool_line(tool, &arguments),
+            launch("", "lutris lutris:rungameid/3").tool_line(&defaults, tool, &arguments),
             Err(Error::Launch {
                 setting: "command",
                 ..
@@ -691,72 +748,73 @@ mod tests {
     }
 
     #[test]
-    fn wine_is_told_to_load_a_dll_from_the_games_folder() {
-        for (env, loads) in [
-            ("", false),
-            ("WINEDLLOVERRIDES=version=n,b", true),
-            ("WINEDLLOVERRIDES='d3d9,Version=native,builtin'", true),
-            ("WINEDLLOVERRIDES=version=b,n", false),
-            ("WINEDLLOVERRIDES=version=n WINEDLLOVERRIDES=d3d9=n", false),
-        ] {
-            assert_eq!(launch(env, "").loads_native("version"), loads, "{env}");
-        }
+    fn wine_is_told_to_load_the_dlls_mods_put_beside_wow_exe_from_there() {
+        let defaults = wine("/games/World of Warcraft");
+        assert_eq!(
+            defaults.env().unwrap(),
+            ["WINEPREFIX='/games/World of Warcraft/.prefix'"]
+        );
 
-        for (env, with) in [
-            ("", "WINEDLLOVERRIDES='version=n,b'"),
-            (
-                "WINEPREFIX=~/wow  DXVK_HUD=1 ",
-                "WINEPREFIX=~/wow  DXVK_HUD=1 WINEDLLOVERRIDES='version=n,b'",
-            ),
-            (
-                "WINEPREFIX=~/wow WINEDLLOVERRIDES=\"d3d9,version=b;dxgi=n\" A=1",
-                "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=b;dxgi=n;version=n,b' A=1",
-            ),
-            (
-                "WINEDLLOVERRIDES=version=b",
-                "WINEDLLOVERRIDES='version=n,b'",
-            ),
-        ] {
-            let launch = launch(env, "umu-run %command%").with_native("version");
-
-            assert_eq!(launch.env, with, "{env}");
-            assert!(launch.loads_native("version"), "{env}");
-            assert_eq!(launch.env_problem(), None, "{env}");
-            assert_eq!(launch.command, "umu-run %command%");
-        }
+        let modded = Defaults {
+            natives: vec!["CoAVolFog".to_owned(), "version".to_owned()],
+            ..defaults
+        };
+        assert_eq!(
+            modded.env().unwrap(),
+            [
+                "WINEPREFIX='/games/World of Warcraft/.prefix'",
+                "WINEDLLOVERRIDES='CoAVolFog=n,b;version=n,b'",
+            ]
+        );
     }
 
     #[cfg(unix)]
     #[test]
-    fn wine_loads_the_dlls_mods_put_beside_wow_exe_whatever_the_client_sets() {
+    fn the_launchers_variables_come_first_so_the_clients_own_override_them() {
         let (_root, installation) = crate::testing::client(&[]);
-        let client = launch(
-            "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
-            "umu-run %command%",
-        );
         let line = |command: Command| command.get_args().nth(1).unwrap().to_owned();
-        let game = |natives: &[String]| line(command(&installation, &client, natives).unwrap());
-        let own = "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'; export WINEPREFIX \
-                   WINEDLLOVERRIDES; umu-run ";
+        let game = |client: &Launch| {
+            line(
+                command(
+                    &installation,
+                    client,
+                    &["version".to_owned(), "Glow".to_owned()],
+                )
+                .unwrap(),
+            )
+        };
+        let prefix = installation.root().join(PREFIX);
+        let prefix = shlex::try_quote(prefix.to_str().unwrap()).unwrap();
+        let added = format!("WINEPREFIX={prefix} WINEDLLOVERRIDES='version=n,b;Glow=n,b'");
 
-        assert!(game(&[]).to_str().unwrap().starts_with(own));
         assert!(
-            game(&["version".to_owned(), "Glow".to_owned()])
+            game(&launch("DXVK_HUD=1", "umu-run %command%"))
                 .to_str()
                 .unwrap()
-                .starts_with(
-                    "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=n,b;Glow=n,b'; export \
-                     WINEPREFIX WINEDLLOVERRIDES; umu-run "
-                ),
+                .starts_with(&format!(
+                    "{added} DXVK_HUD=1; export WINEPREFIX WINEDLLOVERRIDES DXVK_HUD; umu-run "
+                ))
         );
-        assert_eq!(
-            client.env, "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
-            "the client's own settings stay as they are"
+
+        let client = launch(
+            "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n'",
+            "umu-run %command%",
         );
+        assert!(
+            game(&client).to_str().unwrap().starts_with(&format!(
+                "{added} WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n'; export WINEPREFIX \
+                 WINEDLLOVERRIDES; umu-run "
+            )),
+            "set again, the client's own win"
+        );
+
         let setup = tool(&installation, &client, "Glow/setup.exe", &[]).unwrap();
         assert!(
-            line(setup).to_str().unwrap().starts_with(own),
-            "not the game"
+            line(setup).to_str().unwrap().starts_with(&format!(
+                "WINEPREFIX={prefix} WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n'; export \
+                 WINEPREFIX WINEDLLOVERRIDES; umu-run "
+            )),
+            "a setup is no game: its DLLs needn't load"
         );
     }
 
@@ -788,7 +846,7 @@ mod tests {
             Some("A quote is never closed.")
         );
         assert!(matches!(
-            unclosed.line(Path::new("/games/wow/Wow.exe")),
+            unclosed.line(&wine("/games/wow"), Path::new("/games/wow/Wow.exe")),
             Err(Error::Launch {
                 setting: "command",
                 ..
@@ -933,28 +991,41 @@ mod tests {
         std::fs::write(root.join("Wow.exe"), fake_executable(WOTLK)).unwrap();
         let installation = Installation::open(&root).unwrap();
 
-        let status = command(
-            &installation,
-            &launch(
-                "GREETING='hello there' PREFIX=~/.wine-wow",
-                "cp %command% copy.exe && printenv GREETING PREFIX > env.txt",
-            ),
-            &[],
-        )
-        .unwrap()
-        .env("HOME", "/home/player")
-        .status()
-        .unwrap();
+        let printed = |env: &str| {
+            let status = command(
+                &installation,
+                &launch(
+                    env,
+                    "cp %command% copy.exe && printenv GREETING WINEPREFIX > env.txt",
+                ),
+                &[],
+            )
+            .unwrap()
+            .env("HOME", "/home/player")
+            .env("WINEPREFIX", "/home/player/.wine")
+            .status()
+            .unwrap();
+            assert!(status.success());
 
-        assert!(status.success());
+            std::fs::read_to_string(root.join("env.txt")).unwrap()
+        };
+
+        assert_eq!(
+            printed("GREETING='hello there'"),
+            format!(
+                "hello there\n{}\n",
+                installation.root().join(".prefix").display()
+            ),
+            "its own prefix, whatever the launcher's environment says"
+        );
         assert_eq!(
             std::fs::read(root.join("copy.exe")).unwrap(),
             fake_executable(WOTLK)
         );
         assert_eq!(
-            std::fs::read_to_string(root.join("env.txt")).unwrap(),
+            printed("GREETING='hello there' WINEPREFIX=~/.wine-wow"),
             "hello there\n/home/player/.wine-wow\n",
-            "set for the whole command, with ~ expanded"
+            "the client's own, set for the whole command, with ~ expanded"
         );
     }
 }

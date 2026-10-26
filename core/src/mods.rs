@@ -5,8 +5,8 @@
 //! Like the catalog of addons, the list is generated offline by the
 //! `indexer` tool, which hashes every file of every release, and is published
 //! as one JSON document. Which release a client holds is recorded in a marker
-//! beside `Wow.exe`, written when the launcher installs a release or
-//! recognizes one already there.
+//! in the notes beside `Wow.exe`, written when the launcher installs a
+//! release or recognizes one already there.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::io_at;
 use crate::installation::{STAGING_PREFIX, config_setting};
+use crate::notes::Notes;
 use crate::{Error, Installation, archive};
 
 /// A published list of mods.
@@ -290,29 +291,59 @@ impl Mod {
             .collect()
     }
 
-    /// Its marker's path in the client folder at `root`.
-    fn marker_path(&self, root: &Path) -> PathBuf {
+    /// Where 0.9.0 kept its marker in the client folder at `root`, a file
+    /// of its own: one there moves into the folder's notes when read.
+    fn old_marker_path(&self, root: &Path) -> PathBuf {
         root.join(format!(".old_launcher-{}.toml", self.id))
     }
 
-    /// Its marker in the client folder at `root`, if there is a valid one.
+    /// Its marker in the client folder at `root`, as the folder notes it,
+    /// if there is a valid one.
     pub fn marker(&self, root: &Path) -> Option<Marker> {
-        let text = fs::read_to_string(self.marker_path(root)).ok()?;
+        if let Some(marker) = Notes::read(root).mods.remove(&self.id) {
+            return Some(marker);
+        }
 
-        toml::from_str(&text).ok()
+        let old = self.old_marker_path(root);
+        let marker: Marker = toml::from_str(&fs::read_to_string(&old).ok()?).ok()?;
+        // Noted with the rest, it goes; noting it may fail, and does again.
+        let moved = Notes::change(root, |notes| {
+            let _ = notes.mods.insert(self.id.clone(), marker.clone());
+        });
+        if moved.is_ok() {
+            let _ = fs::remove_file(&old);
+        }
+
+        Some(marker)
     }
 
-    /// Records in the client folder at `root` that it holds `release`, and
+    /// Whether the client folder at `root` has a marker of it, valid or not.
+    fn marked(&self, root: &Path) -> bool {
+        Notes::read(root).mods.contains_key(&self.id) || self.old_marker_path(root).is_file()
+    }
+
+    /// Notes in the client folder at `root` that it holds `release`, and
     /// whether its setup ran to the end.
     fn mark(&self, root: &Path, release: &Release, set_up: bool) -> Result<(), Error> {
-        let path = self.marker_path(root);
         let marker = Marker {
             version: release.version.clone(),
             url: release.url.clone(),
             set_up,
         };
+        Notes::change(root, |notes| {
+            let _ = notes.mods.insert(self.id.clone(), marker);
+        })?;
 
-        fs::write(&path, toml::to_string(&marker)?).map_err(io_at(&path))
+        remove(&self.old_marker_path(root))
+    }
+
+    /// Forgets its marker in the client folder at `root`.
+    fn unmark(&self, root: &Path) -> Result<(), Error> {
+        Notes::change(root, |notes| {
+            let _ = notes.mods.remove(&self.id);
+        })?;
+
+        remove(&self.old_marker_path(root))
     }
 }
 
@@ -383,7 +414,7 @@ fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, String)>) -> Res
 /// lone file that matches no release may be another mod's: `version.dll`
 /// is a common name.
 fn present(root: &Path, game_mod: &Mod) -> bool {
-    if game_mod.marker_path(root).is_file()
+    if game_mod.marked(root)
         || game_mod
             .written()
             .iter()
@@ -705,7 +736,7 @@ pub fn uninstall(
         remove(&root.join(path))?;
         removed.push(path);
     }
-    remove(&game_mod.marker_path(root))?;
+    game_mod.unmark(root)?;
 
     for path in removed {
         prune(root, path);
@@ -960,7 +991,7 @@ mod tests {
         );
 
         // Checked with what its setup writes there, it counts as set up.
-        remove(&game_mod.marker_path(root)).unwrap();
+        game_mod.unmark(root).unwrap();
         assert_eq!(
             check(&installation, &game_mod).unwrap().unwrap().problems,
             []
@@ -978,7 +1009,7 @@ mod tests {
         );
 
         // Without the marker, it matches no release.
-        remove(&game_mod.marker_path(root)).unwrap();
+        game_mod.unmark(root).unwrap();
         assert_eq!(
             check(&installation, &game_mod).unwrap().unwrap().problems,
             [Problem::Unknown]
@@ -992,7 +1023,7 @@ mod tests {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root();
         fs::write(
-            game_mod.marker_path(root),
+            game_mod.old_marker_path(root),
             "version = \"0.9\"\nurl = \"https://example.com/Glow-0.9.zip\"\n",
         )
         .unwrap();
@@ -1001,6 +1032,11 @@ mod tests {
             status(root, &game_mod).unwrap().problems,
             [Problem::Unlisted("0.9".to_owned())]
         );
+        assert!(
+            !game_mod.old_marker_path(root).exists(),
+            "0.9.0's marker moved into the notes"
+        );
+        assert_eq!(game_mod.marker(root).unwrap().version, "0.9");
     }
 
     #[test]
@@ -1071,8 +1107,9 @@ mod tests {
         assert_eq!(status(root, &game_mod).unwrap().problems, not_set_up);
 
         // Markers from before the launcher recorded it count as not set up.
+        game_mod.unmark(root).unwrap();
         fs::write(
-            game_mod.marker_path(root),
+            game_mod.old_marker_path(root),
             "version = \"2.0\"\nurl = \"https://example.com/Glow-2.0.zip\"\n",
         )
         .unwrap();

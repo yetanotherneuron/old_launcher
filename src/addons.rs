@@ -155,6 +155,8 @@ pub enum Message {
     Done(Result<(), String>),
     /// Open a web page about an addon or its source.
     OpenLink(String),
+    /// A web page couldn't be opened: why.
+    Unopened(String),
     /// Open the dialog installing an addon from an archive or folder.
     OpenExternal,
     /// Pick an archive to install an addon from.
@@ -476,10 +478,10 @@ impl State {
                 Action::instruction(Instruction::Changed)
             }
             Message::OpenLink(url) => {
-                if let Err(error) = open::that_detached(&url) {
-                    errors.report(format!("Could not open {url}: {error}"));
-                }
-
+                Action::task(crate::opening(url, None).map(Message::Unopened))
+            }
+            Message::Unopened(error) => {
+                errors.report(error);
                 Action::none()
             }
             Message::OpenExternal => {

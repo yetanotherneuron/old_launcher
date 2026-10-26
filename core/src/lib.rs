@@ -19,12 +19,14 @@ pub mod layout;
 pub mod library;
 pub mod marker;
 pub mod mods;
+mod notes;
 pub mod saved_variables;
 pub mod search;
 pub mod snapshot;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod toc;
+pub mod torrent;
 pub mod transfer;
 pub mod version;
 

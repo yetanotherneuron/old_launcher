@@ -30,6 +30,8 @@ pub enum Message {
     OpenFolder,
     /// Open the settings file in the default editor.
     Edit,
+    /// The folder or the file couldn't be opened: why.
+    Unopened(String),
     /// Read the settings file again, after fixing it.
     Retry,
     /// Leave the launcher, to fix the file by hand.
@@ -69,21 +71,11 @@ impl State {
         match message {
             Message::OpenFolder => {
                 let folder = self.path.parent().unwrap_or(&self.path);
-
-                if let Err(error) = open::that_detached(folder) {
-                    errors.report(format!("Could not open {}: {error}", folder.display()));
-                }
-
-                Action::none()
+                Action::task(crate::opening(folder, None).map(Message::Unopened))
             }
-            Message::Edit => {
-                if let Err(error) = open::that_detached(&self.path) {
-                    errors.report(format!(
-                        "Could not open {} in an editor: {error}",
-                        self.path.display()
-                    ));
-                }
-
+            Message::Edit => Action::task(crate::opening(&self.path, None).map(Message::Unopened)),
+            Message::Unopened(error) => {
+                errors.report(error);
                 Action::none()
             }
             Message::Retry => match Config::load(&self.path) {

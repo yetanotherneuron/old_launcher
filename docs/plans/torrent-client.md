@@ -1,7 +1,34 @@
 # Downloading a client through BitTorrent
 
-Status: assessed, not planned in detail. Written on 2026-09-30 against
-commit b1ebe73 (version 0.5.0). Names refer to the code as it was then.
+Status: built on 2026-10-26, after 0.9.0; DEVELOPMENT.md ("Clients from a
+torrent") says how it works. Below is the assessment written on 2026-09-30
+against commit b1ebe73 (version 0.5.0), names as the code was then. What
+was built differs from it:
+
+- No list of published versions: checking for updates fetches the torrent
+  again from where the player gave it (an address or a file), and compares
+  the client with it piece by piece, reading only what changed since the
+  last check.
+- Downloads, new clients and updates alike, go into a hidden `.download`
+  staging folder in the folder their files go in (so they need room on
+  that disk alone), and only the files asked for move into place once
+  complete: librqbit writes the pieces it downloads whole, over the files
+  that share them, so `only_files` alone wouldn't protect the player's
+  files. A client being downloaded isn't listed until its files are in
+  place.
+- The torrent's contents are read before downloading it: it must hold a
+  `Wow.exe` beside a `Data` folder, and that `Wow.exe` must be 3.3.5a.
+- It shares while it downloads, listening for peers on a port the system
+  picks and forwarded through UPnP, and stops once the download is done,
+  with no opt-in to keep seeding. No free-space check yet: librqbit's error says when the
+  disk is full.
+- No session persistence: a download cut short resumes with librqbit
+  checking what its staging folder has, or is discarded.
+- The client folder notes the torrent it comes from, with what was found
+  as it has it and the mods' markers, in one `.old_launcher.toml` beside
+  `Wow.exe`, so a client forgotten and added back keeps it. Any client can
+  be given a torrent to update from, and a `.torrent` file given is kept as
+  its magnet link, since the file may go.
 
 ## The ask
 

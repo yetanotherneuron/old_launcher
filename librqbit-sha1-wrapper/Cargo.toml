@@ -1,0 +1,24 @@
+# librqbit's SHA-1 and SHA-256 on RustCrypto's pure-Rust hashes, in place of
+# the crate of this name librqbit comes with: its choices are OpenSSL (on
+# Linux) and aws-lc, C libraries the launcher keeps out of every build.
+# Patched in from the workspace's Cargo.toml, so it keeps that crate's name,
+# version and API.
+[package]
+name = "librqbit-sha1-wrapper"
+version = "9.0.1"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# Named by librqbit's and librqbit-core's features: they choose nothing here.
+default = []
+sha1-crypto-hash = []
+sha1-ring = []
+
+[dependencies]
+sha1 = { workspace = true }
+sha2 = { workspace = true }

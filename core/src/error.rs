@@ -71,6 +71,10 @@ pub enum Error {
     #[error("{0} is missing from the download")]
     NotInRelease(String),
 
+    /// Bytes that aren't a torrent the launcher can use, and why.
+    #[error("not a usable torrent: {0}")]
+    Torrent(String),
+
     /// Files in the client folder where a mod's release puts its own, which
     /// aren't the mod's: another mod's, say. Installing would replace them.
     #[error(

@@ -215,7 +215,15 @@ Installs, updates and repairs go ahead: the game never writes
 **Play** starts `Wow.exe` from the client folder on Windows. Elsewhere it
 runs the client's command with `sh`, the way Steam runs launch options: the
 environment variables are set and exported first, and `%command%` becomes
-the quoted path to `Wow.exe` (`wine %command%` when there is no command).
+the quoted path to `Wow.exe`. When there is no command, it is
+`umu-run %command%` where `umu-run` is on the `PATH` (looked for once a
+run), Proton through umu-launcher, or else `wine %command%`
+(`launch::Defaults`). `WINEPREFIX` is set first to the client's `.prefix`
+folder beside `Wow.exe`, so each client has a prefix of its own that goes
+with it, and a `WINEPREFIX` among the client's variables, set after it,
+wins. Empty, the clients dialog's fields show what is used instead, and
+under the environment variables a list says what the launcher adds, whole:
+the prefix, and the mods' `WINEDLLOVERRIDES` (below).
 `~` and `$HOME` expand as in a terminal. A command must have `%command%`,
 since mods' setups run through it too: one without it (handing the game
 to Lutris or Steam, say) is refused, as the clients dialog says under it.
@@ -223,8 +231,9 @@ to Lutris or Steam, say) is refused, as the clients dialog says under it.
 **Mods** (`core/src/mods.rs`, `src/clients/mods.rs`) are looked for, like
 the addons, whenever the client is read (opened, refreshed, or after
 something was installed), as the list of mods describes them. A mod is
-there when its marker is (`.old_launcher-<id>.toml` beside `Wow.exe`,
-recording the release installed), when anything it or its setup writes is,
+there when its marker is (recording the release installed, under `mods`
+in the client folder's notes, below; 0.9.0's `.old_launcher-<id>.toml`
+moves in there when read), when anything it or its setup writes is,
 or when one of its releases' files is there with that release's contents,
 or several of them whatever their contents: a lone `version.dll` of other
 contents is another mod's. The player's files don't count: uninstalling
@@ -256,10 +265,10 @@ to its own Wine. Off
 Windows, Wine loads its own copy of DLLs such as
 `version.dll` unless told otherwise, so the game starts with `name=n,b` in
 `WINEDLLOVERRIDES` for each DLL the mods there put beside `Wow.exe`, while
-they are as released (`launch::command`): added to the client's own
-environment variables each time, merged with a `WINEDLLOVERRIDES` they set
-and in place of any setting of theirs for those DLLs, and never saved in
-them. The clients dialog's Mods section says the same, and installs,
+they are as released (`launch::command`): set before the client's own
+environment variables each time, as `WINEPREFIX` is, so a
+`WINEDLLOVERRIDES` of theirs replaces it, and never saved in them. A mod's
+setup runs without it. The clients dialog's Mods section says the same, and installs,
 updates and uninstalls; uninstalling asks first, and deletes the player's
 files only when ticked. Checking aside, none of it runs while the game
 does.
@@ -275,10 +284,86 @@ leaves. The section names the file, and installing refuses too. A mod
 already there takes the files of its own release for its own, broken: a
 repair puts them right.
 
+**Clients from a torrent** (`core/src/torrent.rs`, `src/torrent.rs`,
+`src/download.rs`): the add-client form takes a magnet link, the address
+of a `.torrent` file or the file, and a folder to download into. The
+engine is librqbit, started the first time a magnet link or a download
+needs it, with a DHT it doesn't save. It listens for peers on a port the
+system picks, which it asks the router to forward (UPnP), as games do, so
+other players take pieces from it while it downloads. Its SHA-1 comes
+from RustCrypto through `librqbit-sha1-wrapper/`, patched in over its
+OpenSSL and ring options, so no C crypto library gets built.
+
+Downloads go into a hidden staging folder, `.download`, in the folder
+their files go in, never among the client's files: librqbit writes the
+pieces it downloads whole, over every file they share, and makes every
+file of the torrent it doesn't find. librqbit writes each piece to disk
+as it comes, and the download needs room on that disk alone (the player
+may pick another disk because the others are full). Once a download is
+complete, its files move into place, renamed within the disk (copied
+beside their place then renamed over it, should the staging folder be on
+another). `Wow.exe` keeps the Large Address Aware flag the folder's had.
+The staging folder then goes.
+
+A new client's torrent must hold a `Wow.exe` beside a `Data` folder, and
+its files go into a folder named after the torrent, which must be missing,
+empty, or hold only a download of it cut short. `Wow.exe` downloads alone
+first, and its version is read; the rest once the player says so (turning
+it down deletes the staging folder, and the folder made for it if that
+leaves it empty). From then on, a copy of its `.torrent` is kept by info hash in
+the data directory (`~/.local/share/old_launcher/torrents`,
+`%APPDATA%\old_launcher\torrents`), and the settings file lists the
+download (`downloads`: name, info hash, what the player gave, a file as its
+magnet link since files go, and where its files go). A download cut short
+resumes from a banner, librqbit checking what the staging folder has
+first, or is discarded from it, staging folder and all. Once its files are
+in place, the client is added, its torrent listed in `torrents` instead.
+The download stops then: nothing more is shared.
+
+Each client folder notes, in one `.old_launcher.toml` beside `Wow.exe`
+(`core/src/notes.rs`), the torrent it comes from (`torrent`), the files
+found as that torrent has them (`verified`), and its mods' markers
+(`mods`). It is written beside and renamed over, one change at a time, and
+deleted once there is nothing to note. A client forgotten and added back
+gets its torrent back from there when the clients dialog reads the folder.
+
+Checking for updates (clients dialog) fetches the torrent again from its
+address or file (a magnet link's never changes), or else reads the copy
+kept; with the copy gone, it asks the peers sharing it, by its magnet link,
+or its info hash alone. A newer one replaces the copy kept, as long as it
+holds the client in the same place. The folder is then compared with the
+torrent piece by piece, only reading, leaving out the player's files
+(`WTF`, `Interface/AddOns`, `Cache`, `Logs`, `Screenshots`, `Errors`, any
+`realmlist.wtf`) and `Wow.exe`'s Large Address Aware flag. The files found
+as the torrent has them are noted by length and modification time, so the
+next check reads only the files changed since; a download notes those it
+wrote. A piece that differs and that several files share blames them all,
+unless one of them differs anyway: downloading it writes the piece whole.
+
+Any client can be given a torrent to update from (Set update source in the
+clients dialog, or Change source), a magnet link, address or file as for a
+new client. It must hold a client, in a folder named as the client's is
+when it has it in one, since its files go where the torrent has them. It is
+kept like a downloaded client's, and the client is checked against it.
+
+Updating downloads the files that differ: copies of those there go into
+the staging folder first, so only their pieces that differ download, then
+only those files move into the client folder. The player's files are
+never among them, so they stay as they are. A `Wow.exe` among them is
+read in the staging folder first, and nothing goes in place unless it is
+3.3.5a's: a torrent given may hold another game. An update stopped or cut
+short leaves the client's files as they were, and what it left in the
+client's `.download` goes at the next start; those of clients still being
+downloaded stay, to resume. The files go in place once the
+game is closed, and the game waits while they do. The dialog shows the
+progress, the peers, the pieces, the speeds and the time left, and can be
+hidden behind a banner.
+
 **Quitting** (Ctrl+Q, or closing the window) asks first while something
 it would cut short is under way: an addon being installed, uninstalled or
-repaired, saved settings being deleted or imported, or a mod being
-installed, repaired or removed. The dialog lists them.
+repaired, saved settings being deleted or imported, a mod being
+installed, repaired or removed, or a client being downloaded or updated.
+The dialog lists them.
 
 **Showing the game on Discord**, when the settings say so (`discord` in the
 settings file, off by default), runs the game's command as the child of the
@@ -293,9 +378,10 @@ open or not. When Discord isn't running, the wrapper looks for it again
 every 15 seconds. A wrapper that hands the game over and exits ends the
 status with it. The application's ID is public and no secret is involved.
 
-The only file outside the clients lists the client folders, how each one
-starts, the sources picked per addon and whether to use the GitHub CLI's
-login and to show the game on Discord:
+Outside the clients, besides the catalogs cached and the copies of the
+clients' torrents, the only file lists the client folders, how each one
+starts, the torrents they downloaded from, the sources picked per addon and
+whether to use the GitHub CLI's login and to show the game on Discord:
 `~/.config/old_launcher/config.toml` (`%APPDATA%\old_launcher\config.toml`
 on Windows), or `$OLD_LAUNCHER_CONFIG` when set. If it can't be read, the
 launcher does nothing else until you choose: it shows why, where the file
@@ -307,15 +393,18 @@ edit it (then read it again), quit, or overwrite it with new settings.
 - `core/`: data and filesystem logic, no GUI and no network (TOC parsing,
   client detection, archive extraction, install/uninstall/repair/clean,
   the catalog schema, adoption, launch commands, the `library` the list
-  is filtered from, and the mods). Unit-tested against temporary
-  directories.
+  is filtered from, the mods, and comparing a client with its torrent).
+  Unit-tested against temporary directories.
 - `indexer/`: the CLI that builds `index/wotlk.json` and `index/mods.json`
   from the upstream sources.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
-  shell, with one TEA cell per screen (`setup`, `clients`, `settings`, and
-  `addons` with its cards and confirmation dialogs), `github.rs` signs
-  downloads in to GitHub, and `discord.rs` shows the game on Discord.
-  Screens are tested with `iced_test::simulator`.
+  shell, with one TEA cell per screen (`setup`, `clients`, `settings`,
+  `download`, and `addons` with its cards and confirmation dialogs),
+  `torrent.rs` wraps librqbit, `github.rs` signs downloads in to GitHub,
+  and `discord.rs` shows the game on Discord. Screens are tested with
+  `iced_test::simulator`, downloads between two librqbit sessions on
+  localhost.
+- `librqbit-sha1-wrapper/`: librqbit's hashes on RustCrypto (see above).
 - `docs/plans/`: work planned but not started.
 
 Nothing outside tests may panic on purpose: the workspace denies `unwrap`,
@@ -339,6 +428,33 @@ cargo test --lib github -- --ignored
 # Installs the newest Lumenveil index/mods.json lists into a temporary
 # client:
 cargo test --lib mods -- --ignored
+# Joins the swarm of the torrent of a 3.3.5a client (a magnet link, or a
+# .torrent's address or file), downloads its Wow.exe alone, reads its
+# version, and turns the client down:
+OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' \
+    cargo test --lib download::tests::a_real_torrent -- --ignored --nocapture
+# Checks the folder that torrent downloaded into against it, twice, and
+# says what an update would download. The check notes what it found in
+# that folder: point it at a folder of links (cp -rs) to keep a client
+# as it is.
+OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' OLD_LAUNCHER_TEST_TORRENT_CLIENT=/tmp/links \
+    cargo test --release --lib download::tests::a_real_client_is_checked \
+    -- --ignored --nocapture
+# Updates a copy of that client, changed (a file removed, a byte changed:
+# cp -a --reflink=auto makes one at no cost on btrfs and XFS), from the
+# swarm, through a staging folder, then checks it again:
+OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' OLD_LAUNCHER_TEST_TORRENT_CLIENT=/tmp/copy \
+    cargo test --release --lib download::tests::a_real_client_is_updated \
+    -- --ignored --nocapture
+# Moves a download's files from the temporary folder to a folder on
+# another disk, which renaming can't do (a tmpfs /tmp and /home will do):
+OLD_LAUNCHER_TEST_OTHER_DISK=~/somewhere \
+    cargo test -p old_launcher_core torrent::tests::files_move_across_disks -- --ignored
+# Makes a torrent of a client folder, only read, and checks a folder of
+# links to it against it, twice:
+OLD_LAUNCHER_TEST_CLIENT_FILES="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release -p old_launcher_core torrent::tests::a_real_client \
+    -- --ignored --nocapture
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored

@@ -39,6 +39,30 @@ pub struct Config {
     /// install from the source the catalog lists first.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sources: BTreeMap<String, String>,
+    /// The torrents clients were downloaded from, by client folder, to
+    /// check them against later.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub torrents: BTreeMap<PathBuf, ClientTorrent>,
+    /// The clients being downloaded, not yet in their folders: they are
+    /// added once they are.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub downloads: Vec<ClientTorrent>,
+}
+
+/// The torrent a client was downloaded from, or is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientTorrent {
+    /// Its name, to tell the player what is downloading.
+    pub name: String,
+    /// Its info hash, which names the copy of its `.torrent` the launcher
+    /// keeps with its data.
+    pub info_hash: String,
+    /// What the player gave for it: a magnet link, the address of a
+    /// `.torrent` (fetched again when checking for updates, for a newer
+    /// one), or a file.
+    pub source: String,
+    /// The folder its files go in: the client folder, or one above it.
+    pub folder: PathBuf,
 }
 
 impl Config {
@@ -108,6 +132,7 @@ impl Config {
     pub fn remove(&mut self, root: &Path) {
         self.installations.retain(|path| path != root);
         self.launch.remove(root);
+        self.torrents.remove(root);
 
         if self.selected.as_deref() == Some(root) {
             self.selected = self.installations.first().cloned();
@@ -243,6 +268,21 @@ mod tests {
             discord: true,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
+            torrents: BTreeMap::from([(
+                "/games/wotlk".into(),
+                ClientTorrent {
+                    name: "World of Warcraft 3.3.5a".into(),
+                    info_hash: "c0ffee".repeat(6) + "c0ff",
+                    source: "magnet:?xt=urn:btih:c0ffee".into(),
+                    folder: "/games/wotlk".into(),
+                },
+            )]),
+            downloads: vec![ClientTorrent {
+                name: "HD".into(),
+                info_hash: "decaf".repeat(8),
+                source: "/home/player/Downloads/hd.torrent".into(),
+                folder: "/games/HD".into(),
+            }],
         };
         config.set_launch(
             Path::new("/games/war mane"),
@@ -293,7 +333,9 @@ mod tests {
             !written.contains("launch")
                 && !written.contains("sources")
                 && !written.contains("github")
-                && !written.contains("discord"),
+                && !written.contains("discord")
+                && !written.contains("torrents")
+                && !written.contains("downloads"),
             "nothing to write: {written}"
         );
     }
@@ -307,6 +349,16 @@ mod tests {
             discord: false,
             launch: BTreeMap::new(),
             sources: BTreeMap::new(),
+            torrents: BTreeMap::from([(
+                "/games/wotlk".into(),
+                ClientTorrent {
+                    name: "WotLK".into(),
+                    info_hash: "c0ffee".into(),
+                    source: "https://example.com/wotlk.torrent".into(),
+                    folder: "/games".into(),
+                },
+            )]),
+            downloads: Vec::new(),
         };
         let custom = Launch {
             env: String::new(),
@@ -322,6 +374,7 @@ mod tests {
         assert_eq!(config.installations, [PathBuf::from("/games/warmane")]);
         assert_eq!(config.selected, Some(PathBuf::from("/games/warmane")));
         assert!(config.launch.is_empty());
+        assert!(config.torrents.is_empty(), "nor its torrent");
     }
 
     #[test]

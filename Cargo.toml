@@ -21,6 +21,9 @@ log = { workspace = true }
 env_logger = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Downloading clients through BitTorrent, and reading what a torrent holds.
+librqbit = { workspace = true }
+librqbit-core = { workspace = true }
 
 [build-dependencies]
 winresource = { workspace = true }
@@ -38,7 +41,7 @@ tokio = { workspace = true, features = ["net", "io-util"] }
 
 [workspace]
 resolver = "3"
-members = ["core", "indexer"]
+members = ["core", "indexer", "librqbit-sha1-wrapper"]
 
 [workspace.package]
 version = "0.9.0"
@@ -99,10 +102,19 @@ rars = "0.12"
 # pure-Rust zlib the zip crate uses.
 tar = { version = "0.4", default-features = false }
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# The BitTorrent engine, with none of its features: its TLS ones bring
+# aws-lc, and reqwest gets rustls on ring from the launcher's own features.
+# Its hashes are patched to pure Rust below.
+librqbit = { version = "9.0.1", default-features = false }
+# Its torrent parser wants a hash feature named; the patched hashes make
+# this one pure Rust too, whatever its name says.
+librqbit-core = { version = "9.0.1", default-features = false, features = ["sha1-crypto-hash"] }
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
 # Checks downloads against the checksums their publishers give.
 sha2 = "0.10"
+# Checks a client folder against the pieces of its torrent.
+sha1 = "0.11"
 # Lists running processes outside Windows, to tell whether a client's game
 # is running under Wine or Proton.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
@@ -122,5 +134,7 @@ strip = true
 # launcher is written against. Every iced crate in the tree must come from
 # the same git source.
 [patch.crates-io]
+# Pure-Rust hashes for librqbit, instead of OpenSSL or aws-lc.
+librqbit-sha1-wrapper = { path = "librqbit-sha1-wrapper" }
 iced = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
 iced_test = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }

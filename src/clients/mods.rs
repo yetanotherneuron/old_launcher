@@ -10,7 +10,7 @@ use std::process::Stdio;
 use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
 use iced::widget::{button, checkbox, column, container, progress_bar, row, space, text};
-use iced::{Center, Element, Fill, Task, Widget};
+use iced::{Center, Element, Fill, Right, Task, Widget};
 use sipper::Sender;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -126,6 +126,8 @@ pub enum Message {
     Checked(PathBuf, String, Result<Option<Status>, String>),
     /// A mod's name, a link to its page, was pressed.
     OpenPage(String),
+    /// Its page couldn't be opened: why.
+    Unopened(String),
     /// Install, or update to the newest release, was pressed.
     Install(String),
     /// Repair was pressed.
@@ -409,9 +411,10 @@ impl State {
             }
             Message::OpenPage(page) => {
                 log::info!("Opening {page}");
-                if let Err(error) = open::that_detached(&page) {
-                    errors.report(format!("Could not open {page}: {error}"));
-                }
+                Action::task(crate::opening(page, None).map(Message::Unopened))
+            }
+            Message::Unopened(error) => {
+                errors.report(error);
                 Action::none()
             }
             Message::Install(id) => {
@@ -898,24 +901,30 @@ impl State {
             });
 
         column![
+            // What it is, and beside it what can be done, and how it is.
             row![
-                button(
-                    text(format!("{} ↗", listed.name))
-                        .size(14)
-                        .font(style::BOLD)
-                )
-                .style(button::text)
-                .padding(0)
-                .on_press(Message::OpenPage(listed.source.page.clone())),
-                text(&listed.source.name).size(13).style(text::secondary),
-            ]
-            .spacing(8)
-            .align_y(Center),
-            (!listed.description.is_empty())
-                .then(|| text(&listed.description).size(13).style(text::secondary)),
-            row![state, space::horizontal(), buttons]
+                column![
+                    row![
+                        button(
+                            text(format!("{} ↗", listed.name))
+                                .size(14)
+                                .font(style::BOLD)
+                        )
+                        .style(button::text)
+                        .padding(0)
+                        .on_press(Message::OpenPage(listed.source.page.clone())),
+                        text(&listed.source.name).size(13).style(text::secondary),
+                    ]
+                    .spacing(8)
+                    .align_y(Center),
+                    (!listed.description.is_empty())
+                        .then(|| text(&listed.description).size(13).style(text::secondary)),
+                ]
                 .spacing(8)
-                .align_y(Center),
+                .width(Fill),
+                column![buttons, state].spacing(6).align_x(Right),
+            ]
+            .spacing(12),
             blocked.map(|why| text(why).size(13).style(text::warning)),
             column(problems).spacing(4),
             note,

@@ -5,6 +5,8 @@ use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
 use iced::{Border, Color, Fit, Font, Theme, Widget, border, color, font};
 
+use crate::backdrop::backdrop;
+
 /// A trash can, drawn in black like every icon: the buttons tint them.
 pub const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
 
@@ -263,7 +265,8 @@ pub fn icon_button<'a, Message: Clone + 'a>(
 }
 
 /// Shows `dialog`, if any, centered over a dimmed `base`; clicking outside it
-/// sends `on_blur`.
+/// sends `on_blur`. While it shows, the mouse doesn't reach `base`: neither
+/// its clicks nor its wheel.
 ///
 /// `base` sits in the same place whether a dialog is open or not, so it keeps
 /// its widget state (scroll positions, focus) while dialogs come and go.
@@ -275,7 +278,7 @@ pub fn modal<'a, Message: Clone + 'a>(
     stack![
         base,
         dialog.map(|dialog| {
-            opaque(
+            backdrop(
                 mouse_area(center(opaque(dialog)).style(|_theme| {
                     container::Style {
                         background: Some(
@@ -292,4 +295,67 @@ pub fn modal<'a, Message: Clone + 'a>(
             )
         }),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use iced::mouse::ScrollDelta;
+    use iced::time::Instant;
+    use iced::widget::scrollable;
+    use iced::{Event, Fill, Point, window};
+    use iced_test::simulator;
+
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq)]
+    enum Scrolled {
+        /// The list says how far down it is, whenever it is told it, moved
+        /// or not.
+        List(f32),
+        Dialog,
+        Blur,
+    }
+
+    /// Whether scrolling at `at` scrolls a long list filling the window,
+    /// and whether it scrolls a `dialog`, when there is one, in the middle
+    /// (of a 1024 by 768 window). A list scrolls with a levitating cursor
+    /// too, as tooltips leave it: what the dialog is shown over must keep
+    /// the wheel.
+    fn scrolled(dialog: bool, at: Point) -> (bool, bool) {
+        let list = scrollable(container(text("the list")).width(Fill).height(4000))
+            .on_scroll(|scroll| Scrolled::List(scroll.viewport.absolute_offset().y));
+        let dialog = dialog.then(|| {
+            mouse_area(container(text("the dialog")).width(200).height(100))
+                .on_scroll(|_| Scrolled::Dialog)
+        });
+
+        let mut ui = simulator(modal(list, dialog, Scrolled::Blur));
+        ui.point_at(at);
+        let _ = ui.scroll(ScrollDelta::Lines { x: 0.0, y: -3.0 });
+        // A scroll may glide over a few frames.
+        let start = Instant::now();
+        let _ = ui.simulate((1..=10).map(|frame| {
+            Event::Window(window::Event::RedrawRequested(
+                start + Duration::from_millis(frame * 50),
+            ))
+        }));
+
+        let messages: Vec<Scrolled> = ui.into_messages().collect();
+        let list = messages
+            .iter()
+            .any(|message| matches!(message, Scrolled::List(down) if *down > 0.0));
+
+        (list, messages.contains(&Scrolled::Dialog))
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_dialog_and_never_what_is_under_it() {
+        let (corner, middle) = (Point::new(5.0, 5.0), Point::new(512.0, 384.0));
+
+        assert_eq!(scrolled(false, corner), (true, false));
+        assert_eq!(scrolled(true, corner), (false, false), "beside the dialog");
+        assert_eq!(scrolled(true, middle), (false, true), "over the dialog");
+    }
 }

@@ -10,9 +10,11 @@ pub use old_launcher_core as core;
 mod action;
 mod activity;
 mod addons;
+mod backdrop;
 mod catalog;
 mod clients;
 pub mod discord;
+mod download;
 mod errors;
 mod game;
 mod github;
@@ -26,9 +28,11 @@ mod setup;
 mod style;
 #[cfg(test)]
 mod testing;
+mod torrent;
 mod transfer;
 mod update;
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -99,6 +103,8 @@ pub struct App {
     recognize: recognize::State,
     transfer: transfer::State,
     clients: clients::State,
+    /// Clients downloaded with BitTorrent, and their updates.
+    download: download::State,
     /// The games started, and the selected client's when found running.
     game: game::State,
     /// A newer launcher version than this one, when published.
@@ -157,6 +163,8 @@ pub enum Message {
     Transfer(transfer::Message),
     /// An interaction with the clients dialog.
     Clients(clients::Message),
+    /// A client downloading, or checked for updates.
+    Download(download::Message),
     /// An interaction with the proposal to recognize addons.
     Recognize(recognize::Message),
     /// Something happened to a game.
@@ -191,6 +199,8 @@ pub enum Message {
     OpenRepository,
     /// Open the launcher's page, with the downloads, in the browser.
     OpenPage,
+    /// A page, folder or file couldn't be opened: why.
+    Unopened(String),
     /// The config was written.
     Saved(Result<(), String>),
     /// Hide the error banner.
@@ -315,6 +325,12 @@ impl App {
             recognize: recognize::State::default(),
             transfer: transfer::State::default(),
             clients: clients::State::default(),
+            download: download::State::new(
+                dirs::data_dir()
+                    .unwrap_or_default()
+                    .join("old_launcher")
+                    .join("torrents"),
+            ),
             game: game::State::default(),
             latest: None,
             quitting: false,
@@ -332,8 +348,8 @@ impl App {
     }
 
     /// Gets going with a readable config: opens the last client (or asks
-    /// for one), fetches the published catalog, and looks for a newer
-    /// launcher.
+    /// for one), fetches the published catalog, looks for a newer launcher,
+    /// and deletes what updates cut short left in the clients.
     fn start(&mut self) -> Task<Message> {
         let last = self
             .config
@@ -356,6 +372,7 @@ impl App {
             open,
             Task::perform(update::check(self.client.clone()), Message::UpdateChecked),
             self.sign_in(),
+            self.download.sweep(&self.config).map(Message::Download),
         ])
     }
 
@@ -381,27 +398,21 @@ impl App {
 
                 match action.instruction {
                     Some(setup::Instruction::Added(installation)) => {
-                        let root = installation.root().to_path_buf();
-
-                        if !self.config.installations.contains(&root) {
-                            self.config.installations.push(root.clone());
+                        Task::batch([task, self.add(installation)])
+                    }
+                    Some(setup::Instruction::Torrent { source, into }) => {
+                        // The first-run form stays under the download's
+                        // dialog until there is a client.
+                        if !self.config.installations.is_empty() {
+                            self.setup = None;
                         }
-                        // Added from the clients dialog, which shows it next.
-                        let read = if self.clients.is_open() {
-                            self.clients.read(&root).map(Message::Clients)
-                        } else {
-                            Task::none()
-                        };
+                        let start = self.download.start(
+                            download::Request::New { source, into },
+                            &self.config,
+                            self.client.as_ref().map_err(String::as_str),
+                        );
 
-                        self.config.selected = Some(root);
-                        self.selected = Selected::Open {
-                            installation,
-                            snapshot: None,
-                        };
-                        self.setup = None;
-                        self.recognize.clear();
-
-                        Task::batch([task, read, self.rescan(), self.save()])
+                        Task::batch([task, start.map(Message::Download)])
                     }
                     Some(setup::Instruction::Cancelled) => {
                         self.setup = None;
@@ -477,8 +488,13 @@ impl App {
             }
             Message::Clients(message) => {
                 // The mods' banners show, and their work ends, with the
-                // dialog closed too.
-                if !self.clients.is_open() && !matches!(message, clients::Message::Mods(_)) {
+                // dialog closed too; and an editor that couldn't open says so.
+                if !self.clients.is_open()
+                    && !matches!(
+                        message,
+                        clients::Message::Mods(_) | clients::Message::Unopened(_)
+                    )
+                {
                     return Task::none();
                 }
                 let current = self.selected.path().map(Path::to_path_buf);
@@ -504,11 +520,37 @@ impl App {
                         self.setup = Some(setup::State::new(true));
                         Task::batch([task, operation::focus(setup::PATH)])
                     }
+                    Some(clients::Instruction::Torrent(root)) => {
+                        let start = self.download.start(
+                            download::Request::Check(root),
+                            &self.config,
+                            self.client.as_ref().map_err(String::as_str),
+                        );
+
+                        Task::batch([task, start.map(Message::Download)])
+                    }
+                    Some(clients::Instruction::Adopt { root, source }) => {
+                        let start = self.download.start(
+                            download::Request::Adopt { root, source },
+                            &self.config,
+                            self.client.as_ref().map_err(String::as_str),
+                        );
+
+                        Task::batch([task, start.map(Message::Download)])
+                    }
+                    Some(clients::Instruction::Restore(root, torrent)) => {
+                        if !self.config.installations.contains(&root) {
+                            return task;
+                        }
+                        let _ = self.config.torrents.insert(root, torrent);
+                        Task::batch([task, self.save()])
+                    }
                     Some(clients::Instruction::Remove) => {
                         let Some(removed) = current else {
                             return task;
                         };
                         log::info!("Forgetting the client at {}", removed.display());
+                        let stopped = self.download.forget(&removed).map(Message::Download);
                         self.config.remove(&removed);
                         self.selected = Selected::Nothing;
                         self.recognize.clear();
@@ -526,7 +568,7 @@ impl App {
                             }
                         };
 
-                        Task::batch([task, open, self.save()])
+                        Task::batch([task, stopped, open, self.save()])
                     }
                     Some(clients::Instruction::Switched(switched)) => {
                         if let Selected::Open { installation, .. } = &mut self.selected
@@ -546,6 +588,78 @@ impl App {
                         Task::batch([task, self.save()])
                     }
                     Some(clients::Instruction::Close { edited: false }) | None => task,
+                }
+            }
+            Message::Download(message) => {
+                let playing = self
+                    .download
+                    .root()
+                    .is_some_and(|root| self.game.phase(root).is_some());
+                let action = self.download.update(
+                    message,
+                    &self.config,
+                    self.client.as_ref().map_err(String::as_str),
+                    playing,
+                    &mut self.errors,
+                );
+                let task = action.task.map(Message::Download);
+
+                match action.instruction {
+                    Some(download::Instruction::Pending(torrent)) => {
+                        self.config
+                            .downloads
+                            .retain(|pending| pending.info_hash != torrent.info_hash);
+                        self.config.downloads.push(torrent);
+                        Task::batch([task, self.save()])
+                    }
+                    Some(download::Instruction::Discarded(info_hash)) => {
+                        self.config
+                            .downloads
+                            .retain(|pending| pending.info_hash != info_hash);
+                        Task::batch([task, self.save()])
+                    }
+                    Some(download::Instruction::Added {
+                        installation,
+                        torrent,
+                        notice,
+                    }) => {
+                        self.config
+                            .downloads
+                            .retain(|pending| pending.info_hash != torrent.info_hash);
+                        let _ = self
+                            .config
+                            .torrents
+                            .insert(installation.root().to_path_buf(), torrent);
+                        self.notice = Some(notice);
+                        Task::batch([task, self.add(installation)])
+                    }
+                    // Unless the client was removed meanwhile.
+                    Some(
+                        download::Instruction::Saved(root, _)
+                        | download::Instruction::Updated { root, .. },
+                    ) if !self.config.installations.contains(&root) => task,
+                    Some(download::Instruction::Saved(root, torrent)) => {
+                        let _ = self.config.torrents.insert(root, torrent);
+                        Task::batch([task, self.save()])
+                    }
+                    Some(download::Instruction::Updated { root, notice }) => {
+                        self.notice = Some(notice);
+                        // Its files changed: what the clients dialog says of
+                        // it, and its addons, if it is shown.
+                        let current = self.selected.path().map(Path::to_path_buf);
+                        let changed = self
+                            .clients
+                            .changed(&root, current.as_deref())
+                            .map(Message::Clients);
+                        let rescan = if current.as_deref() == Some(root.as_path()) {
+                            self.rescan()
+                        } else {
+                            Task::none()
+                        };
+
+                        Task::batch([task, changed, rescan, self.save()])
+                    }
+                    None => task,
                 }
             }
             Message::ManageClients => self
@@ -575,11 +689,7 @@ impl App {
                     }
                     Some(settings::Instruction::OpenLink(url)) => {
                         log::info!("Opening {url}");
-                        if let Err(error) = open::that_detached(url) {
-                            self.errors.report(format!("Could not open {url}: {error}"));
-                        }
-
-                        task
+                        Task::batch([task, opening(url, None).map(Message::Unopened)])
                     }
                     None => task,
                 }
@@ -620,7 +730,9 @@ impl App {
                 let Selected::Open { installation, .. } = &self.selected else {
                     return Task::none();
                 };
-                if self.clients.holds_back(installation.root()) {
+                if self.clients.holds_back(installation.root())
+                    || self.download.holds_back(installation.root())
+                {
                     return Task::none();
                 }
                 let launch = self.config.launch(installation.root());
@@ -787,16 +899,13 @@ impl App {
                 log::info!("Opening {} in the file manager", addons.display());
 
                 // A fresh client has no AddOns folder until the first install.
-                let opened = std::fs::create_dir_all(&addons)
-                    .map_err(|error| error.to_string())
-                    .and_then(|()| open::that_detached(&addons).map_err(|error| error.to_string()));
-
-                if let Err(error) = opened {
+                if let Err(error) = std::fs::create_dir_all(&addons) {
                     self.errors
                         .report(format!("Could not open {}: {error}", addons.display()));
+                    return Task::none();
                 }
 
-                Task::none()
+                opening(addons, None).map(Message::Unopened)
             }
             Message::Refresh => {
                 log::info!("Refreshing on request");
@@ -804,20 +913,14 @@ impl App {
             }
             Message::OpenRepository => {
                 log::info!("Opening {REPOSITORY} in the browser");
-                if let Err(error) = open::that_detached(REPOSITORY) {
-                    self.errors
-                        .report(format!("Could not open {REPOSITORY}: {error}"));
-                }
-
-                Task::none()
+                opening(REPOSITORY, None).map(Message::Unopened)
             }
             Message::OpenPage => {
                 log::info!("Opening {} in the browser", update::PAGE);
-                if let Err(error) = open::that_detached(update::PAGE) {
-                    self.errors
-                        .report(format!("Could not open {}: {error}", update::PAGE));
-                }
-
+                opening(update::PAGE, None).map(Message::Unopened)
+            }
+            Message::Unopened(error) => {
+                self.errors.report(error);
                 Task::none()
             }
             Message::Saved(result) => {
@@ -890,6 +993,8 @@ impl App {
             Message::Escape => {
                 if self.quitting {
                     self.update(Message::KeepOpen)
+                } else if self.download.is_open() {
+                    self.update(Message::Download(download::Message::Hide))
                 } else if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
                 } else if self.settings.is_open() {
@@ -931,6 +1036,7 @@ impl App {
             .into_iter()
             .chain(self.clients.under_way())
             .chain(self.transfer.under_way())
+            .chain(self.download.under_way())
             .collect()
     }
 
@@ -949,7 +1055,25 @@ impl App {
         if self.config.installations.is_empty()
             && let Some(setup) = &self.setup
         {
-            return center(setup.view().map(Message::Setup)).padding(20).boxed();
+            let (dialog, on_blur) = self
+                .foremost()
+                .map_or((None, Message::KeepOpen), |(dialog, on_blur)| {
+                    (Some(dialog), on_blur)
+                });
+            // A download hidden from here goes on behind its banner.
+            let downloading = self
+                .download
+                .banner(&self.config)
+                .map(|banner| banner.map(Message::Download));
+
+            return style::modal(
+                column![downloading, center(setup.view().map(Message::Setup))]
+                    .spacing(14)
+                    .padding(20),
+                dialog,
+                on_blur,
+            )
+            .boxed();
         }
 
         let title = button(text("Old Launcher").size(24).font(style::BOLD))
@@ -1023,10 +1147,9 @@ impl App {
             .on_press_maybe(
                 (matches!(self.selected, Selected::Open { .. })
                     && game.is_none()
-                    && !self
-                        .selected
-                        .path()
-                        .is_some_and(|root| self.clients.holds_back(root)))
+                    && !self.selected.path().is_some_and(|root| {
+                        self.clients.holds_back(root) || self.download.holds_back(root)
+                    }))
                 .then_some(Message::Play),
             ),
         ]
@@ -1120,6 +1243,11 @@ impl App {
             .style(style::banner(style::Tone::Success))
         });
 
+        let downloading = self
+            .download
+            .banner(&self.config)
+            .map(|banner| banner.map(Message::Download));
+
         let graphics = self
             .clients
             .banner(self.selected.path(), game.is_some())
@@ -1149,18 +1277,23 @@ impl App {
         // iced's keyed diff mistakes a child inserted before the last one for
         // one appended after it, and hands out the wrong widget states.
         let content = column![
-            column![header, client, error, notice, graphics, proposal].spacing(14),
+            column![
+                header,
+                client,
+                error,
+                notice,
+                downloading,
+                graphics,
+                proposal
+            ]
+            .spacing(14),
             container(body).height(Fill),
         ]
         .spacing(14)
         .padding(20);
 
-        let (dialog, on_blur) = if self.quitting {
-            // Over whatever dialog the work goes on in.
-            (
-                Some(quit_dialog(self.under_way()).boxed()),
-                Message::KeepOpen,
-            )
+        let (dialog, on_blur) = if let Some((dialog, on_blur)) = self.foremost() {
+            (Some(dialog), on_blur)
         } else if let Some(setup) = &self.setup {
             // Added from the clients dialog, which comes back afterwards.
             (
@@ -1186,6 +1319,7 @@ impl App {
                             self.selected.path(),
                             installation,
                             game.is_some(),
+                            self.download.is_running(),
                         )
                         .map(Message::Clients)
                         .boxed(),
@@ -1211,8 +1345,28 @@ impl App {
         style::modal(content, dialog, on_blur).boxed()
     }
 
+    /// The dialog over every other, if any, and what clicking beside it
+    /// sends: whether to quit, over whatever dialog the work goes on in, or
+    /// how a download goes, which the work goes on without.
+    fn foremost(&self) -> Option<(Element<'_, Message>, Message)> {
+        if self.quitting {
+            return Some((quit_dialog(self.under_way()).boxed(), Message::KeepOpen));
+        }
+        let playing = self
+            .download
+            .root()
+            .is_some_and(|root| self.game.phase(root).is_some());
+
+        self.download.dialog(playing).map(|dialog| {
+            (
+                dialog.map(Message::Download).boxed(),
+                Message::Download(download::Message::Hide),
+            )
+        })
+    }
+
     /// Keyboard shortcuts (see [`shortcut`]), the window asking to close or
-    /// getting the focus back, and the games being followed.
+    /// getting the focus back, the games being followed, and the downloads.
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
@@ -1222,6 +1376,7 @@ impl App {
                 matches!(event, Event::Window(window::Event::Focused)).then_some(Message::Focused)
             }),
             self.game.subscription().map(Message::Game),
+            self.download.subscription().map(Message::Download),
         ])
     }
 
@@ -1282,6 +1437,31 @@ impl App {
         {
             self.recognize.propose(snapshot, &self.catalog.entries);
         }
+    }
+
+    /// Adds `installation`, which opened, and shows it.
+    fn add(&mut self, installation: Installation) -> Task<Message> {
+        let root = installation.root().to_path_buf();
+
+        if !self.config.installations.contains(&root) {
+            self.config.installations.push(root.clone());
+        }
+        // Added from the clients dialog, which shows it next.
+        let read = if self.clients.is_open() {
+            self.clients.read(&root).map(Message::Clients)
+        } else {
+            Task::none()
+        };
+
+        self.config.selected = Some(root);
+        self.selected = Selected::Open {
+            installation,
+            snapshot: None,
+        };
+        self.setup = None;
+        self.recognize.clear();
+
+        Task::batch([read, self.rescan(), self.save()])
     }
 
     /// Starts checking the client at `path`.
@@ -1375,8 +1555,8 @@ fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
     let explanation = if finished {
         "Everything is finished now."
     } else {
-        "Quitting stops this halfway. An addon cut short may need installing again, and a mod \
-         repairing before the game starts."
+        "Quitting stops this halfway. An addon cut short may need installing again, a mod \
+         repairing before the game starts, and a download resuming."
     };
 
     container(
@@ -1461,6 +1641,35 @@ fn size(bytes: u64) -> String {
     }
 }
 
+/// Opens `target`, a web page, folder or file, with the program the system
+/// opens it with, or with `program` (Notepad, say). Finding one that takes
+/// it takes a while (`open` gives each one it tries a quarter of a second
+/// to fail), so it happens away from the window: waiting on it froze the
+/// window, and what was typed or moved meanwhile came all at once, more than
+/// iced's subscriptions take. Only a failure comes back, for the banner.
+fn opening(target: impl Into<OsString>, program: Option<&'static str>) -> Task<String> {
+    let target = target.into();
+
+    Task::perform(
+        async move {
+            let shown = target.to_string_lossy().into_owned();
+            let opened = tokio::task::spawn_blocking(move || match program {
+                Some(program) => open::with_detached(&target, program),
+                None => open::that_detached(&target),
+            })
+            .await;
+
+            match opened {
+                Ok(Ok(())) => None,
+                Ok(Err(error)) => Some(format!("Could not open {shown}: {error}")),
+                Err(error) => Some(format!("Could not open {shown}: {error}")),
+            }
+        },
+        std::convert::identity,
+    )
+    .and_then(Task::done)
+}
+
 /// Runs filesystem work on a blocking thread, so the UI never waits on disk.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, core::Error> + Send + 'static,
@@ -1526,6 +1735,7 @@ mod tests {
             recognize: recognize::State::default(),
             transfer: transfer::State::default(),
             clients: clients::State::default(),
+            download: download::State::new(PathBuf::from("torrents")),
             game: game::State::default(),
             latest: None,
             quitting: false,
@@ -1665,6 +1875,123 @@ mod tests {
 
         let _ = app.update(Message::Escape);
         assert!(!app.quitting, "Escape keeps it open too");
+    }
+
+    #[test]
+    fn a_client_from_a_torrent_is_checked_for_updates_and_one_downloading_resumed() {
+        let (_root, installation) = core::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = opened(installation);
+        let torrent = |name: &str, info_hash: &str, folder: &Path| core::config::ClientTorrent {
+            name: name.into(),
+            info_hash: info_hash.into(),
+            source: format!("magnet:?xt=urn:btih:{info_hash}"),
+            folder: folder.to_path_buf(),
+        };
+        let _ = app
+            .config
+            .torrents
+            .insert(root.clone(), torrent("WotLK", "c0ffee", &root));
+        app.config
+            .downloads
+            .push(torrent("HD", "decaf", Path::new("/games/HD")));
+
+        let messages: Vec<Message> = {
+            let mut ui = simulator(app.view());
+            assert!(ui.find("HD is not fully downloaded yet.").is_ok());
+            let _ = ui.click("Resume download").unwrap();
+            let _ = ui.click("Play").unwrap();
+            ui.into_messages().collect()
+        };
+        assert!(
+            matches!(
+                messages.as_slice(),
+                [
+                    Message::Download(download::Message::Resume(hash)),
+                    Message::Play
+                ] if hash == "decaf"
+            ),
+            "a client downloading is not one yet: the others play"
+        );
+
+        let _ = app.update(Message::ManageClients);
+        let messages: Vec<Message> = {
+            let mut ui = simulator(app.view());
+            let _ = ui.click("Check for updates").unwrap();
+            ui.into_messages().collect()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+
+        assert!(app.download.is_open());
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Updates for WotLK").is_ok());
+        assert!(ui.find("Finding the torrent…").is_ok());
+    }
+
+    #[test]
+    fn a_client_gets_its_torrent_back_from_its_folder_or_is_given_one() {
+        let (_root, installation) = core::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = opened(installation);
+        let _ = app.update(Message::ManageClients);
+
+        // Forgotten and added back: its folder still notes its torrent.
+        let torrent = core::config::ClientTorrent {
+            name: "WotLK".into(),
+            info_hash: "0123456789abcdef0123456789abcdef01234567".into(),
+            source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
+            folder: root.clone(),
+        };
+        let details = core::Details {
+            torrent: Some(torrent.clone()),
+            ..core::Details::read(&root).unwrap()
+        };
+        let _ = app.update(Message::Clients(clients::Message::Read(
+            root.clone(),
+            Ok(details),
+        )));
+        assert_eq!(app.config.torrents.get(&root), Some(&torrent));
+
+        app.config.torrents.clear();
+        for message in [
+            clients::Message::SetSource,
+            clients::Message::SourceChanged("magnet:?xt=urn:btih:c0ffee".into()),
+            clients::Message::SubmitSource,
+        ] {
+            let _ = app.update(Message::Clients(message));
+        }
+        assert!(app.download.is_open());
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Finding the torrent…").is_ok());
+    }
+
+    #[test]
+    fn a_torrent_from_the_first_run_form_downloads_over_it_or_behind_a_banner() {
+        let mut app = app(&[]);
+        app.setup = Some(setup::State::new(false));
+        for message in [
+            setup::Message::Mode(setup::Mode::Torrent),
+            setup::Message::TorrentChanged("magnet:?xt=urn:btih:c0ffee".into()),
+            setup::Message::IntoChanged("/games".into()),
+            setup::Message::Submit,
+        ] {
+            let _ = app.update(Message::Setup(message));
+        }
+        assert!(
+            app.setup.is_some(),
+            "the form stays until there is a client"
+        );
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Finding the torrent…").is_ok());
+        drop(ui);
+
+        let _ = app.update(Message::Escape);
+        let mut ui = simulator(app.view());
+        for line in ["Add a WoW 3.3.5a client", "Looking at the torrent…", "Show"] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
     }
 
     #[test]

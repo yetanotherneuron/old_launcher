@@ -57,6 +57,78 @@ pub fn client_with(files: &[(&str, &str)]) -> (tempfile::TempDir, Installation) 
     (root, installation)
 }
 
+/// A `.torrent` named `name` of `files` (path with `/` between folders,
+/// contents), in that order, in pieces of `piece_length` bytes.
+pub fn torrent_of(name: &str, files: &[(&str, &[u8])], piece_length: usize) -> Vec<u8> {
+    torrent_naming(name, files, piece_length, &[])
+}
+
+/// [`torrent_of`], naming the `trackers` that find its peers.
+pub fn torrent_naming(
+    name: &str,
+    files: &[(&str, &[u8])],
+    piece_length: usize,
+    trackers: &[&str],
+) -> Vec<u8> {
+    use sha1::{Digest, Sha1};
+
+    fn string(out: &mut Vec<u8>, bytes: &[u8]) {
+        out.extend(format!("{}:", bytes.len()).as_bytes());
+        out.extend(bytes);
+    }
+
+    let stream: Vec<u8> = files
+        .iter()
+        .flat_map(|(_, contents)| contents.iter().copied())
+        .collect();
+    let pieces: Vec<u8> = stream
+        .chunks(piece_length)
+        .flat_map(|piece| Sha1::digest(piece).to_vec())
+        .collect();
+
+    // Bencoded, with the keys of each dictionary sorted.
+    let mut info = b"d".to_vec();
+    string(&mut info, b"files");
+    info.push(b'l');
+    for (path, contents) in files {
+        info.push(b'd');
+        string(&mut info, b"length");
+        info.extend(format!("i{}e", contents.len()).as_bytes());
+        string(&mut info, b"path");
+        info.push(b'l');
+        for part in path.split('/') {
+            string(&mut info, part.as_bytes());
+        }
+        info.extend(b"ee");
+    }
+    info.push(b'e');
+    string(&mut info, b"name");
+    string(&mut info, name.as_bytes());
+    string(&mut info, b"piece length");
+    info.extend(format!("i{piece_length}e").as_bytes());
+    string(&mut info, b"pieces");
+    string(&mut info, &pieces);
+    info.push(b'e');
+
+    let mut torrent = b"d".to_vec();
+    if let Some(first) = trackers.first() {
+        string(&mut torrent, b"announce");
+        string(&mut torrent, first.as_bytes());
+        string(&mut torrent, b"announce-list");
+        torrent.push(b'l');
+        for tracker in trackers {
+            torrent.push(b'l');
+            string(&mut torrent, tracker.as_bytes());
+            torrent.push(b'e');
+        }
+        torrent.push(b'e');
+    }
+    string(&mut torrent, b"info");
+    torrent.extend(info);
+    torrent.push(b'e');
+    torrent
+}
+
 /// Writes `contents` to `file` under `root`, creating its folders.
 fn write(root: &Path, file: &str, contents: &[u8]) {
     let path = root.join(file);

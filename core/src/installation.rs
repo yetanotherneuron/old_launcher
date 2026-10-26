@@ -5,9 +5,11 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
+use crate::config::ClientTorrent;
 use crate::error::io_at;
 use crate::{
     Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Toc, Version, archive, layout,
+    torrent,
 };
 
 /// A validated 3.3.5a client directory.
@@ -38,6 +40,9 @@ pub struct Details {
     /// [`Installation::set_large_address_aware`]. `None` when its headers
     /// can't be read.
     pub large_address_aware: Option<bool>,
+    /// The torrent the folder notes it comes from, if any; see
+    /// [`torrent::origin`].
+    pub torrent: Option<ClientTorrent>,
 }
 
 /// The `realmlist.wtf` of the language a client plays in, which says which
@@ -158,22 +163,7 @@ impl Installation {
     /// itself and renamed over. Not while the game runs: Windows keeps the
     /// file of a running program.
     pub fn set_large_address_aware(&self, on: bool) -> Result<(), Error> {
-        let path = &self.executable;
-        let mut bytes = fs::read(path).map_err(io_at(path))?;
-        let offset = characteristics(&bytes).ok_or_else(|| Error::NoHeaders(path.clone()))?;
-
-        let flags = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
-        let wanted = if on {
-            flags | LARGE_ADDRESS_AWARE
-        } else {
-            flags & !LARGE_ADDRESS_AWARE
-        };
-        if wanted == flags {
-            return Ok(());
-        }
-        bytes[offset..offset + 2].copy_from_slice(&wanted.to_le_bytes());
-
-        write_over(path, &bytes)
+        set_large_address_aware(&self.executable, on)
     }
 
     /// `Interface/AddOns`, whether or not it exists yet.
@@ -490,6 +480,7 @@ impl Details {
             large_address_aware: fs::read(child(root, "Wow.exe"))
                 .ok()
                 .and_then(|bytes| large_address_aware(&bytes)),
+            torrent: torrent::origin(root),
         })
     }
 }
@@ -514,13 +505,13 @@ impl Realmlist {
 
 /// The flag of a Windows program's headers (`IMAGE_FILE_LARGE_ADDRESS_AWARE`)
 /// that lets a 32-bit program use 4 GB of memory instead of 2 GB.
-const LARGE_ADDRESS_AWARE: u16 = 0x0020;
+pub(crate) const LARGE_ADDRESS_AWARE: u16 = 0x0020;
 
 /// Where the characteristics of the Windows program in `bytes` are, if it
 /// is one: in its file header, after the `PE\0\0` its DOS header points to,
 /// and the machine, section count, time stamp, symbols and optional header
 /// size (18 bytes).
-fn characteristics(bytes: &[u8]) -> Option<usize> {
+pub(crate) fn characteristics(bytes: &[u8]) -> Option<usize> {
     let header = u32::from_le_bytes(bytes.get(0x3C..0x40)?.try_into().ok()?) as usize;
     let offset = header.checked_add(4 + 18)?;
 
@@ -532,11 +523,31 @@ fn characteristics(bytes: &[u8]) -> Option<usize> {
 
 /// Whether the Windows program in `bytes` may use 4 GB of memory, if it is
 /// one.
-fn large_address_aware(bytes: &[u8]) -> Option<bool> {
+pub(crate) fn large_address_aware(bytes: &[u8]) -> Option<bool> {
     let offset = characteristics(bytes)?;
     let flags = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
 
     Some(flags & LARGE_ADDRESS_AWARE != 0)
+}
+
+/// Sets or clears the Large Address Aware flag of the Windows program at
+/// `path`; see [`Installation::set_large_address_aware`].
+pub(crate) fn set_large_address_aware(path: &Path, on: bool) -> Result<(), Error> {
+    let mut bytes = fs::read(path).map_err(io_at(path))?;
+    let offset = characteristics(&bytes).ok_or_else(|| Error::NoHeaders(path.to_path_buf()))?;
+
+    let flags = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
+    let wanted = if on {
+        flags | LARGE_ADDRESS_AWARE
+    } else {
+        flags & !LARGE_ADDRESS_AWARE
+    };
+    if wanted == flags {
+        return Ok(());
+    }
+    bytes[offset..offset + 2].copy_from_slice(&wanted.to_le_bytes());
+
+    write_over(path, &bytes)
 }
 
 /// Writes `bytes` over the file at `path`, beside it first and renamed
@@ -706,8 +717,9 @@ const STAGING_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Deletes the staging folders in `folder` that an interrupted install left
 /// behind: those untouched for [`STAGING_AGE`], so one in use is left alone.
-/// Only folders: the mods' markers, files beside `Wow.exe`, share the
-/// prefix. What can't be read or removed is left for next time.
+/// Only folders: files beside `Wow.exe` share the prefix (0.9.0's mod
+/// markers, a file being moved in). What can't be read or removed is left
+/// for next time.
 fn sweep_staging(folder: &Path) {
     let Ok(entries) = fs::read_dir(folder) else {
         return;
