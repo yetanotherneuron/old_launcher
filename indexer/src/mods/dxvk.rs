@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use anyhow::Context;
 use old_launcher_core::mods::{Mod, Release, Source, VersionIn};
 
-use crate::mods::{Known, Published, files, published};
+use crate::mods::{Known, LeftOut, Published, files, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "doitsujin/dxvk";
@@ -24,12 +24,12 @@ const DLL: &str = "d3d9.dll";
 const FOLDER: &str = "/x32/";
 
 /// DXVK, with every release from [`FIRST`] on, the newest first. Their
-/// files go to `found`, and the releases left out to `skipped`, with why.
+/// files go to `found`, and the releases left out to `left_out`, with why.
 pub async fn gather(
     client: &reqwest::Client,
     known: &Known,
     found: &mut Known,
-    skipped: &mut Vec<String>,
+    left_out: &mut LeftOut,
 ) -> anyhow::Result<Mod> {
     let mut releases = Vec::new();
 
@@ -44,10 +44,7 @@ pub async fn gather(
                 println!("DXVK {}: {DLL}", release.version);
                 releases.push(release);
             }
-            Err(error) => {
-                println!("DXVK {tag}: left out, {error:#}");
-                skipped.push(format!("DXVK {tag}: {error:#}"));
-            }
+            Err(error) => left_out.note(format!("DXVK {tag}: left out, {error:#}"), &releases),
         }
     }
 

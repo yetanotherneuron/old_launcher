@@ -8,7 +8,7 @@ pub mod lumenveil;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use old_launcher_core::mods::{self, Mod};
+use old_launcher_core::mods::{self, Mod, Release};
 use serde::Deserialize;
 
 use crate::fetch::fetch;
@@ -69,19 +69,54 @@ pub async fn published(
         .collect())
 }
 
-/// Every mod, with the files this run found in their releases' downloads
-/// (for the next run to reuse), and the releases left out, with why.
-pub async fn gather(
-    client: &reqwest::Client,
-    known: &Known,
-) -> anyhow::Result<(Vec<Mod>, Known, Vec<String>)> {
+/// What a run gathered: every mod, the files it found in their releases'
+/// downloads (for the next run to reuse), and the releases left out, with
+/// why: those `missed` are newer than every release of their mod listed, so
+/// the launcher offers an older one until the indexer understands them,
+/// which someone has to be told; those `skipped` are older, and no loss.
+pub struct Gathered {
+    pub mods: Vec<Mod>,
+    pub found: Known,
+    pub missed: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+/// The releases a module left out so far, to tell apart those that matter.
+#[derive(Default)]
+pub struct LeftOut {
+    pub missed: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+impl LeftOut {
+    /// Notes a release left out for `reason`, as missed when `listed`, the
+    /// releases of its mod understood so far (the newest first), has none
+    /// newer than it, else as skipped.
+    pub fn note(&mut self, reason: String, listed: &[Release]) {
+        println!("{reason}");
+
+        if listed.is_empty() {
+            self.missed.push(reason);
+        } else {
+            self.skipped.push(reason);
+        }
+    }
+}
+
+/// Every mod, with what was found and what was left out.
+pub async fn gather(client: &reqwest::Client, known: &Known) -> anyhow::Result<Gathered> {
     let mut found = Known::new();
-    let mut skipped = Vec::new();
+    let mut left_out = LeftOut::default();
 
-    let lumenveil = lumenveil::gather(client, known, &mut found, &mut skipped).await?;
-    let dxvk = dxvk::gather(client, known, &mut found, &mut skipped).await?;
+    let lumenveil = lumenveil::gather(client, known, &mut found, &mut left_out).await?;
+    let dxvk = dxvk::gather(client, known, &mut found, &mut left_out).await?;
 
-    Ok((vec![lumenveil, dxvk], found, skipped))
+    Ok(Gathered {
+        mods: vec![lumenveil, dxvk],
+        found,
+        missed: left_out.missed,
+        skipped: left_out.skipped,
+    })
 }
 
 /// The files of the download at `url`, with their SHA-256: as `known` says,
@@ -117,4 +152,29 @@ pub fn known(path: &Path) -> Known {
         println!("Not reusing {}: {error}", path.display());
         Known::new()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_release_left_out_is_missed_until_a_newer_one_is_listed() {
+        let listed = |version: &str| Release {
+            version: version.to_owned(),
+            url: String::new(),
+            updated: None,
+            changes: None,
+            files: Vec::new(),
+            inside: None,
+            setup: Vec::new(),
+        };
+        let mut left_out = LeftOut::default();
+
+        left_out.note("Mod v2.0: its scripts are new".to_owned(), &[]);
+        left_out.note("Mod v0.9: it has no zip".to_owned(), &[listed("1.0")]);
+
+        assert_eq!(left_out.missed, ["Mod v2.0: its scripts are new"]);
+        assert_eq!(left_out.skipped, ["Mod v0.9: it has no zip"]);
+    }
 }

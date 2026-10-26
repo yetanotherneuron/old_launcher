@@ -17,7 +17,7 @@ use anyhow::Context;
 use old_launcher_core::mods::{Mod, Release, Source, Step};
 
 use crate::fetch::fetch;
-use crate::mods::{Known, Published, files, published};
+use crate::mods::{Known, LeftOut, Published, files, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "lumenveil/Lumenveil";
@@ -86,12 +86,12 @@ fn two_runs() -> Vec<Step> {
 }
 
 /// Lumenveil, with every release understood, the newest first. Their files
-/// go to `found`, and the releases left out to `skipped`, with why.
+/// go to `found`, and the releases left out to `left_out`, with why.
 pub async fn gather(
     client: &reqwest::Client,
     known: &Known,
     found: &mut Known,
-    skipped: &mut Vec<String>,
+    left_out: &mut LeftOut,
 ) -> anyhow::Result<Mod> {
     let mut releases = Vec::new();
 
@@ -107,8 +107,7 @@ pub async fn gather(
                 releases.push(release);
             }
             Err(error) => {
-                println!("Lumenveil {tag}: left out, {error:#}");
-                skipped.push(format!("Lumenveil {tag}: {error:#}"));
+                left_out.note(format!("Lumenveil {tag}: left out, {error:#}"), &releases);
             }
         }
     }

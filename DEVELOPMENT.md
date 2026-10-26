@@ -97,7 +97,13 @@ code, the logs and here.
 `Interface/AddOns`, such as a DLL the game loads beside `Wow.exe` or a
 patched archive in `Data`. The same indexer run writes it, and the same
 schedule commits it (`--mods-only` builds it alone, leaving the catalog as
-it is). Each mod says what it is and where it comes from, and lists its
+it is). A release the indexer doesn't understand (new setup scripts, a
+file not where it was) is left out rather than guessed at, and the
+launcher goes on offering the last one listed; when that leaves a mod's
+newest release out, the indexer exits with code 3 after writing, and the
+schedule commits what it wrote and then fails, so its owner is mailed the
+reason, which says what to teach the indexer. Each mod says what it is
+and where it comes from, and lists its
 releases, the newest first: where to download each (an archive of its
 files, or its one file itself) and every file it puts in the client folder,
 by path, with its SHA-256. An archive holds them at the same paths, or in

@@ -334,13 +334,19 @@ index:
     # pipeline was scheduled.
     - git fetch origin "$CI_DEFAULT_BRANCH"
     - git checkout -q FETCH_HEAD
-    - cargo run --release --locked --package indexer
+    # Exit code 3 means the files are written, but a mod's newest release
+    # isn't in them (its log says why): commit what there is, then fail,
+    # so the schedule's owner is mailed and teaches the indexer the release.
+    - cargo run --release --locked --package indexer || missed=$?
+    - >-
+      if [ "${missed:-0}" -ne 0 ] && [ "${missed:-0}" -ne 3 ]; then exit "$missed"; fi
     # The catalog and the list of mods, and what was found in archives that
     # never change, which the next run reuses instead of downloading them
     # again.
     - git add index/wotlk.json index/archives.json index/mods.json index/mod-archives.json
     - >-
-      if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
+      if git diff --cached --quiet; then echo "The catalog is up to date."; exit "${missed:-0}"; fi
     # No pipeline for it: nothing built depends on the catalog.
     - git -c user.name="Catalog schedule" -c user.email="$GITLAB_USER_EMAIL" commit -m "Update the catalog [skip ci]"
     - git push "https://oauth2:${CI_PUSH_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+    - exit "${missed:-0}"

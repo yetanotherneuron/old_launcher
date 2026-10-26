@@ -82,8 +82,18 @@ async fn main() -> anyhow::Result<()> {
         addons(&client, &arguments).await?;
     }
 
-    list_mods(&client, &arguments).await
+    if !list_mods(&client, &arguments).await? {
+        // Everything is written, and as good as it gets: what the schedule
+        // commits. The code tells it to fail afterwards, so someone hears.
+        std::process::exit(MISSED);
+    }
+
+    Ok(())
 }
+
+/// The exit code when the files are written but a mod's newest release
+/// isn't in them.
+const MISSED: i32 = 3;
 
 /// Builds the catalog of addons and writes it, with what was found in
 /// archives that never change.
@@ -328,10 +338,17 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
 }
 
 /// Builds the list of mods and writes it, with what was found in their
-/// releases' downloads.
-async fn list_mods(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Result<()> {
+/// releases' downloads: whether every mod's newest release is in it. One
+/// left out newer than those listed means the launcher offers an older
+/// one until the indexer is taught the new one, which is said here.
+async fn list_mods(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Result<bool> {
     let known = mods::known(&arguments.mod_archives);
-    let (listed, found, skipped) = mods::gather(client, &known).await?;
+    let mods::Gathered {
+        mods: listed,
+        found,
+        missed,
+        skipped,
+    } = mods::gather(client, &known).await?;
 
     let list = Mods {
         version: Mods::VERSION,
@@ -361,13 +378,23 @@ async fn list_mods(client: &reqwest::Client, arguments: &Arguments) -> anyhow::R
         arguments.mods.display()
     );
     if !skipped.is_empty() {
-        println!("Left out {}:", skipped.len());
+        println!("Left out {}, older than those listed:", skipped.len());
         for line in &skipped {
             println!("  {line}");
         }
     }
+    if !missed.is_empty() {
+        println!(
+            "Left out {}, NEWER than those listed: the launcher offers older ones until the \
+             indexer understands these:",
+            missed.len()
+        );
+        for line in &missed {
+            println!("  {line}");
+        }
+    }
 
-    Ok(())
+    Ok(missed.is_empty())
 }
 
 /// What earlier runs found in archives that never change, by download URL,
