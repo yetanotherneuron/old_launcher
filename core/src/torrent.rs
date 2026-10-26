@@ -1348,9 +1348,11 @@ mod tests {
         fs::write(&exe, &aware).unwrap();
         assert!(checked(folder.path(), &torrent).is_current());
 
+        // Changed after the check noted it: file times may be coarser than
+        // a test is quick.
         let mut patched = shipped;
         patched[0x200] ^= 0xFF;
-        fs::write(&exe, &patched).unwrap();
+        change(&exe, &patched);
         let check = checked(folder.path(), &torrent);
         assert_eq!(named(&torrent, &check.different), ["Wow.exe"]);
     }
