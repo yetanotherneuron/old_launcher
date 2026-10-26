@@ -258,7 +258,7 @@ impl Confirm {
                 )
                 .padding(10)
                 .width(Fill)
-                .style(container::rounded_box),
+                .style(style::inset),
                 row![
                     space::horizontal(),
                     button("Cancel")

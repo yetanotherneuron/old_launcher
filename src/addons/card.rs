@@ -605,7 +605,7 @@ fn folder_list(folders: &[String]) -> impl Widget<Message> + use<> {
         container(text(list).size(12))
             .padding([4, 8])
             .width(Fit.max(480))
-            .style(container::rounded_box),
+            .style(style::tooltip_box),
         tooltip::Position::Bottom,
     )
 }

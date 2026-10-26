@@ -240,7 +240,7 @@ impl State {
                     )
                     .padding(10)
                     .width(Fill)
-                    .style(container::rounded_box),
+                    .style(style::inset),
                     row![
                         space::horizontal(),
                         button("Close").style(button::text).on_press(Message::Close),

@@ -1135,7 +1135,7 @@ impl App {
                 title,
                 container(text(REPOSITORY).size(12))
                     .padding([4, 8])
-                    .style(container::rounded_box),
+                    .style(style::tooltip_box),
                 tooltip::Position::Bottom,
             ),
             version,
@@ -1584,7 +1584,7 @@ fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
                 container(column(under_way.into_iter().map(|line| text(line).size(13))).spacing(2))
                     .padding(10)
                     .width(Fill)
-                    .style(container::rounded_box)
+                    .style(style::inset)
             }),
             text(explanation).style(text::secondary),
             row![

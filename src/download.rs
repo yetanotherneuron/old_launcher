@@ -1943,7 +1943,7 @@ fn outdated<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messa
         container(column(named.chain(more)).spacing(2))
             .padding(10)
             .width(Fill)
-            .style(container::rounded_box),
+            .style(style::inset),
         text("Your settings, addons and realmlist stay as they are.")
             .size(13)
             .style(text::secondary),

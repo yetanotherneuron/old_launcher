@@ -198,7 +198,7 @@ fn review<'a>(
         container(scrollable(folders).height(Fit.max(200)).width(Fill))
             .padding(10)
             .width(Fill)
-            .style(container::rounded_box),
+            .style(style::inset),
         column(
             warnings(found, chosen, snapshot, catalog)
                 .into_iter()

@@ -100,7 +100,7 @@ impl State {
         let error = container(text(&self.error).font(Font::MONOSPACE).size(13))
             .padding(10)
             .width(Fill)
-            .style(container::rounded_box);
+            .style(style::inset);
 
         let retried = self.retried.then(|| {
             text("Read again just now: still unreadable.")

@@ -345,7 +345,7 @@ impl State {
                     container(scrollable(sections).height(Fit.max(320)).width(Fill))
                         .padding(10)
                         .width(Fill)
-                        .style(container::rounded_box),
+                        .style(style::inset),
                     column![
                         text(restores),
                         replaces,

@@ -689,7 +689,7 @@ impl State {
             )
             .padding(12)
             .width(Fill)
-            .style(container::rounded_box)
+            .style(style::inset)
         });
 
         // Windows starts Wow.exe itself.

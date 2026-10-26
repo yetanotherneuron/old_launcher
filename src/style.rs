@@ -4,9 +4,23 @@
 
 use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
-use iced::{Border, Color, Fit, Font, Theme, Widget, border, font};
+use iced::{Bottom, Color, Fill, Fit, Font, Left, Right, Theme, Top, Widget, border, font};
 
 use crate::backdrop::backdrop;
+
+/// A frame's corners, drawn in the spirit of the game's dialog frames (a
+/// gold bracket with a knot), which [`ornamented`] lays at the corners of
+/// a dialog: the same drawing turned in each file, since the screenshots'
+/// renderer doesn't turn an SVG.
+const CORNERS: [&[u8]; 4] = [
+    include_bytes!("../assets/corner-top-left.svg"),
+    include_bytes!("../assets/corner-top-right.svg"),
+    include_bytes!("../assets/corner-bottom-right.svg"),
+    include_bytes!("../assets/corner-bottom-left.svg"),
+];
+
+/// The size the corners are drawn at: the one they are designed at.
+const CORNER_SIZE: f32 = 28.0;
 
 /// A trash can, drawn in black like every icon: the buttons tint them.
 pub const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
@@ -61,9 +75,19 @@ pub mod wotlk {
     pub const WHITE: Color = color!(0xf5f5f5);
     /// `RED_FONT_COLOR`: errors.
     pub const RED: Color = color!(0xff1919);
-    /// The near-black navy the frames are filled with, over which the text
+    /// The near-black navy the window is filled with, over which the text
     /// is read.
     pub const NAVY: Color = color!(0x0b0b14);
+    /// The frames' fill, a shade above the window's.
+    pub const FRAME: Color = color!(0x11111e);
+    /// The boxes inset in a frame, a shade below the window's.
+    pub const INSET: Color = color!(0x07070e);
+    /// The frames' gold edge, and its shadow.
+    pub const EDGE: Color = color!(0xa88a35);
+    pub const EDGE_SHADOW: Color = color!(0x4a3a14);
+    /// A tooltip's fill and edge: the game's, blue-black and steel blue.
+    pub const TOOLTIP: Color = color!(0x0a0a1e);
+    pub const TOOLTIP_EDGE: Color = color!(0x4c4c73);
 
     /// Item quality: poor.
     pub const POOR: Color = color!(0x9d9d9d);
@@ -121,19 +145,64 @@ pub fn gold(_theme: &Theme) -> text::Style {
     }
 }
 
-/// A raised, rounded panel for list items and dialogs.
-pub fn card(theme: &Theme) -> container::Style {
-    let palette = theme.palette();
-
+/// A frame, as the game draws its dialogs and panels: filled a shade above
+/// the window, with a square gold edge. For list items and dialogs; a
+/// dialog gets its corners from [`ornamented`].
+pub fn card(_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(palette.background.weakest.color.into()),
-        border: Border {
-            color: palette.background.weak.color,
-            width: 1.0,
-            radius: 6.0.into(),
-        },
+        background: Some(wotlk::FRAME.into()),
+        border: border::rounded(0).color(wotlk::EDGE).width(2),
         ..container::Style::default()
     }
+}
+
+/// A box inset in a frame, sunk below the window: a list, an error, what
+/// a dialog is about.
+pub fn inset(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(wotlk::INSET.into()),
+        border: border::rounded(0).color(wotlk::EDGE_SHADOW).width(1),
+        ..container::Style::default()
+    }
+}
+
+/// A tooltip's box: the game's, blue-black with a steel-blue edge.
+pub fn tooltip_box(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(
+            Color {
+                a: 0.96,
+                ..wotlk::TOOLTIP
+            }
+            .into(),
+        ),
+        border: border::rounded(0).color(wotlk::TOOLTIP_EDGE).width(1),
+        ..container::Style::default()
+    }
+}
+
+/// `frame`, a [`card`], with the game's corners laid over its own: a
+/// dialog. The corners take the frame's size, which the stack keeps.
+pub fn ornamented<'a, Message: 'a>(frame: impl Widget<Message> + 'a) -> impl Widget<Message> + 'a {
+    let corner = |drawn: &'static [u8], x, y| {
+        container(
+            svg(svg::Handle::from_memory(drawn))
+                .width(CORNER_SIZE)
+                .height(CORNER_SIZE),
+        )
+        .width(Fill)
+        .height(Fill)
+        .align_x(x)
+        .align_y(y)
+    };
+
+    stack![
+        frame,
+        corner(CORNERS[0], Left, Top),
+        corner(CORNERS[1], Right, Top),
+        corner(CORNERS[2], Right, Bottom),
+        corner(CORNERS[3], Left, Bottom),
+    ]
 }
 
 /// `content`, explained by `hint` in a box below it on hover.
@@ -146,7 +215,7 @@ pub fn tip<'a, Message: 'a>(
         container(text(hint).size(13))
             .padding([6, 10])
             .width(Fit.max(360))
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
@@ -159,7 +228,7 @@ pub fn banner(tone: Tone) -> impl Fn(&Theme) -> container::Style {
         container::Style {
             background: Some(Color { a: 0.12, ..color }.into()),
             text_color: Some(color),
-            border: border::rounded(6).color(Color { a: 0.5, ..color }).width(1),
+            border: border::rounded(0).color(Color { a: 0.5, ..color }).width(1),
             ..container::Style::default()
         }
     }
@@ -194,7 +263,7 @@ pub fn badge<'a, Message: 'a>(
             container::Style {
                 background: Some(Color { a: 0.12, ..color }.into()),
                 text_color: Some(color),
-                border: border::rounded(4).color(Color { a: 0.6, ..color }).width(1),
+                border: border::rounded(0).color(Color { a: 0.6, ..color }).width(1),
                 ..container::Style::default()
             }
         })
@@ -220,7 +289,7 @@ pub fn link_badge<'a, Message: Clone + 'a>(
             button::Style {
                 background: Some(Color { a: fill, ..color }.into()),
                 text_color: color,
-                border: border::rounded(4).color(Color { a: 0.6, ..color }).width(1),
+                border: border::rounded(0).color(Color { a: 0.6, ..color }).width(1),
                 ..button::Style::default()
             }
         });
@@ -229,7 +298,7 @@ pub fn link_badge<'a, Message: Clone + 'a>(
         badge,
         container(text(url).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
@@ -281,7 +350,7 @@ pub fn delete_button<'a, Message: Clone + 'a>(
         button,
         container(text(label).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
@@ -325,14 +394,15 @@ pub fn icon_button<'a, Message: Clone + 'a>(
             .on_press_maybe(on_press),
         container(text(hint).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
 
-/// Shows `dialog`, if any, centered over a dimmed `base`; clicking outside it
-/// sends `on_blur`. While it shows, the mouse doesn't reach `base`: neither
-/// its clicks nor its wheel.
+/// Shows `dialog`, if any, with the game's corners (see [`ornamented`]),
+/// centered over a dimmed `base`; clicking outside it sends `on_blur`.
+/// While it shows, the mouse doesn't reach `base`: neither its clicks nor
+/// its wheel.
 ///
 /// `base` sits in the same place whether a dialog is open or not, so it keeps
 /// its widget state (scroll positions, focus) while dialogs come and go.
@@ -345,7 +415,7 @@ pub fn modal<'a, Message: Clone + 'a>(
         base,
         dialog.map(|dialog| {
             backdrop(
-                mouse_area(center(opaque(dialog)).style(|_theme| {
+                mouse_area(center(opaque(ornamented(dialog))).style(|_theme| {
                     container::Style {
                         background: Some(
                             Color {
