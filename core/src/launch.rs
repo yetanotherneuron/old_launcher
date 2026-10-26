@@ -25,6 +25,10 @@ const WINE_COMMAND: &str = "wine %command%";
 /// The command running `Wow.exe` with Proton, through umu-launcher.
 const UMU_COMMAND: &str = "umu-run %command%";
 
+/// GameMode's wrapper, which asks the system for its optimizations while
+/// the program it runs is running: around the runner, when installed.
+const GAMEMODE: &str = "gamemoderun";
+
 /// The Wine prefix a client's game runs in unless its environment variables
 /// set `WINEPREFIX`: this folder of the client's, beside `Wow.exe`. Each
 /// client has its own, which goes where the client goes.
@@ -77,14 +81,28 @@ impl Defaults {
 
 /// The command a client starts with when it has none, on this system:
 /// [`UMU_COMMAND`] where umu-launcher is installed (`umu-run` is on the
-/// `PATH`), or else [`WINE_COMMAND`]. Looked for once.
+/// `PATH`), or else [`WINE_COMMAND`], under [`GAMEMODE`] where that is
+/// installed too. Looked for once.
 pub fn default_command() -> &'static str {
-    static DEFAULT: OnceLock<&str> = OnceLock::new();
+    static DEFAULT: OnceLock<String> = OnceLock::new();
 
     DEFAULT.get_or_init(|| {
-        let umu = std::env::var_os("PATH").is_some_and(|path| installed("umu-run", &path));
-        if umu { UMU_COMMAND } else { WINE_COMMAND }
+        let path = std::env::var_os("PATH").unwrap_or_default();
+
+        composed(installed("umu-run", &path), installed(GAMEMODE, &path))
     })
+}
+
+/// The default command on a system with umu-launcher (`umu`) and GameMode
+/// (`gamemode`) installed, or not.
+fn composed(umu: bool, gamemode: bool) -> String {
+    let runner = if umu { UMU_COMMAND } else { WINE_COMMAND };
+
+    if gamemode {
+        format!("{GAMEMODE} {runner}")
+    } else {
+        runner.to_owned()
+    }
 }
 
 /// Whether `program` is in one of the folders of `path` (as the `PATH`
@@ -684,7 +702,19 @@ mod tests {
         }
         assert!(installed("umu-run", &path));
         assert!(!installed("umu-run", OsStr::new("")));
-        assert!([UMU_COMMAND, WINE_COMMAND].contains(&default_command()));
+
+        // And GameMode wraps whichever it is.
+        assert_eq!(composed(false, false), "wine %command%");
+        assert_eq!(composed(true, false), "umu-run %command%");
+        assert_eq!(composed(false, true), "gamemoderun wine %command%");
+        assert_eq!(composed(true, true), "gamemoderun umu-run %command%");
+        let default = default_command();
+        assert!(
+            [UMU_COMMAND, WINE_COMMAND]
+                .iter()
+                .any(|runner| default.ends_with(runner)),
+            "{default}"
+        );
     }
 
     #[test]

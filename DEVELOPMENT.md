@@ -228,7 +228,8 @@ runs the client's command with `sh`, the way Steam runs launch options: the
 environment variables are set and exported first, and `%command%` becomes
 the quoted path to `Wow.exe`. When there is no command, it is
 `umu-run %command%` where `umu-run` is on the `PATH` (looked for once a
-run), Proton through umu-launcher, or else `wine %command%`
+run), Proton through umu-launcher, or else `wine %command%`, and under
+`gamemoderun` where GameMode's wrapper is on the `PATH` too
 (`launch::Defaults`). `WINEPREFIX` is set first to the client's `.prefix`
 folder beside `Wow.exe`, so each client has a prefix of its own that goes
 with it, and a `WINEPREFIX` among the client's variables, set after it,
