@@ -636,10 +636,12 @@ mod tests {
         }
     }
 
-    /// The defaults of the client at `root`, with Wine.
+    /// The defaults of the client at `root`, with Wine. The prefix is
+    /// spelled with `/`, as on the systems the line runs on: Windows, where
+    /// it never does, would join with `\`.
     fn wine(root: &str) -> Defaults {
         Defaults {
-            prefix: Path::new(root).join(PREFIX),
+            prefix: PathBuf::from(format!("{root}/{PREFIX}")),
             natives: Vec::new(),
             command: WINE_COMMAND,
         }

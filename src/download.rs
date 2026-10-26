@@ -2267,9 +2267,11 @@ mod tests {
             panic!("not added");
         };
         assert_eq!(notice, "Downloaded WotLK: it is ready to play.");
+        // Spelled as the launcher spells a client folder: Windows' `\\?\`
+        // left out.
         assert_eq!(
             installation.root(),
-            fs::canonicalize(&found.folder).unwrap()
+            Installation::open(&found.folder).unwrap().root()
         );
         assert_eq!(torrent.folder, installation.root());
         assert!(state.job.is_none());
