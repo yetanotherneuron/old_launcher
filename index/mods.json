@@ -592,7 +592,11 @@
       ],
       "platforms": [
         "windows"
-      ]
+      ],
+      "version_in": {
+        "file": "d3d9.dll",
+        "after": "DXVK: \u0000v"
+      }
     },
     {
       "id": "lumenveil",

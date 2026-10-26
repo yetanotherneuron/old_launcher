@@ -62,6 +62,23 @@ pub struct Mod {
     /// only, since Proton and the like bring their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub platforms: Vec<String>,
+    /// Where its files say their version, when not in their version
+    /// resource (see [`crate::version::product_version`]): DXVK's DLLs
+    /// carry Windows' own version there, to pass for its, and say theirs
+    /// after `DXVK: ` in the file. Read of a copy installed by hand that
+    /// matches no release (see [`Problem::Unknown`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_in: Option<VersionIn>,
+}
+
+/// Where a mod's files say their version; see [`Mod::version_in`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionIn {
+    /// The file, by path relative to the client folder.
+    pub file: String,
+    /// The text the version follows in it, up to a NUL byte: a log line's
+    /// start, say.
+    pub after: String,
 }
 
 /// Where a mod comes from.
@@ -145,8 +162,16 @@ pub enum Problem {
     /// No marker says which release it is: its files weren't checked
     /// against its releases (see [`check`]).
     Unchecked,
-    /// Its files match none of its releases.
-    Unknown,
+    /// Its files match none of its releases: a copy installed by hand, the
+    /// player's to keep.
+    Unknown {
+        /// The version its files say they are, if they say (see
+        /// [`Mod::version_in`]).
+        version: Option<String>,
+        /// Its DLLs beside `Wow.exe`, of any release, by name without
+        /// `.dll`: the ones Wine is told to load from there.
+        natives: Vec<String>,
+    },
     /// The release its marker names is no longer listed.
     Unlisted(String),
     /// Files of its release that are missing, by path.
@@ -192,6 +217,10 @@ impl Mods {
                     .iter()
                     .chain(&game_mod.writes)
                     .all(|path| safe(path))
+                && game_mod
+                    .version_in
+                    .as_ref()
+                    .is_none_or(|place| safe(&place.file) && !place.after.is_empty())
                 && !game_mod.releases.is_empty()
         });
 
@@ -355,10 +384,10 @@ impl Release {
             .iter()
             .filter(|(path, _)| !path.contains('/'))
             .filter_map(|(path, _)| {
-                let stem = path.len().checked_sub(4)?;
-                path[stem..]
+                let (stem, extension) = path.split_at_checked(path.len().checked_sub(4)?)?;
+                extension
                     .eq_ignore_ascii_case(".dll")
-                    .then(|| path[..stem].to_owned())
+                    .then(|| stem.to_owned())
             })
             .collect()
     }
@@ -408,18 +437,13 @@ fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, String)>) -> Res
     Ok(())
 }
 
-/// Whether the client folder at `root` holds `game_mod`: its marker, or
-/// anything it and its setups write, or one of its releases' files with
-/// that release's contents, or several of them whatever their contents. A
-/// lone file that matches no release may be another mod's: `version.dll`
-/// is a common name.
+/// Whether the client folder at `root` holds `game_mod`: its marker, or one
+/// of its releases' files with that release's contents, or several of them
+/// whatever their contents. A lone file that matches no release may be
+/// another mod's: `version.dll` is a common name. What it writes as it
+/// runs doesn't count: a log outlives it.
 fn present(root: &Path, game_mod: &Mod) -> bool {
-    if game_mod.marked(root)
-        || game_mod
-            .written()
-            .iter()
-            .any(|path| root.join(path).exists())
-    {
+    if game_mod.marked(root) {
         return true;
     }
 
@@ -566,14 +590,13 @@ pub fn foreign(root: &Path, game_mod: &Mod, release: &Release) -> Vec<String> {
         .collect()
 }
 
-/// Checks what `installation`'s folder holds of `game_mod` against its
+/// Checks what the client folder at `root` holds of `game_mod` against its
 /// releases, when no marker says which it is: the newest whose files are
 /// all there as released is recorded in its marker, set up if what its
 /// setup writes is there. Then tells what the folder holds, which is
-/// [`Problem::Unknown`] when it matches none.
-pub fn check(installation: &Installation, game_mod: &Mod) -> Result<Option<Status>, Error> {
-    let root = installation.root();
-
+/// [`Problem::Unknown`] when it matches none: a copy installed by hand,
+/// with the version its files say and the DLLs it has beside `Wow.exe`.
+pub fn check(root: &Path, game_mod: &Mod) -> Result<Option<Status>, Error> {
     if game_mod.marker(root).is_none() {
         let recognized = game_mod.releases.iter().find(|release| {
             let (missing, changed) = compare(root, game_mod, release);
@@ -589,15 +612,59 @@ pub fn check(installation: &Installation, game_mod: &Mod) -> Result<Option<Statu
                 game_mod.mark(root, release, set_up)?;
             }
             None => {
-                return Ok(status(root, game_mod).map(|_| Status {
-                    release: None,
-                    problems: vec![Problem::Unknown],
+                return Ok(status(root, game_mod).map(|_| {
+                    let mut natives: Vec<String> = game_mod
+                        .releases
+                        .iter()
+                        .flat_map(Release::natives)
+                        .filter(|dll| root.join(format!("{dll}.dll")).is_file())
+                        .collect();
+                    natives.sort_unstable();
+                    natives.dedup();
+
+                    Status {
+                        release: None,
+                        problems: vec![Problem::Unknown {
+                            version: manual_version(root, game_mod),
+                            natives,
+                        }],
+                    }
                 }));
             }
         }
     }
 
     Ok(status(root, game_mod))
+}
+
+/// The version the files of `game_mod` in the client folder at `root` say
+/// they are, if they say: after the text its [`Mod::version_in`] names, or
+/// else in the version resource of the first of its files that has one.
+fn manual_version(root: &Path, game_mod: &Mod) -> Option<String> {
+    if let Some(place) = &game_mod.version_in {
+        let bytes = fs::read(root.join(&place.file)).ok()?;
+        let after = place.after.as_bytes();
+        let at = bytes
+            .windows(after.len())
+            .position(|window| window == after)?
+            + after.len();
+        let version: String = bytes
+            .get(at..)?
+            .iter()
+            .take_while(|byte| **byte != 0)
+            .take(32)
+            .map(|byte| char::from(*byte))
+            .collect();
+
+        return (!version.is_empty() && version.chars().all(|c| c.is_ascii_graphic()))
+            .then_some(version);
+    }
+
+    game_mod
+        .paths()
+        .into_iter()
+        .filter_map(|path| fs::read(root.join(path)).ok())
+        .find_map(|bytes| crate::version::product_version(&bytes))
 }
 
 /// Installs `release` of `game_mod`, downloaded as `download`, into
@@ -870,6 +937,7 @@ mod tests {
             writes: vec!["Glow.log".to_owned()],
             config: BTreeMap::from([("gxApi".to_owned(), "d3d9".to_owned())]),
             platforms: Vec::new(),
+            version_in: None,
         };
 
         (game_mod, new_zip, old_zip)
@@ -934,7 +1002,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_is_there_by_its_marker_what_it_writes_or_its_files() {
+    fn a_mod_is_there_by_its_marker_or_its_files() {
         let (game_mod, _, _) = glow();
         let is_there = |files: &[(&str, &str)]| {
             let (_root, installation) = crate::testing::client_with(files);
@@ -948,6 +1016,7 @@ mod tests {
             None,
             "a common name"
         );
+        assert_eq!(is_there(&[("Glow.log", "")]), None, "a log outlives it");
 
         let unchecked = Some(Status {
             release: None,
@@ -958,7 +1027,50 @@ mod tests {
             is_there(&[("Glow.dll", "?"), ("version.dll", "?")]),
             unchecked
         );
-        assert_eq!(is_there(&[("Glow.log", "")]), unchecked, "left over");
+    }
+
+    #[test]
+    fn a_copy_installed_by_hand_says_its_version_and_its_dlls() {
+        let (mut game_mod, _, _) = glow();
+        let utf16 =
+            |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+        let mut resource = b"MZ renderer 3.0 ".to_vec();
+        resource.extend(utf16("ProductVersion\0"));
+        resource.extend([0, 0]);
+        resource.extend(utf16("3.0\0"));
+        let (_root, installation) = crate::testing::client_with(&[
+            ("version.dll", "loader 3.0"),
+            ("Glow.dll", "MZ renderer 3.0"),
+        ]);
+        let root = installation.root();
+        fs::write(root.join("Glow.dll"), &resource).unwrap();
+        let unknown = |version: Option<&str>| Problem::Unknown {
+            version: version.map(str::to_owned),
+            natives: vec!["Glow".to_owned(), "version".to_owned()],
+        };
+
+        // Its version resource says.
+        assert_eq!(
+            check(root, &game_mod).unwrap().unwrap().problems,
+            [unknown(Some("3.0"))]
+        );
+        assert_eq!(game_mod.marker(root), None, "nothing to record");
+
+        // Where the list says, when it does: a DLL passing for Windows' own
+        // says Windows' version in its resource.
+        game_mod.version_in = Some(VersionIn {
+            file: "Glow.dll".to_owned(),
+            after: "Glow: v".to_owned(),
+        });
+        assert_eq!(
+            check(root, &game_mod).unwrap().unwrap().problems,
+            [unknown(None)]
+        );
+        fs::write(root.join("Glow.dll"), b"MZ \0Game: \0Glow: v3.1-rc\0\0 ").unwrap();
+        assert_eq!(
+            check(root, &game_mod).unwrap().unwrap().problems,
+            [unknown(Some("3.1-rc"))]
+        );
     }
 
     #[test]
@@ -974,7 +1086,7 @@ mod tests {
         let root = installation.root();
 
         assert_eq!(
-            check(&installation, &game_mod).unwrap(),
+            check(root, &game_mod).unwrap(),
             Some(Status {
                 release: Some("1.0".to_owned()),
                 problems: vec![Problem::NotSetUp(vec!["glow.bin".to_owned()])],
@@ -992,10 +1104,7 @@ mod tests {
 
         // Checked with what its setup writes there, it counts as set up.
         game_mod.unmark(root).unwrap();
-        assert_eq!(
-            check(&installation, &game_mod).unwrap().unwrap().problems,
-            []
-        );
+        assert_eq!(check(root, &game_mod).unwrap().unwrap().problems, []);
         assert!(game_mod.marker(root).unwrap().set_up);
 
         fs::write(root.join("Glow.dll"), "patched").unwrap();
@@ -1011,8 +1120,11 @@ mod tests {
         // Without the marker, it matches no release.
         game_mod.unmark(root).unwrap();
         assert_eq!(
-            check(&installation, &game_mod).unwrap().unwrap().problems,
-            [Problem::Unknown]
+            check(root, &game_mod).unwrap().unwrap().problems,
+            [Problem::Unknown {
+                version: None,
+                natives: vec!["Glow".to_owned(), "version".to_owned()],
+            }]
         );
         assert_eq!(game_mod.marker(root), None);
     }
@@ -1146,6 +1258,7 @@ mod tests {
             writes: Vec::new(),
             config: BTreeMap::new(),
             platforms: vec!["windows".to_owned()],
+            version_in: None,
         };
 
         install(&installation, &vulkan, &vulkan.releases[0], &archive).unwrap();
@@ -1254,6 +1367,7 @@ mod tests {
             writes: Vec::new(),
             config: BTreeMap::new(),
             platforms: Vec::new(),
+            version_in: None,
         };
         let (_root, installation) = crate::testing::client(&["Data/enUS/locale-enUS.MPQ"]);
 
@@ -1296,6 +1410,12 @@ mod tests {
         let (game_mod, _, _) = glow();
 
         assert_eq!(game_mod.releases[0].natives(), ["version", "Glow"]);
+
+        // A name of other letters is no DLL either, wherever its bytes end.
+        let mut release = game_mod.releases[0].clone();
+        release.files.push(("ñ.dl".to_owned(), String::new()));
+        release.files.push(("ñ".to_owned(), String::new()));
+        assert_eq!(release.natives(), ["version", "Glow"]);
     }
 
     #[test]

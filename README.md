@@ -78,8 +78,8 @@ or on [Discord](https://discord.gg/tS35paspnf).
   a copy of each client's torrent, in
   `~/.local/share/old_launcher/torrents` or
   `%APPDATA%\old_launcher\torrents`.
-- A client downloading from a torrent goes into a hidden `.download`
-  folder inside the folder you chose, its files into place once complete.
+- A client downloading from a torrent goes into a `.download` folder
+  inside the folder you chose, its files into place once complete.
   It is shared with the others downloading it, as BitTorrent works, until
   it is done: the launcher listens for them on a port, opened on your
   router through UPnP, which Windows' firewall may ask about.

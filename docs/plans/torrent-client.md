@@ -9,7 +9,7 @@ was built differs from it:
   again from where the player gave it (an address or a file), and compares
   the client with it piece by piece, reading only what changed since the
   last check.
-- Downloads, new clients and updates alike, go into a hidden `.download`
+- Downloads, new clients and updates alike, go into a `.download`
   staging folder in the folder their files go in (so they need room on
   that disk alone), and only the files asked for move into place once
   complete: librqbit writes the pieces it downloads whole, over the files

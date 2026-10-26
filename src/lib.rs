@@ -55,6 +55,11 @@ const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 /// How long a refresh leaves the catalog alone after fetching it.
 const REFRESH_PAUSE: Duration = Duration::from_secs(10);
 
+/// Why the add-client form refuses a torrent while a client downloads, or
+/// is checked for updates: one at a time.
+const ONE_DOWNLOAD: &str =
+    "Wait for the download or check under way to finish, or stop it, before starting another.";
+
 /// The launcher's icon, rendered from `assets/old_launcher.svg` and decoded
 /// when building.
 const ICON: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/icon.rgba"));
@@ -348,8 +353,8 @@ impl App {
     }
 
     /// Gets going with a readable config: opens the last client (or asks
-    /// for one), fetches the published catalog, looks for a newer launcher,
-    /// and deletes what updates cut short left in the clients.
+    /// for one), fetches the published catalog, and looks for a newer
+    /// launcher.
     fn start(&mut self) -> Task<Message> {
         let last = self
             .config
@@ -372,7 +377,6 @@ impl App {
             open,
             Task::perform(update::check(self.client.clone()), Message::UpdateChecked),
             self.sign_in(),
-            self.download.sweep(&self.config).map(Message::Download),
         ])
     }
 
@@ -401,6 +405,12 @@ impl App {
                         Task::batch([task, self.add(installation)])
                     }
                     Some(setup::Instruction::Torrent { source, into }) => {
+                        // One at a time: the form says so, and keeps what
+                        // was typed for when it is.
+                        if self.download.is_running() {
+                            setup.refuse(ONE_DOWNLOAD.to_owned());
+                            return task;
+                        }
                         // The first-run form stays under the download's
                         // dialog until there is a client.
                         if !self.config.installations.is_empty() {
@@ -1012,6 +1022,7 @@ impl App {
             Message::FocusSearch => operation::focus(addons::SEARCH),
             Message::Quit => {
                 if self.under_way().is_empty() {
+                    self.download.abandon();
                     return iced::exit();
                 }
                 self.quitting = true;
@@ -1019,6 +1030,7 @@ impl App {
             }
             Message::QuitAnyway => {
                 log::info!("Quitting with {} under way", self.under_way().join(", "));
+                self.download.abandon();
                 iced::exit()
             }
             Message::KeepOpen => {
@@ -1752,6 +1764,13 @@ mod tests {
         app
     }
 
+    /// The mods of `app`'s client at `root` were looked at: none there.
+    fn mods_looked_at(app: &mut App, root: &Path) {
+        let _ = app.update(Message::Clients(clients::Message::Mods(
+            clients::mods::Message::Found(root.to_path_buf(), clients::mods::Seen::default()),
+        )));
+    }
+
     /// The app as it starts with an unreadable config at `path`, holding
     /// `text`.
     fn unreadable(path: &std::path::Path, text: &str) -> App {
@@ -1882,6 +1901,7 @@ mod tests {
         let (_root, installation) = core::testing::client(&[]);
         let root = installation.root().to_path_buf();
         let mut app = opened(installation);
+        mods_looked_at(&mut app, &root);
         let torrent = |name: &str, info_hash: &str, folder: &Path| core::config::ClientTorrent {
             name: name.into(),
             info_hash: info_hash.into(),
@@ -1992,6 +2012,12 @@ mod tests {
         for line in ["Add a WoW 3.3.5a client", "Looking at the torrent…", "Show"] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
+        drop(ui);
+
+        // Another torrent waits for this one.
+        let _ = app.update(Message::Setup(setup::Message::Submit));
+        let mut ui = simulator(app.view());
+        assert!(ui.find(ONE_DOWNLOAD).is_ok());
     }
 
     #[test]
@@ -2433,6 +2459,7 @@ mod tests {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root().to_path_buf();
         let mut app = opened(installation);
+        mods_looked_at(&mut app, &root);
 
         assert!(play_button(&app, "Play"));
         let _ = app.update(Message::Play);
@@ -2483,24 +2510,41 @@ mod tests {
             )))
         };
 
-        let _ = app.update(found(None, vec![crate::core::mods::Problem::Unchecked]));
-        let mut ui = simulator(app.view());
-        assert!(
-            ui.find(
-                "Lumenveil is in this client. The launcher needs to check it before starting the \
-                 game."
-            )
-            .is_ok()
-        );
-        drop(ui);
+        // Not looked at yet: the game waits.
         assert!(!play_button(&app, "Play"));
         let _ = app.update(Message::Play);
         assert!(app.game.phase(&root).is_none(), "nothing was started");
 
-        // Checked, its files as released: Wine loads its DLLs.
+        // Found needing a repair: it waits still.
+        let _ = app.update(found(
+            Some("0.1.1"),
+            vec![crate::core::mods::Problem::Missing(vec![
+                "version.dll".to_owned(),
+            ])],
+        ));
+        let mut ui = simulator(app.view());
+        assert!(
+            ui.find("The launcher needs to repair Lumenveil before starting the game. Missing: version.dll.")
+                .is_ok()
+        );
+        drop(ui);
+        assert!(!play_button(&app, "Play"));
+
+        // Found as released: Wine loads its DLLs.
         let _ = app.update(found(Some("0.1.1"), Vec::new()));
         assert!(play_button(&app, "Play"));
         assert_eq!(app.clients.natives(&root), ["CoAVolFog", "version"]);
+
+        // Installed by hand: the player's, with whichever DLLs it has.
+        let _ = app.update(found(
+            None,
+            vec![crate::core::mods::Problem::Unknown {
+                version: Some("0.2.0".to_owned()),
+                natives: vec!["CoAVolFog".to_owned()],
+            }],
+        ));
+        assert!(play_button(&app, "Play"));
+        assert_eq!(app.clients.natives(&root), ["CoAVolFog"]);
     }
 
     #[cfg(not(windows))]
@@ -2509,6 +2553,7 @@ mod tests {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root().to_path_buf();
         let mut app = opened(installation);
+        mods_looked_at(&mut app, &root);
 
         app.config.set_launch(
             &root,

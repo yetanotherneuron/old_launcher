@@ -128,6 +128,8 @@ pub async fn gather(
         writes: WRITES.iter().copied().map(str::to_owned).collect(),
         config: BTreeMap::from([("gxApi".to_owned(), "d3d9".to_owned())]),
         platforms: Vec::new(),
+        // Its DLLs say their version in their version resource.
+        version_in: None,
     })
 }
 

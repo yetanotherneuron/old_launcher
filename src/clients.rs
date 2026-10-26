@@ -40,6 +40,15 @@ pub const COMMAND: &str = "clients-command";
 /// The id of the update source field.
 pub const SOURCE: &str = "clients-source";
 
+/// The warning under a realmlist that sets no server: empty, or without a
+/// `set realmlist` line.
+const NO_SERVER: &str = "The game can't connect without a server: the file needs a line such as \
+                         set realmlist logon.example.com";
+
+/// The warning under a client that has no realmlist file at all.
+const NO_REALMLIST: &str = "The game can't connect without a realmlist.wtf in the folder of its \
+                            language in Data, with a line such as set realmlist logon.example.com";
+
 /// The width and height of the buttons beside the client picker.
 const PICKER_BUTTON: f32 = 38.0;
 
@@ -639,6 +648,18 @@ impl State {
                         .align_y(Center),
                         None => fact("Realmlist", "No realmlist.wtf".to_owned()),
                     },
+                    // Without a server to connect to, the game goes nowhere.
+                    match &details.realmlist {
+                        Some(realmlist) if realmlist.server.is_some() => None,
+                        Some(_) => Some(NO_SERVER),
+                        None => Some(NO_REALMLIST),
+                    }
+                    .map(|warning| {
+                        text(warning)
+                            .size(13)
+                            .style(text::warning)
+                            .wrapping(text::Wrapping::WordOrGlyph)
+                    }),
                     fact("Size", size(details.size)),
                     details
                         .large_address_aware
@@ -1218,11 +1239,20 @@ mod tests {
 
     #[test]
     fn what_a_folder_holds_is_read_once_until_it_changes() {
-        let (mut state, _) = opened(Some(details(None)));
+        let (mut state, mut config) = opened(Some(details(None)));
         let root = Path::new(WOTLK);
+        // The look at its mods under way is done.
+        let looked_at = |state: &mut State, config: &mut Config| {
+            let _ = update(
+                state,
+                config,
+                Message::Mods(mods::Message::Found(root.into(), mods::Seen::default())),
+            );
+        };
 
         state.close();
         assert_eq!(state.open(Some(root)).units(), 0, "remembered");
+        looked_at(&mut state, &mut config);
 
         // Addons came or went while the dialog was closed: only its mods are
         // looked for at once, for the banners above the addons.
@@ -1233,6 +1263,7 @@ mod tests {
             matches!(state.details.get(root), Some(Some(Ok(_)))),
             "the old reading shows meanwhile"
         );
+        looked_at(&mut state, &mut config);
 
         // And while it is open and showing that client.
         assert_eq!(state.changed(root, Some(root)).units(), 2);
@@ -1261,8 +1292,10 @@ mod tests {
             held: BTreeMap::from([(
                 "lumenveil".to_owned(),
                 crate::core::mods::Status {
-                    release: None,
-                    problems: vec![crate::core::mods::Problem::Unchecked],
+                    release: Some("0.1.1".to_owned()),
+                    problems: vec![crate::core::mods::Problem::Missing(vec![
+                        "CoAVolFog.dll".to_owned(),
+                    ])],
                 },
             )]),
             foreign: BTreeMap::new(),
@@ -1277,8 +1310,8 @@ mod tests {
         let mut ui = simulator(state.banner(Some(root), false).expect("a banner"));
         assert!(
             ui.find(
-                "Lumenveil is in this client. The launcher needs to check it before starting the \
-                 game."
+                "The launcher needs to repair Lumenveil before starting the game. Missing: \
+                 CoAVolFog.dll."
             )
             .is_ok()
         );
@@ -1297,6 +1330,7 @@ mod tests {
 
         let mut ui = simulator(state.view(&config, Some(root), None, false, false));
         assert!(ui.find("Not set").is_ok());
+        assert!(ui.find(NO_SERVER).is_ok(), "warned");
         let _ = ui.click(selector::id(EDIT_REALMLIST)).unwrap();
         // Not handled here: that would open an editor.
         assert!(matches!(
@@ -1314,15 +1348,17 @@ mod tests {
 
         let mut ui = simulator(state.view(&config, Some(root), None, false, false));
         assert!(ui.find("logon.example.com").is_ok());
+        assert!(ui.find(NO_SERVER).is_err(), "nothing to warn about");
     }
 
     #[test]
-    fn a_client_without_a_realmlist_offers_nothing_to_edit() {
+    fn a_client_without_a_realmlist_offers_nothing_to_edit_and_is_warned() {
         let (state, config) = opened(Some(details(None)));
 
         let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
 
         assert!(ui.find("No realmlist.wtf").is_ok());
+        assert!(ui.find(NO_REALMLIST).is_ok());
         assert!(ui.find(selector::id(EDIT_REALMLIST)).is_err());
     }
 

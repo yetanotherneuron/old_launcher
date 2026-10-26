@@ -103,11 +103,15 @@ files, or its one file itself) and every file it puts in the client folder,
 by path, with its SHA-256. An archive holds them at the same paths, or in
 the folder a release names as `inside` (the rest of the archive is left
 out). Mods that need more say so: their `settings` (the player's files,
-never checked and kept by a reinstall), what they `write` as they run, the
+never checked and kept by a reinstall), what they write as they run
+(`writes`), the
 `setup` each release runs once its files are in place (the file each step
 `creates` tells whether it ran), the `config` `WTF/Config.wtf` must set,
-and the `platforms` they are for (`windows`, `linux`, `macos`; all when
-none), the launcher listing only those for its own.
+the `platforms` they are for (`windows`, `linux`, `macos`; all when
+none), the launcher listing only those for its own, and `version_in`:
+where their files say their version when not in their version resource
+(DXVK's DLL says Windows' own there, to pass for it, and its own after
+`DXVK: ` in the file), read of a copy installed by hand.
 
 Each mod has a module in `indexer/src/mods/`, called from `mods::gather`,
 which finds its releases and writes down what can't be read from them. The
@@ -232,25 +236,31 @@ to Lutris or Steam, say) is refused, as the clients dialog says under it.
 the addons, whenever the client is read (opened, refreshed, or after
 something was installed), as the list of mods describes them. A mod is
 there when its marker is (recording the release installed, under `mods`
-in the client folder's notes, below; 0.9.0's `.old_launcher-<id>.toml`
-moves in there when read), when anything it or its setup writes is,
-or when one of its releases' files is there with that release's contents,
-or several of them whatever their contents: a lone `version.dll` of other
-contents is another mod's. The player's files don't count: uninstalling
-keeps them. What is there is checked against the release its marker names,
-and nothing is said of it if it is as released. Otherwise the launcher
-needs to do something before starting the game, which waits for it (Play
-is disabled), and a banner above the addons says so:
-- no marker: Check looks for the release whose files are all there as
-  released, and records it in the marker;
-- files missing or changed, its setup not run to the end or what it
-  creates missing, `Config.wtf` set otherwise than it needs, files that
-  match none of its releases, or a release no longer listed: Repair
-  installs that release again, or the newest.
+in the client folder's notes, below; the `.old_launcher-<id>.toml` of
+earlier builds moves in there when read), or when one of its releases'
+files is there with that release's contents, or several of them whatever
+their contents: a lone `version.dll` of other contents is another mod's,
+and a log it left behind is nothing. The player's files don't count:
+uninstalling keeps them. What is there is checked at once: against the
+release its marker names, or, without a marker, against every release,
+the one whose files are all there as released being recorded in the
+marker. Files that match none are a copy installed by hand, the player's:
+the section says so, with the version its files say (`version_in`, or
+else the `ProductVersion` of their version resource), offers the newest
+release in its place, and the game starts with whichever of its DLLs are
+there loaded. Nothing is said of a mod as released. Otherwise the launcher
+needs to repair it before starting the game, which waits for it (Play is
+disabled), and a banner above the addons says so: files missing or
+changed, its setup not run to the end or what it creates missing,
+`Config.wtf` set otherwise than it needs, or a release no longer listed:
+Repair installs that release again, or the newest. Play waits too until
+the client's mods were looked at, which happens once at a time per client
+(asked again meanwhile, the look is repeated after it), and not while a
+mod is being installed or removed there, which looks once done.
 
 The marker records whether the setup ran to the end, since a setup cut
-short can leave what it writes half written. Check counts the setup as run
-when what it writes is there.
+short can leave what it writes half written. A release recognized counts
+as set up when what its setup writes is there.
 
 Installing downloads the release, signed in when it is on GitHub, checks
 every file against the list before anything changes, removes what was
@@ -294,8 +304,8 @@ other players take pieces from it while it downloads. Its SHA-1 comes
 from RustCrypto through `librqbit-sha1-wrapper/`, patched in over its
 OpenSSL and ring options, so no C crypto library gets built.
 
-Downloads go into a hidden staging folder, `.download`, in the folder
-their files go in, never among the client's files: librqbit writes the
+Downloads go into a staging folder, `.download`, in the folder their
+files go in, never among the client's files: librqbit writes the
 pieces it downloads whole, over every file they share, and makes every
 file of the torrent it doesn't find. librqbit writes each piece to disk
 as it comes, and the download needs room on that disk alone (the player
@@ -334,10 +344,13 @@ or its info hash alone. A newer one replaces the copy kept, as long as it
 holds the client in the same place. The folder is then compared with the
 torrent piece by piece, only reading, leaving out the player's files
 (`WTF`, `Interface/AddOns`, `Cache`, `Logs`, `Screenshots`, `Errors`, any
-`realmlist.wtf`) and `Wow.exe`'s Large Address Aware flag. The files found
-as the torrent has them are noted by length and modification time, so the
-next check reads only the files changed since; a download notes those it
-wrote. A piece that differs and that several files share blames them all,
+`realmlist.wtf`), the launcher's own `.old_launcher*` files beside
+`Wow.exe` (a torrent made of a client folder carries them; they are never
+taken from one either) and `Wow.exe`'s Large Address Aware flag. The files
+whose every piece was read and matched are noted by length and
+modification time, so the next check reads only the files changed since
+(a piece shared with a file to download goes unread until it is, and so
+do the files sharing it); a download notes those it wrote. A piece that differs and that several files share blames them all,
 unless one of them differs anyway: downloading it writes the piece whole.
 
 Any client can be given a torrent to update from (Set update source in the
@@ -351,11 +364,13 @@ the staging folder first, so only their pieces that differ download, then
 only those files move into the client folder. The player's files are
 never among them, so they stay as they are. A `Wow.exe` among them is
 read in the staging folder first, and nothing goes in place unless it is
-3.3.5a's: a torrent given may hold another game. An update stopped or cut
-short leaves the client's files as they were, and what it left in the
-client's `.download` goes at the next start; those of clients still being
-downloaded stay, to resume. The files go in place once the
-game is closed, and the game waits while they do. The dialog shows the
+3.3.5a's: a torrent given may hold another game. An update stopped, failed
+or cut short leaves the client's files as they were, and what it
+downloaded in the client's `.download` stays for the next update to
+resume from (librqbit checks what is there first); it goes once a check
+finds the client current, or an update goes through. Quitting deletes what
+a new client not yet said yes to downloaded. The files go in place once
+the game is closed, and the game waits while they do. The dialog shows the
 progress, the peers, the pieces, the speeds and the time left, and can be
 hidden behind a banner.
 

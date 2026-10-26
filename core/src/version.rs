@@ -63,6 +63,37 @@ impl Version {
     }
 }
 
+/// The `ProductVersion` a Windows program or DLL's version resource says,
+/// as written there (`0.1.1`), if it has one: the string table's value, in
+/// UTF-16 after its key and the padding, which is found the way the fixed
+/// info is. A DLL standing in for one of Windows' own may say Windows'
+/// version there, to pass for it.
+pub fn product_version(bytes: &[u8]) -> Option<String> {
+    let key: Vec<u8> = "ProductVersion\0"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut at = bytes.windows(key.len()).position(|window| window == key)? + key.len();
+    // The value starts at a multiple of four.
+    while bytes.get(at..at + 2) == Some(&[0, 0]) {
+        at += 2;
+    }
+
+    let units: Vec<u16> = bytes
+        .get(at..)?
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
+        .take_while(|unit| *unit != 0)
+        .take(64)
+        .collect();
+    let version = String::from_utf16(&units).ok()?;
+    let version = version.trim();
+
+    (!version.is_empty() && version.chars().all(|c| !c.is_control())).then(|| version.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +119,27 @@ mod tests {
     #[test]
     fn files_without_version_info_have_no_version() {
         assert_eq!(Version::from_executable(b"MZ just some bytes"), None);
+        assert_eq!(product_version(b"MZ just some bytes"), None);
+    }
+
+    #[test]
+    fn the_product_version_is_read_from_the_string_table() {
+        let utf16 =
+            |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+        let mut bytes = b"MZ\0\0".to_vec();
+        bytes.extend(utf16("FileVersion\0"));
+        bytes.extend(utf16("10.0.17763.1\0"));
+        bytes.extend([0, 0]);
+        bytes.extend(utf16("ProductVersion\0"));
+        bytes.extend([0, 0]);
+        bytes.extend(utf16("0.1.1\0"));
+        bytes.extend(utf16("ProductName\0Lumenveil\0"));
+
+        assert_eq!(product_version(&bytes).as_deref(), Some("0.1.1"));
+
+        let mut empty = b"MZ".to_vec();
+        empty.extend(utf16("ProductVersion\0\0"));
+        assert_eq!(product_version(&empty), None);
     }
 
     #[test]

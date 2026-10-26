@@ -3,7 +3,7 @@
 //! comparing it with its torrent. One at a time, in a dialog that says how
 //! it goes and can be hidden behind a banner while it goes on.
 //!
-//! Downloads go into a hidden staging folder, `.download`, in the folder
+//! Downloads go into a staging folder, `.download`, in the folder
 //! their files go in, so they need room on that disk alone, and the files
 //! move into place once complete, with no copying: a new client is added
 //! then. The launcher keeps a copy of each client's `.torrent`, named after
@@ -358,24 +358,49 @@ impl State {
         task
     }
 
-    /// Deletes what updates cut short left in the clients of `config`; the
-    /// clients still being downloaded resume from what they left.
-    pub fn sweep(&self, config: &Config) -> Task<Message> {
-        let left = left_by_updates(config);
+    /// Deletes what a new client not yet said yes to, or turned down,
+    /// downloaded: on the way out of the launcher, which runs no task
+    /// then. A client being downloaded, and an update, keep theirs to
+    /// resume.
+    pub fn abandon(&mut self) {
+        let Some(job) = self.job.take() else {
+            return;
+        };
+        let After::Remove(staging) = job.after() else {
+            return;
+        };
 
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || sweep(&left))
-                    .await
-                    .map_err(|error| error.to_string())?
-            },
-            Message::CleanedUp,
-        )
+        log::info!(
+            "Deleting {}: the client wasn't downloaded",
+            staging.display()
+        );
+        match fs::remove_dir_all(&staging) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                log::warn!("Could not delete {}: {error}", staging.display());
+            }
+            _ => {}
+        }
+        // The folder made for it, if nothing else is there.
+        if let Some(folder) = staging.parent() {
+            let _ = fs::remove_dir(folder);
+        }
     }
 
     /// Where the copy of the torrent with `info_hash` is kept.
     fn kept(&self, info_hash: &str) -> PathBuf {
         kept_in(&self.store, info_hash)
+    }
+
+    /// Where the copy of the torrent with `info_hash` is kept, unless a
+    /// client of `config` is checked against it: discarding a download of
+    /// it deletes the copy then, and leaves it otherwise.
+    fn kept_unless_shared(&self, config: &Config, info_hash: &str) -> Option<PathBuf> {
+        let shared = config
+            .torrents
+            .values()
+            .any(|saved| saved.info_hash == info_hash);
+
+        (!shared).then(|| self.kept(info_hash))
     }
 
     /// Whether something is under way, or waits for the player: another
@@ -608,6 +633,11 @@ impl State {
                 if matches!(job.kind, Kind::Check) && playing {
                     return Action::none();
                 }
+                // Stopped by `finish`, so that stopping or failing afterwards
+                // finds no download to stop again.
+                let Some(download) = job.download.take() else {
+                    return Action::none();
+                };
 
                 log::info!(
                     "Downloaded {}: putting its files in {}",
@@ -636,7 +666,7 @@ impl State {
                 Action::task(Task::perform(
                     finish(
                         engine.clone(),
-                        download.clone(),
+                        download,
                         staging.clone(),
                         found.folder.clone(),
                         found.torrent.clone(),
@@ -755,7 +785,11 @@ impl State {
                     Ok(Some(check)) if check.is_current() => {
                         log::info!("{} is as its torrent has it", job.name());
                         job.stage = Stage::Current;
-                        Action::none()
+                        // What an update cut short downloaded is of no use.
+                        let left = job.staging.clone();
+                        Action::task(left.map_or_else(Task::none, |staging| {
+                            clean_up(None, None, After::Remove(staging))
+                        }))
                     }
                     Ok(Some(check)) => {
                         log::info!(
@@ -912,12 +946,16 @@ impl State {
                 }
                 log::info!("Discarding the download of {}", pending.name);
 
-                let (staging, kept) = (pending.folder.join(STAGING), self.kept(&info_hash));
+                let staging = pending.folder.join(STAGING);
+                let kept = self.kept_unless_shared(config, &info_hash);
                 Action::new(
                     Instruction::Discarded(info_hash),
                     Task::perform(
                         async move {
                             tidy(None, None, After::Remove(staging)).await?;
+                            let Some(kept) = kept else {
+                                return Ok(());
+                            };
                             match tokio::fs::remove_file(&kept).await {
                                 Err(error) if error.kind() != io::ErrorKind::NotFound => {
                                     Err(format!("{}: {error}", kept.display()))
@@ -1307,10 +1345,10 @@ impl Job {
         };
 
         match self.kind {
-            // Turned down before it was kept, or an update stopped.
+            // Turned down before it was kept.
             Kind::New { .. } if self.saved.is_none() => After::Remove(staging.clone()),
-            Kind::Check if !self.files.is_empty() => After::Remove(staging.clone()),
-            // A client being downloaded resumes later.
+            // A client being downloaded resumes later, and so does an
+            // update: what it downloaded is there for the next.
             _ => After::Nothing,
         }
     }
@@ -1724,37 +1762,6 @@ async fn finish(
     .await
 }
 
-/// Where updates of the clients of `config` cut short may have left
-/// something: their staging folders, but those of clients still being
-/// downloaded, which resume from what they left.
-fn left_by_updates(config: &Config) -> Vec<PathBuf> {
-    config
-        .torrents
-        .values()
-        .map(|saved| &saved.folder)
-        .filter(|folder| {
-            !config
-                .downloads
-                .iter()
-                .any(|pending| pending.folder == **folder)
-        })
-        .map(|folder| folder.join(STAGING))
-        .collect()
-}
-
-/// Deletes the staging folders `left`, those there.
-fn sweep(left: &[PathBuf]) -> Result<(), String> {
-    for staging in left.iter().filter(|staging| staging.is_dir()) {
-        log::info!(
-            "Deleting {}, left by an update cut short",
-            staging.display()
-        );
-        fs::remove_dir_all(staging).map_err(|error| format!("{}: {error}", staging.display()))?;
-    }
-
-    Ok(())
-}
-
 /// Stops `download`, if any, and does what is left `after` (see [`tidy`]).
 fn clean_up(engine: Option<Engine>, download: Option<Download>, after: After) -> Task<Message> {
     if download.is_none() && matches!(after, After::Nothing) {
@@ -2124,17 +2131,19 @@ mod tests {
         .await
     }
 
-    /// What the task of the stage moving the files does.
-    async fn moved(state: &State) -> Result<Option<Installation>, String> {
+    /// What the task of the stage moving the files does, with the
+    /// `download` the job gave it.
+    async fn moved(state: &State, download: Download) -> Result<Option<Installation>, String> {
         let job = job(state);
         let found = job.found.as_ref().unwrap();
         let Stage::Moving { moved } = &job.stage else {
             panic!("not moving");
         };
+        assert!(job.download.is_none(), "given away");
 
         finish(
             state.engine.clone().unwrap(),
-            job.download.clone().unwrap(),
+            download,
             job.staging.clone().unwrap(),
             found.folder.clone(),
             found.torrent.clone(),
@@ -2248,7 +2257,7 @@ mod tests {
         assert!(matches!(job(&state).stage, Stage::Moving { .. }));
         assert_eq!(listed(&found.folder), [".download"], "still aside");
 
-        let moved = moved(&state).await;
+        let moved = moved(&state, download).await;
         let Some(Instruction::Added {
             installation,
             torrent,
@@ -2414,6 +2423,7 @@ mod tests {
         assert!(!state.holds_back(&root), "nothing changes there yet");
 
         let began = began(&state).await;
+        let download = began.as_ref().unwrap().download.clone();
         let _ = update(&mut state, Message::Began(1, began), &config, false);
         // common.MPQ is in the first three 16 KB pieces.
         assert!(matches!(
@@ -2443,7 +2453,7 @@ mod tests {
         let _ = update(&mut state, Message::Tick, &config, false);
         assert!(matches!(job(&state).stage, Stage::Moving { .. }));
         assert!(state.holds_back(&root));
-        let moved = moved(&state).await;
+        let moved = moved(&state, download).await;
         let Some(Instruction::Updated { notice, .. }) =
             update(&mut state, Message::Moved(1, moved), &config, false)
         else {
@@ -2734,9 +2744,10 @@ mod tests {
                 .map_err(|error| describe(&error));
         let _ = update(&mut state, Message::Staged(1, staged), &config, false);
         let began = began(&state).await;
+        let download = began.as_ref().unwrap().download.clone();
         let _ = update(&mut state, Message::Began(1, began), &config, false);
         ticked_through(&mut state, &config).await;
-        let moved = moved(&state).await;
+        let moved = moved(&state, download).await;
         assert!(update(&mut state, Message::Moved(1, moved), &config, false).is_none());
 
         let Stage::Failed(error) = &job(&state).stage else {
@@ -2941,34 +2952,61 @@ mod tests {
             .await
             .unwrap();
         assert!(listed(into.path()).is_empty(), "nor the folder made for it");
+
+        // The copy of its torrent goes with it, unless a client is checked
+        // against it.
+        assert_eq!(
+            state.kept_unless_shared(&config, "c0ffee"),
+            Some(state.kept("c0ffee"))
+        );
+        let shared = Config {
+            torrents: BTreeMap::from([(PathBuf::from("/games/WotLK"), pending)]),
+            ..Config::default()
+        };
+        assert_eq!(state.kept_unless_shared(&shared, "c0ffee"), None);
     }
 
     #[test]
-    fn what_updates_cut_short_left_goes_but_what_resumes() {
+    fn on_the_way_out_only_a_client_not_said_yes_to_is_deleted() {
         let games = tempfile::tempdir().unwrap();
-        let torrent = |name: &str, info_hash: &str| ClientTorrent {
-            name: name.into(),
-            info_hash: info_hash.into(),
-            source: format!("magnet:?xt=urn:btih:{info_hash}"),
-            folder: games.path().join(name),
+        let staging = games.path().join("WotLK/.download");
+        let downloaded = || {
+            fs::create_dir_all(staging.join("Data")).unwrap();
+            fs::write(staging.join("Wow.exe"), b"MZ").unwrap();
         };
-        let (updated, downloading) = (torrent("WotLK", "c0ffee"), torrent("HD", "decaf"));
-        let config = Config {
-            torrents: BTreeMap::from([(updated.folder.clone(), updated.clone())]),
-            downloads: vec![downloading.clone()],
-            ..Config::default()
-        };
-        for folder in [&updated.folder, &downloading.folder] {
-            fs::create_dir_all(folder.join(".download/Data")).unwrap();
-            fs::write(folder.join(".download/Data/common.MPQ"), b"half").unwrap();
+        let source = Source::Magnet("magnet:?xt=urn:btih:c0ffee".to_owned());
+
+        // Its Wow.exe downloaded, not yet said yes to.
+        downloaded();
+        let mut state = at(
+            Kind::New { source },
+            Stage::Identifying,
+            Progress::default(),
+            false,
+        );
+        state.job.as_mut().unwrap().staging = Some(staging.clone());
+        state.abandon();
+        assert!(state.job.is_none());
+        assert!(
+            !games.path().join("WotLK").exists(),
+            "nor the folder made for it"
+        );
+
+        // A client being downloaded, and an update, resume.
+        for kind in [Kind::Resume, Kind::Check] {
+            downloaded();
+            let mut state = at(
+                kind,
+                Stage::Downloading { pieces: 2 },
+                Progress::default(),
+                false,
+            );
+            let job = state.job.as_mut().unwrap();
+            job.staging = Some(staging.clone());
+            job.files = vec![0, 1];
+            state.abandon();
+            assert!(staging.join("Wow.exe").is_file(), "kept to resume");
         }
-        fs::write(updated.folder.join("Wow.exe"), b"MZ").unwrap();
-
-        sweep(&left_by_updates(&config)).unwrap();
-
-        assert_eq!(listed(&updated.folder), ["Wow.exe"], "the client stays");
-        assert_eq!(listed(&downloading.folder), [".download"], "it resumes");
-        assert!(sweep(&[games.path().join("never made")]).is_ok());
     }
 
     #[test]
@@ -3283,6 +3321,7 @@ mod tests {
         };
         let _ = update(&mut state, Message::Staged(1, staged), &config, false);
         let began = began(&state).await;
+        let download = began.as_ref().unwrap().download.clone();
         let _ = update(&mut state, Message::Began(1, began), &config, false);
         let Stage::Downloading { pieces } = job(&state).stage else {
             panic!("not downloading");
@@ -3336,7 +3375,7 @@ mod tests {
             "downloaded in an hour"
         );
 
-        let moved = moved(&state).await;
+        let moved = moved(&state, download).await;
         let Some(Instruction::Updated { notice, .. }) =
             update(&mut state, Message::Moved(1, moved), &config, false)
         else {

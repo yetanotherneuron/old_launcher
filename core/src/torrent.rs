@@ -269,14 +269,26 @@ impl Torrent {
     }
 
     /// The files whose paths, within the client, are the player's (see
-    /// [`is_players`]), by index.
-    pub fn players(&self) -> BTreeSet<usize> {
+    /// [`is_players`]) or the launcher's own (see [`is_launchers`]), by
+    /// index: never compared with it, nor replaced from it.
+    pub fn untouched(&self) -> BTreeSet<usize> {
+        self.within(|path| is_players(path) || is_launchers(path))
+    }
+
+    /// The files that are the launcher's own, by index (see
+    /// [`is_launchers`]).
+    fn launchers(&self) -> BTreeSet<usize> {
+        self.within(is_launchers)
+    }
+
+    /// The files whose paths within the client `matches`, by index.
+    fn within(&self, matches: impl Fn(&str) -> bool) -> BTreeSet<usize> {
         let client = self.client().unwrap_or_default();
 
         self.files
             .iter()
             .enumerate()
-            .filter(|(_, file)| file.path.strip_prefix(&client).is_some_and(is_players))
+            .filter(|(_, file)| file.path.strip_prefix(&client).is_some_and(&matches))
             .map(|(index, _)| index)
             .collect()
     }
@@ -426,6 +438,15 @@ pub fn is_players(path: &str) -> bool {
         || path.rsplit('/').next() == Some("realmlist.wtf")
 }
 
+/// Whether the file at `path`, within the client folder, is the launcher's
+/// own: what it notes beside `Wow.exe` (`.old_launcher.toml`, and 0.9.0's
+/// markers), which a torrent made of a client folder carries along. What
+/// the launcher notes in a folder is about that folder: it is never checked
+/// against a torrent, nor taken from one.
+pub fn is_launchers(path: &str) -> bool {
+    !path.contains('/') && path.starts_with(".old_launcher")
+}
+
 /// What a file is to [`check`], from a look at the folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Found {
@@ -434,11 +455,12 @@ enum Found {
     /// There as last found as the torrent has it, unchanged since: read
     /// only for a piece shared with a file that changed.
     Unchanged,
-    /// The player's, at its length: read, but blamed for nothing.
-    Players,
-    /// The player's, of another length or missing: its pieces can't be
-    /// compared.
-    PlayersOther,
+    /// The player's or the launcher's, at its length: read, but blamed for
+    /// nothing.
+    Untouched,
+    /// The player's or the launcher's, of another length or missing: its
+    /// pieces can't be compared.
+    UntouchedOther,
     /// Padding: zeros, never on disk.
     Padding,
     /// Not there.
@@ -449,23 +471,27 @@ enum Found {
 
 /// Compares the folder `torrent` downloads into, `folder`, with it, piece
 /// by piece, only reading: the files missing, and those whose contents
-/// differ. The player's files (see [`is_players`]) are neither: a piece
-/// shared with one that changed blames no other file. A piece that differs
-/// and is shared by other files blames them all, unless one of them differs
-/// anyway: downloading it writes the piece whole. `Wow.exe` with the
-/// Large Address Aware flag set otherwise than the torrent's is as
-/// released, the flag being the launcher's to set.
+/// differ. The player's files and the launcher's own (see
+/// [`Torrent::untouched`]) are neither: a piece shared with one that changed
+/// blames no other file. A piece that differs and is shared by other files
+/// blames them all, unless one of them differs anyway: downloading it
+/// writes the piece whole. `Wow.exe` with the Large Address Aware flag set
+/// otherwise than the torrent's is as released, the flag being the
+/// launcher's to set.
 ///
 /// The files found as the torrent has them are noted in `folder`, for the
-/// next check to read only those changed since. `progress` hears how many
-/// of the torrent's bytes were gone through, and stops the check by
-/// breaking: then there is no result.
+/// next check to read only those changed since: those whose every piece
+/// was read and matched, but for pieces shared with the player's files,
+/// which may never match. A piece shared with a file to download can't be
+/// read whole until it is: the files sharing it aren't noted, and the next
+/// check reads them. `progress` hears how many of the torrent's bytes were
+/// gone through, and stops the check by breaking: then there is no result.
 pub fn check(
     folder: &Path,
     torrent: &Torrent,
     progress: &mut dyn FnMut(u64) -> ControlFlow<()>,
 ) -> Result<Option<Check>, Error> {
-    let players = torrent.players();
+    let untouched = torrent.untouched();
     let verified = Verified::read(folder, torrent);
     let mut starts = Vec::with_capacity(torrent.files.len());
     let mut total = 0;
@@ -491,10 +517,10 @@ pub fn check(
         let unchanged = stamp.is_some() && verified.files.get(&file.path) == stamp.as_ref();
 
         found.push(
-            match (file.padding, players.contains(&index), there, stamp) {
+            match (file.padding, untouched.contains(&index), there, stamp) {
                 (true, ..) => Found::Padding,
-                (false, true, _, Some(_)) => Found::Players,
-                (false, true, _, None) => Found::PlayersOther,
+                (false, true, _, Some(_)) => Found::Untouched,
+                (false, true, _, None) => Found::UntouchedOther,
                 (false, false, false, _) => Found::Missing,
                 (false, false, true, None) => Found::Resized,
                 (false, false, true, Some(_)) if unchanged => Found::Unchanged,
@@ -523,6 +549,9 @@ pub fn check(
     // over all of them, so they are blamed at the end, unless one of them
     // is downloaded anyway.
     let mut shared = Vec::new();
+    // The files read whose piece shared with a file to download went
+    // unread: not found as the torrent has them until it is downloaded.
+    let mut unread = BTreeSet::new();
     let mut piece = Vec::new();
     for (index, hash) in torrent.pieces.iter().enumerate() {
         let start = index as u64 * torrent.piece_length;
@@ -537,7 +566,7 @@ pub fn check(
         let readable = within.iter().all(|file| {
             matches!(
                 found[*file],
-                Found::Sized | Found::Unchanged | Found::Players | Found::Padding
+                Found::Sized | Found::Unchanged | Found::Untouched | Found::Padding
             )
         });
         let suspects: Vec<usize> = within
@@ -546,6 +575,12 @@ pub fn check(
             .filter(|file| found[*file] == Found::Sized && !different.contains(file))
             .collect();
         if !readable || suspects.is_empty() {
+            if within
+                .iter()
+                .any(|file| matches!(found[*file], Found::Missing | Found::Resized))
+            {
+                unread.extend(suspects);
+            }
             if progress(end).is_break() {
                 return Ok(None);
             }
@@ -578,7 +613,7 @@ pub fn check(
                 matches = Sha1::digest(&piece)[..] == hash[..];
             }
         }
-        let blames = within.iter().all(|file| found[*file] != Found::Players);
+        let blames = within.iter().all(|file| found[*file] != Found::Untouched);
         if !matches && blames {
             if let [suspect] = suspects[..] {
                 let _ = different.insert(suspect);
@@ -603,8 +638,11 @@ pub fn check(
         files: BTreeMap::new(),
     };
     for (index, file) in torrent.files.iter().enumerate() {
-        let current =
-            matches!(found[index], Found::Sized | Found::Unchanged) && !different.contains(&index);
+        let current = match found[index] {
+            Found::Unchanged => true,
+            Found::Sized => !different.contains(&index) && !unread.contains(&index),
+            _ => false,
+        };
         if let (true, Some(stamp)) = (current, stamps[index]) {
             let _ = record.files.insert(file.path.clone(), stamp);
         }
@@ -628,7 +666,7 @@ pub fn check(
 /// every piece it wrote. Those a check found so and that are unchanged
 /// since stay noted; the next check reads the rest.
 pub fn record(folder: &Path, torrent: &Torrent, downloaded: &[usize]) -> Result<(), Error> {
-    let players = torrent.players();
+    let untouched = torrent.untouched();
     let earlier = Verified::read(folder, torrent);
     let mut record = Verified {
         info_hash: torrent.info_hash.clone(),
@@ -636,7 +674,7 @@ pub fn record(folder: &Path, torrent: &Torrent, downloaded: &[usize]) -> Result<
     };
 
     for (index, file) in torrent.files.iter().enumerate() {
-        if file.padding || players.contains(&index) {
+        if file.padding || untouched.contains(&index) {
             continue;
         }
         let Some(stamp) = fs::metadata(folder.join(&file.path))
@@ -684,9 +722,11 @@ pub fn stage(
 
 /// Moves the `files` of `torrent` downloaded into `staging` to their places
 /// in `folder`, over what is there, then removes `staging` with whatever
-/// else the download left in it. Within a disk a file is renamed; across
-/// disks it is copied first. `moved` hears how many of their bytes are in
-/// place. `Wow.exe` keeps the Large Address Aware flag the folder's had.
+/// else the download left in it: the launcher's own files among them (see
+/// [`is_launchers`]), which stay there. Within a disk a file is renamed;
+/// across disks it is copied first. `moved` hears how many of their bytes
+/// are in place. `Wow.exe` keeps the Large Address Aware flag the folder's
+/// had.
 pub fn move_into(
     staging: &Path,
     folder: &Path,
@@ -695,11 +735,12 @@ pub fn move_into(
     moved: &mut dyn FnMut(u64),
 ) -> Result<(), Error> {
     let executable = torrent.executable();
+    let launchers = torrent.launchers();
     let mut done = 0;
 
     for index in files {
         let file = &torrent.files[*index];
-        if file.padding {
+        if file.padding || launchers.contains(index) {
             continue;
         }
         let (from, to) = (staging.join(&file.path), folder.join(&file.path));
@@ -833,7 +874,10 @@ mod tests {
         assert_eq!(torrent.client().as_deref(), Some(""));
         assert_eq!(torrent.executable(), Some(0));
         assert_eq!(
-            named(&torrent, &torrent.players().into_iter().collect::<Vec<_>>()),
+            named(
+                &torrent,
+                &torrent.untouched().into_iter().collect::<Vec<_>>()
+            ),
             [
                 "Data/enUS/realmlist.wtf",
                 "WTF/Config.wtf",
@@ -1207,6 +1251,70 @@ mod tests {
     }
 
     #[test]
+    fn a_file_sharing_a_piece_with_one_to_download_is_read_again_once_it_is() {
+        // Pieces of 16 bytes: 1 holds the end of a and the start of b.
+        let files = vec![("a.MPQ", vec![1; 20]), ("b.MPQ", vec![2; 20])];
+        let (folder, torrent) = downloaded(&files);
+        let (a, b) = (folder.path().join("a.MPQ"), folder.path().join("b.MPQ"));
+
+        fs::remove_file(&b).unwrap();
+        let check = checked(folder.path(), &torrent);
+        assert_eq!(named(&torrent, &check.missing), ["b.MPQ"]);
+        assert!(check.different.is_empty(), "{check:?}");
+
+        // a's end, in the piece b held some of, goes wrong unnoticed, and b
+        // is downloaded.
+        let mut changed = vec![1; 20];
+        changed[18] = 3;
+        sneak(&a, &changed);
+        fs::write(&b, vec![2; 20]).unwrap();
+        record(folder.path(), &torrent, &[1]).unwrap();
+
+        let check = checked(folder.path(), &torrent);
+        assert_eq!(
+            named(&torrent, &check.different),
+            ["a.MPQ"],
+            "a's last piece was never read: a wasn't noted as the torrent has it"
+        );
+    }
+
+    #[test]
+    fn the_launchers_own_notes_in_a_torrent_are_neither_compared_nor_taken() {
+        let mut files = files();
+        files.push((".old_launcher.toml", b"[mods.theirs]\n".to_vec()));
+        let (folder, torrent) = downloaded(&files);
+        let root = folder.path();
+        let notes = root.join(".old_launcher.toml");
+        assert_eq!(
+            named(
+                &torrent,
+                &torrent.untouched().into_iter().collect::<Vec<_>>()
+            )[3],
+            ".old_launcher.toml"
+        );
+
+        // The torrent's copy is what the folder noted, as far as the check
+        // is concerned: it goes, and is neither missing nor different.
+        fs::remove_file(&notes).unwrap();
+        assert!(checked(root, &torrent).is_current());
+        assert!(notes.is_file(), "what the check noted");
+        assert!(!fs::read_to_string(&notes).unwrap().contains("theirs"));
+
+        // Downloaded whole, the torrent's copy stays in the staging folder.
+        let elsewhere = tempfile::tempdir().unwrap();
+        let staging = elsewhere.path().join("staging");
+        for (path, contents) in &files {
+            let path = staging.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+        let all: Vec<usize> = (0..torrent.files.len()).collect();
+        move_into(&staging, root, &torrent, &all, &mut |_| {}).unwrap();
+        assert!(!fs::read_to_string(&notes).unwrap().contains("theirs"));
+        assert!(!staging.exists());
+    }
+
+    #[test]
     fn a_piece_two_files_share_blames_the_one_found_different_elsewhere() {
         // Pieces of 16 bytes: 0 holds a's first 16, 1 the rest of a and
         // the start of b, 2 the rest of b.
@@ -1367,6 +1475,13 @@ mod tests {
         }
         for path in ["Wow.exe", "Data/common.MPQ", "Interface/Glues/x.blp"] {
             assert!(!is_players(path), "{path}");
+        }
+
+        for path in [".old_launcher.toml", ".old_launcher-lumenveil.toml"] {
+            assert!(is_launchers(path), "{path}");
+        }
+        for path in ["Wow.exe", "Data/.old_launcher.toml", ".download"] {
+            assert!(!is_launchers(path), "{path}");
         }
     }
 }

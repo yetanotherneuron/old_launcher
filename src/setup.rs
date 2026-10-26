@@ -104,6 +104,11 @@ impl State {
         }
     }
 
+    /// Says `why` what was submitted was refused, for another try.
+    pub fn refuse(&mut self, why: String) {
+        self.error = Some(why);
+    }
+
     /// Handles a form interaction.
     pub fn update(&mut self, message: Message) -> Action<Instruction, Message> {
         match message {

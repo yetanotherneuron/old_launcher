@@ -3,7 +3,7 @@
 //! needs to check or repair one before starting the game, and a section of
 //! the clients dialog that installs, updates, repairs and removes them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -40,13 +40,14 @@ pub struct State {
     /// In each client folder looked at, the files of something else where a
     /// mod's newest release puts its own, by mod id (see [`Seen::foreign`]).
     foreign: BTreeMap<PathBuf, BTreeMap<String, Vec<String>>>,
-    /// The mods being checked, by client folder and id.
-    checking: BTreeSet<(PathBuf, String)>,
+    /// The client folders being looked at, and whether to look again once
+    /// done: asked meanwhile, the folder may have changed since.
+    finding: BTreeMap<PathBuf, bool>,
     /// The work under way.
     busy: Option<Work>,
-    /// The mod whose removal from the client shown waits for a yes, and
-    /// whether the player's files go too.
-    removing: Option<(String, bool)>,
+    /// The client folder and the mod whose removal from it waits for a yes,
+    /// and whether the player's files go too.
+    removing: Option<(PathBuf, String, bool)>,
     /// What the last work did.
     done: Option<Work>,
     /// Downloads from GitHub signed in, when there is a login.
@@ -120,10 +121,6 @@ pub struct Seen {
 pub enum Message {
     /// What a client folder holds of the mods was looked at.
     Found(PathBuf, Seen),
-    /// Check, which compares a mod's files with its releases', was pressed.
-    Check(String),
-    /// A mod's files were checked against its releases, or couldn't be read.
-    Checked(PathBuf, String, Result<Option<Status>, String>),
     /// A mod's name, a link to its page, was pressed.
     OpenPage(String),
     /// Its page couldn't be opened: why.
@@ -159,40 +156,57 @@ pub enum Instruction {
 /// game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Need {
-    /// Check its files against its releases.
-    Check,
     /// Repair it: install its release again, or the newest.
     Repair,
 }
 
-/// Looks at what the client folder at `root` holds of the mods in `list`.
-pub fn find(root: &Path, list: &Mods) -> Task<Message> {
+/// Looks at what the client folder at `root` holds of the mods in `list`,
+/// away from the window (see [`look`]).
+fn find(root: &Path, list: &Mods) -> Task<Message> {
     let root = root.to_path_buf();
     let list = list.clone();
 
     Task::perform(
         blocking({
             let root = root.clone();
-            move || {
-                let mut seen = Seen::default();
-                for listed in &list.mods {
-                    if let Some(status) = mods::status(&root, listed) {
-                        let _ = seen.held.insert(listed.id.clone(), status);
-                    }
-                    let foreign = listed
-                        .newest()
-                        .map(|newest| mods::foreign(&root, listed, newest))
-                        .unwrap_or_default();
-                    if !foreign.is_empty() {
-                        let _ = seen.foreign.insert(listed.id.clone(), foreign);
-                    }
-                }
-
-                Ok(seen)
-            }
+            move || Ok(look(&root, &list))
         }),
         move |seen| Message::Found(root, seen.unwrap_or_default()),
     )
+}
+
+/// What the client folder at `root` holds of the mods in `list`: each one
+/// there checked against its releases (see [`mods::check`]), so that one
+/// found is known by its release, or as installed by hand; and the files
+/// of something else where each would put its own.
+pub fn look(root: &Path, list: &Mods) -> Seen {
+    let mut seen = Seen::default();
+
+    for listed in &list.mods {
+        let status = match mods::check(root, listed) {
+            Ok(status) => status,
+            Err(error) => {
+                log::warn!(
+                    "Could not check {} in {}: {error}",
+                    listed.name,
+                    root.display()
+                );
+                mods::status(root, listed)
+            }
+        };
+        if let Some(status) = status {
+            let _ = seen.held.insert(listed.id.clone(), status);
+        }
+        let foreign = listed
+            .newest()
+            .map(|newest| mods::foreign(root, listed, newest))
+            .unwrap_or_default();
+        if !foreign.is_empty() {
+            let _ = seen.foreign.insert(listed.id.clone(), foreign);
+        }
+    }
+
+    seen
 }
 
 impl State {
@@ -215,6 +229,10 @@ impl State {
         self.unfetched = None;
         self.found.clear();
         self.foreign.clear();
+        // What is being looked at with the old list is looked at again.
+        for again in self.finding.values_mut() {
+            *again = true;
+        }
 
         current.map_or_else(Task::none, |root| self.find(root))
     }
@@ -227,15 +245,31 @@ impl State {
         }
     }
 
-    /// Looks at the client folder at `root` again.
-    pub fn find(&self, root: &Path) -> Task<Message> {
-        find(root, &self.list)
+    /// Looks at the client folder at `root` again: once at a time, a look
+    /// asked for meanwhile coming after the one under way, since the
+    /// folder may have changed; and not while something is being done to a
+    /// mod there, which looks once done.
+    pub fn find(&mut self, root: &Path) -> Task<Message> {
+        if self.busy.as_ref().is_some_and(|work| work.root == root) {
+            return Task::none();
+        }
+
+        match self.finding.get_mut(root) {
+            Some(again) => {
+                *again = true;
+                Task::none()
+            }
+            None => {
+                let _ = self.finding.insert(root.to_path_buf(), false);
+                find(root, &self.list)
+            }
+        }
     }
 
     /// Looks at the client folder at `root`, which the dialog shows, if it
-    /// wasn't yet.
-    pub fn shown(&self, root: &Path) -> Task<Message> {
-        if self.found.contains_key(root) {
+    /// wasn't yet and isn't being.
+    pub fn shown(&mut self, root: &Path) -> Task<Message> {
+        if self.found.contains_key(root) || self.finding.contains_key(root) {
             Task::none()
         } else {
             self.find(root)
@@ -303,27 +337,40 @@ impl State {
     }
 
     /// Whether starting the game of the client at `root` waits for the
-    /// launcher to check or repair a mod in it, or to finish doing something
-    /// to one.
+    /// launcher to look at its mods first, to repair one, or to finish
+    /// doing something to one.
     pub fn holds_back(&self, root: &Path) -> bool {
         self.busy.as_ref().is_some_and(|work| work.root == root)
             || self
                 .found
                 .get(root)
-                .is_some_and(|found| found.values().any(|status| need(status).is_some()))
+                .is_none_or(|found| found.values().any(|status| need(status).is_some()))
     }
 
     /// The DLLs the mods in the client folder at `root` put beside
-    /// `Wow.exe`, as released, by name without `.dll`: Wine has to be told
-    /// to load those from there.
+    /// `Wow.exe`, by name without `.dll`: Wine has to be told to load those
+    /// from there. A release's as released, and whichever a copy installed
+    /// by hand has.
     pub fn natives(&self, root: &Path) -> Vec<String> {
         self.found
             .get(root)
             .into_iter()
             .flatten()
-            .filter(|(_, status)| status.problems.is_empty())
-            .filter_map(|(id, status)| self.listed(id)?.release(status.release.as_deref()?))
-            .flat_map(Release::natives)
+            .flat_map(|(id, status)| {
+                let by_hand = status.problems.iter().find_map(|problem| match problem {
+                    Problem::Unknown { natives, .. } => Some(natives.clone()),
+                    _ => None,
+                });
+                by_hand.unwrap_or_else(|| {
+                    status
+                        .problems
+                        .is_empty()
+                        .then(|| self.listed(id)?.release(status.release.as_deref()?))
+                        .flatten()
+                        .map(Release::natives)
+                        .unwrap_or_default()
+                })
+            })
             .collect()
     }
 
@@ -357,55 +404,10 @@ impl State {
                     );
                 }
                 let _ = self.found.insert(root.clone(), seen.held);
-                let _ = self.foreign.insert(root, seen.foreign);
-                Action::none()
-            }
-            Message::Check(id) => {
-                let (Some(installation), Some(listed)) = (installation, self.listed(&id).cloned())
-                else {
-                    return Action::none();
-                };
-                let root = installation.root().to_path_buf();
-                if !self.checking.insert((root.clone(), id.clone())) {
-                    return Action::none();
-                }
-                log::info!("Checking {} in {}", listed.name, root.display());
-                self.done = None;
-
-                let installation = installation.clone();
-                Action::task(Task::perform(
-                    blocking(move || mods::check(&installation, &listed)),
-                    move |checked| Message::Checked(root, id, checked),
-                ))
-            }
-            Message::Checked(root, id, checked) => {
-                let _ = self.checking.remove(&(root.clone(), id.clone()));
-                let name = self.name(&id);
-
-                match checked {
-                    Ok(status) => {
-                        log::info!("{name} in {}, checked: {status:?}", root.display());
-                        if status.as_ref().is_some_and(|status| need(status).is_none()) {
-                            self.done = Some(Work {
-                                root: root.clone(),
-                                id: id.clone(),
-                                said: format!("{name} is checked: its files are as released."),
-                                stage: None,
-                                steps: 0,
-                            });
-                        }
-
-                        let found = self.found.entry(root).or_default();
-                        match status {
-                            Some(status) => {
-                                let _ = found.insert(id, status);
-                            }
-                            None => {
-                                let _ = found.remove(&id);
-                            }
-                        }
-                    }
-                    Err(error) => errors.report(format!("Could not check {name}: {error}")),
+                let _ = self.foreign.insert(root.clone(), seen.foreign);
+                // Asked meanwhile: the folder may have changed since.
+                if self.finding.remove(&root) == Some(true) {
+                    return Action::task(self.find(&root));
                 }
                 Action::none()
             }
@@ -470,11 +472,13 @@ impl State {
                 )
             }
             Message::Remove(id) => {
-                self.removing = Some((id, false));
+                if let Some(installation) = installation {
+                    self.removing = Some((installation.root().to_path_buf(), id, false));
+                }
                 Action::none()
             }
             Message::DeleteSettings(delete) => {
-                if let Some((_, deleting)) = &mut self.removing {
+                if let Some((_, _, deleting)) = &mut self.removing {
                     *deleting = delete;
                 }
                 Action::none()
@@ -484,17 +488,23 @@ impl State {
                 Action::none()
             }
             Message::ConfirmRemove => {
-                let Some((id, delete)) = self.removing.take() else {
-                    return Action::none();
-                };
-                let Some(listed) = self.listed(&id).cloned() else {
-                    return Action::none();
-                };
                 let Some(installation) = installation.filter(|_| !playing && self.busy.is_none())
                 else {
                     return Action::none();
                 };
                 let root = installation.root().to_path_buf();
+                let Some((id, delete)) = self
+                    .removing
+                    .as_ref()
+                    .filter(|(from, ..)| *from == root)
+                    .map(|(_, id, delete)| (id.clone(), *delete))
+                else {
+                    return Action::none();
+                };
+                let Some(listed) = self.listed(&id).cloned() else {
+                    return Action::none();
+                };
+                self.removing = None;
                 log::info!("Removing {} from {}", listed.name, root.display());
                 self.busy = Some(Work {
                     root: root.clone(),
@@ -651,26 +661,6 @@ impl State {
                 row![],
                 style::Tone::Warning,
             ),
-            (None, Some((_, Need::Check)), _) => {
-                let checking = self
-                    .checking
-                    .contains(&(root.to_path_buf(), listed.id.clone()));
-                let said = if checking {
-                    format!("Checking {}…", listed.name)
-                } else {
-                    format!(
-                        "{} is in this client. The launcher needs to check it before starting \
-                         the game.",
-                        listed.name
-                    )
-                };
-                // Checking writes nothing the game reads.
-                let check = button(if checking { "Checking…" } else { "Check" })
-                    .style(button::primary)
-                    .on_press_maybe((!checking).then(|| Message::Check(listed.id.clone())));
-
-                (text(said).boxed(), row![check], style::Tone::Warning)
-            }
             (None, Some((status, Need::Repair)), _) => {
                 let why: Vec<String> = status
                     .problems
@@ -765,6 +755,14 @@ impl State {
             .filter(|(installed, newest)| update::newer(&newest.version, installed))
             .map(|(_, newest)| newest);
         let needed = status.and_then(need);
+        // Installed by hand, matching no release: at this version, if its
+        // files say.
+        let by_hand = status.and_then(|status| {
+            status.problems.iter().find_map(|problem| match problem {
+                Problem::Unknown { version, .. } => Some(version.as_deref()),
+                _ => None,
+            })
+        });
         let idle = self.busy.is_none();
         // Only once the folder was looked at, and when there is something
         // to install.
@@ -775,12 +773,14 @@ impl State {
         let state: Element<'a, Message> = match (found, status) {
             (None, _) => text("Looking…").size(14).style(text::secondary).boxed(),
             (Some(_), None) => text("Not installed.").size(14).boxed(),
-            (Some(_), Some(status)) => text(match (&status.release, newer) {
-                (Some(version), Some(newer)) => {
+            (Some(_), Some(status)) => text(match (by_hand, &status.release, newer) {
+                (Some(Some(version)), ..) => format!("Version {version} installed manually."),
+                (Some(None), ..) => "Installed manually.".to_owned(),
+                (None, Some(version), Some(newer)) => {
                     format!("Version {version} installed; {} is out.", newer.version)
                 }
-                (Some(version), None) => format!("Version {version} installed."),
-                (None, _) => "Installed.".to_owned(),
+                (None, Some(version), None) => format!("Version {version} installed."),
+                (None, None, _) => "Installed.".to_owned(),
             })
             .size(14)
             .boxed(),
@@ -799,16 +799,13 @@ impl State {
             }
         };
 
-        let checking = self
-            .checking
-            .contains(&(root.to_path_buf(), listed.id.clone()));
-        // Checking writes nothing the game reads.
-        let check = (needed == Some(Need::Check)).then(|| {
-            button(text(if checking { "Checking…" } else { "Check" }).size(13))
-                .style(button::secondary)
-                .padding([4, 12])
-                .on_press_maybe((!checking).then(|| Message::Check(listed.id.clone())))
-        });
+        // A copy installed by hand is offered the newest release in its
+        // place; one installed from the list, a newer one.
+        let offered = if by_hand.is_some() {
+            newest.map(|release| (format!("Install {}", release.version), release))
+        } else {
+            newer.map(|release| (format!("Update to {}", release.version), release))
+        };
         let buttons = match status {
             None => row![newest.filter(|_| blocked.is_none()).map(|release| action(
                 format!("Install {}", release.version),
@@ -816,12 +813,13 @@ impl State {
                 button::primary,
             ))],
             Some(_) => row![
-                newer.filter(|_| blocked.is_none()).map(|release| action(
-                    format!("Update to {}", release.version),
-                    Message::Install(listed.id.clone()),
-                    button::primary,
-                )),
-                check,
+                offered
+                    .filter(|_| blocked.is_none())
+                    .map(|(label, _)| action(
+                        label,
+                        Message::Install(listed.id.clone()),
+                        button::primary,
+                    )),
                 (needed == Some(Need::Repair)).then(|| action(
                     "Repair".to_owned(),
                     Message::Repair(listed.id.clone()),
@@ -836,15 +834,14 @@ impl State {
         }
         .spacing(8);
 
+        // A copy installed by hand is said to be, above: no problem.
         let problems = status
             .into_iter()
             .flat_map(|status| &status.problems)
+            .filter(|problem| !matches!(problem, Problem::Unknown { .. }))
             .map(|problem| {
-                let (said, tone): (String, Tone) = match problem {
-                    Problem::Unchecked if checking => ("Checking it…".to_owned(), text::secondary),
-                    problem => (sentence(listed, problem), text::warning),
-                };
-                text(said).size(13).style(tone)
+                let tone: Tone = text::warning;
+                text(sentence(listed, problem)).size(13).style(tone)
             });
 
         let note = self
@@ -871,8 +868,8 @@ impl State {
         let removal = self
             .removing
             .as_ref()
-            .filter(|(id, _)| *id == listed.id && status.is_some())
-            .map(|(_, delete)| {
+            .filter(|(from, id, _)| from == root && *id == listed.id && status.is_some())
+            .map(|(_, _, delete)| {
                 container(
                     column![
                         text(format!("Remove {} from this client?", listed.name)).size(14),
@@ -936,15 +933,16 @@ impl State {
 }
 
 /// What the launcher needs to do to a mod, which a client folder holds as
-/// `status` says, before starting the game, if anything.
+/// `status` says, before starting the game, if anything: a copy installed
+/// by hand is the player's, and one that couldn't be checked is left as
+/// it is.
 fn need(status: &Status) -> Option<Need> {
-    if status.problems.contains(&Problem::Unchecked) {
-        Some(Need::Check)
-    } else if status.problems.is_empty() {
-        None
-    } else {
-        Some(Need::Repair)
-    }
+    let problems = status
+        .problems
+        .iter()
+        .any(|problem| !matches!(problem, Problem::Unknown { .. } | Problem::Unchecked));
+
+    problems.then_some(Need::Repair)
 }
 
 /// The release of `listed` that repairing installs, in a client folder
@@ -1012,10 +1010,11 @@ fn sentence(listed: &Mod, problem: &Problem) -> String {
         .map_or("the newest release", |release| release.version.as_str());
 
     match problem {
-        Problem::Unchecked => "The launcher needs to check it before starting the game.".to_owned(),
-        Problem::Unknown => {
-            format!("Its files match none of its releases: repairing installs {newest}.")
-        }
+        Problem::Unchecked => "Its files couldn't be checked against its releases.".to_owned(),
+        Problem::Unknown { version, .. } => match version {
+            Some(version) => format!("Version {version}, installed manually."),
+            None => "Installed manually.".to_owned(),
+        },
         Problem::Unlisted(version) => {
             format!("Version {version} is no longer listed: repairing installs {newest}.")
         }
@@ -1284,6 +1283,7 @@ mod tests {
             writes: Vec::new(),
             config: BTreeMap::new(),
             platforms: Vec::new(),
+            version_in: None,
         }
     }
 
@@ -1510,69 +1510,108 @@ mod tests {
     }
 
     #[test]
-    fn found_unchecked_it_is_checked_on_request() {
+    fn a_client_is_looked_at_once_at_a_time_and_the_game_waits_for_it() {
+        // Glow's files, of a version the list doesn't know.
         let (_root, installation) = crate::core::testing::client_with(&[
             ("version.dll", "loader 1.0"),
             ("Glow.dll", "renderer 1.0"),
+            ("Glow.log", "ran"),
         ]);
         let root = installation.root().to_path_buf();
         let mut state = found(None);
-        let _ = state.found.insert(
-            root.clone(),
-            BTreeMap::from([("glow".to_owned(), status(None, vec![Problem::Unchecked]))]),
+        assert!(state.holds_back(&root), "not looked at yet");
+        assert!(state.natives(&root).is_empty());
+
+        // One look at a time: asked again meanwhile, it looks again after.
+        assert!(state.find(&root).units() > 0);
+        assert!(state.find(&root).units() == 0);
+        assert!(state.shown(&root).units() == 0);
+        assert_eq!(state.finding.get(&root), Some(&true));
+
+        let seen = look(&root, &state.list);
+        assert_eq!(
+            seen.held.get("glow"),
+            Some(&status(
+                None,
+                vec![Problem::Unknown {
+                    version: None,
+                    natives: vec!["Glow".to_owned(), "version".to_owned()],
+                }]
+            )),
+            "installed by hand: its files match no release"
         );
-        let banner_says = |state: &State, wanted: &str| {
-            state
-                .banner(&root, false)
-                .is_some_and(|banner| simulator(banner).find(wanted).is_ok())
-        };
-
-        assert!(banner_says(
-            &state,
-            "Glow is in this client. The launcher needs to check it before starting the game."
-        ));
-        assert!(state.holds_back(&root));
-
-        let checking = update(
+        let again = update(
             &mut state,
-            Message::Check("glow".to_owned()),
+            Message::Found(root.clone(), seen.clone()),
             Some(&installation),
         );
-        assert!(checking.task.units() > 0);
-        assert!(banner_says(&state, "Checking Glow…"));
-
-        let as_released = status(Some("1.0"), Vec::new());
+        assert!(again.task.units() > 0, "looked at again, as asked");
+        assert_eq!(state.finding.get(&root), Some(&false));
         let _ = update(
             &mut state,
-            Message::Checked(root.clone(), "glow".to_owned(), Ok(Some(as_released))),
+            Message::Found(root.clone(), seen),
             Some(&installation),
         );
+        assert!(state.finding.is_empty());
+
+        // The player's own copy: the game starts, with its DLLs loaded.
         assert!(!state.holds_back(&root));
-        assert_eq!(state.natives(&root), ["version", "Glow"]);
-        assert!(banner_says(
-            &state,
-            "Glow is checked: its files are as released."
-        ));
-        let _ = update(&mut state, Message::Dismiss, Some(&installation));
+        assert_eq!(state.natives(&root), ["Glow", "version"]);
         assert!(state.banner(&root, false).is_none());
+        let mut ui = simulator(state.view(&root, false));
+        assert!(ui.find("Installed manually.").is_ok());
+        assert!(ui.find("Install 2.0").is_ok(), "the newest, in its place");
+        assert!(ui.find("Repair").is_err());
+        drop(ui);
+
+        // Its log alone is no copy of it.
+        std::fs::remove_file(root.join("version.dll")).unwrap();
+        std::fs::remove_file(root.join("Glow.dll")).unwrap();
+        assert!(look(&root, &state.list).held.is_empty());
+
+        // Not looked at while something is done to a mod there: that looks
+        // once done.
+        state.busy = Some(Work {
+            root: root.clone(),
+            id: "glow".to_owned(),
+            said: "Installing Glow".to_owned(),
+            stage: None,
+            steps: 0,
+        });
+        assert!(state.find(&root).units() == 0);
+        assert!(state.finding.is_empty());
     }
 
     #[test]
-    fn files_that_match_no_release_are_repaired_with_the_newest() {
-        let state = found(Some(status(None, vec![Problem::Unknown])));
+    fn a_copy_installed_by_hand_says_its_version() {
+        let state = found(Some(status(
+            None,
+            vec![Problem::Unknown {
+                version: Some("3.0".to_owned()),
+                natives: Vec::new(),
+            }],
+        )));
 
-        assert!(banner_shows(
+        assert!(shows(&state, false, "Version 3.0 installed manually."));
+        assert!(!state.holds_back(Path::new(ROOT)));
+        assert_eq!(
+            target(&glow(), &status(None, Vec::new())).unwrap().version,
+            "2.0",
+            "the newest goes in its place"
+        );
+    }
+
+    #[test]
+    fn files_that_couldnt_be_checked_are_left_as_they_are() {
+        let state = found(Some(status(None, vec![Problem::Unchecked])));
+
+        assert!(shows(
             &state,
             false,
-            "The launcher needs to repair Glow before starting the game. Its files match none \
-             of its releases: repairing installs 2.0."
+            "Its files couldn't be checked against its releases."
         ));
-        assert_eq!(
-            target(&glow(), &status(None, vec![Problem::Unknown]))
-                .unwrap()
-                .version,
-            "2.0"
-        );
+        assert!(state.banner(Path::new(ROOT), false).is_none());
+        assert!(!state.holds_back(Path::new(ROOT)));
     }
 
     #[test]
@@ -1633,6 +1672,17 @@ mod tests {
             Message::DeleteSettings(true),
             Some(&installation),
         );
+
+        // The question is this client's: another holding the mod asks
+        // nothing.
+        let other = Path::new("/games/other");
+        let _ = state.found.insert(
+            other.to_path_buf(),
+            BTreeMap::from([("glow".to_owned(), status(Some("2.0"), Vec::new()))]),
+        );
+        let mut ui = simulator(state.view(other, false));
+        assert!(ui.find("Remove Glow from this client?").is_err());
+        drop(ui);
 
         let action = update(&mut state, Message::ConfirmRemove, Some(&installation));
         assert!(state.busy.is_some(), "removing");

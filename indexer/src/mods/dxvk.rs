@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Context;
-use old_launcher_core::mods::{Mod, Release, Source};
+use old_launcher_core::mods::{Mod, Release, Source, VersionIn};
 
 use crate::mods::{Known, Published, files, published};
 
@@ -68,6 +68,12 @@ pub async fn gather(
         writes: vec!["Wow_d3d9.log".to_owned(), "Wow.dxvk-cache".to_owned()],
         config: BTreeMap::new(),
         platforms: vec!["windows".to_owned()],
+        // Its DLL says Windows' own version in its version resource, to
+        // pass for Windows' DLL, and its own in the line it logs at start.
+        version_in: Some(VersionIn {
+            file: DLL.to_owned(),
+            after: "DXVK: \0v".to_owned(),
+        }),
     })
 }
 
