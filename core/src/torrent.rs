@@ -34,7 +34,7 @@ use crate::Error;
 use crate::config::ClientTorrent;
 use crate::error::io_at;
 use crate::installation::{
-    LARGE_ADDRESS_AWARE, characteristics, large_address_aware, set_large_address_aware,
+    LARGE_ADDRESS_AWARE, characteristics, is_locale, large_address_aware, set_large_address_aware,
 };
 use crate::notes::Notes;
 
@@ -275,6 +275,63 @@ impl Torrent {
         self.within(|path| is_players(path) || is_launchers(path))
     }
 
+    /// The languages the client has data for: its `Data/<language>`
+    /// folders (`enUS`, `esES`, …), sorted.
+    pub fn languages(&self) -> Vec<String> {
+        let mut languages: Vec<String> = (0..self.files.len())
+            .filter_map(|index| self.language_of(index))
+            .map(str::to_owned)
+            .collect();
+        languages.sort();
+        languages.dedup();
+
+        languages
+    }
+
+    /// The language the file at `index` is the data of, if it is in a
+    /// `Data/<language>` folder of the client.
+    pub fn language_of(&self, index: usize) -> Option<&str> {
+        let client = self.client().unwrap_or_default();
+        let mut parts = self.files[index].path.strip_prefix(&client)?.split('/');
+
+        parts
+            .next()
+            .filter(|folder| folder.eq_ignore_ascii_case("Data"))
+            .and(parts.next())
+            .filter(|folder| is_locale(folder) && parts.next().is_some())
+    }
+
+    /// The data of `language`, by index.
+    pub fn files_of(&self, language: &str) -> Vec<usize> {
+        (0..self.files.len())
+            .filter(|index| self.language_of(*index) == Some(language))
+            .collect()
+    }
+
+    /// The files to download for a client in `languages`, by index: all but
+    /// the data of its other languages; all of them when `languages` is
+    /// empty.
+    pub fn files_in(&self, languages: &[String]) -> Vec<usize> {
+        (0..self.files.len())
+            .filter(|index| {
+                languages.is_empty()
+                    || self
+                        .language_of(*index)
+                        .is_none_or(|language| languages.iter().any(|chosen| chosen == language))
+            })
+            .collect()
+    }
+
+    /// How many bytes the `files`, by index, hold.
+    pub fn size_of(&self, files: &[usize]) -> u64 {
+        files
+            .iter()
+            .filter_map(|index| self.files.get(*index))
+            .filter(|file| !file.padding)
+            .map(|file| file.length)
+            .sum()
+    }
+
     /// The files that are the launcher's own, by index (see
     /// [`is_launchers`]).
     fn launchers(&self) -> BTreeSet<usize> {
@@ -381,6 +438,8 @@ pub fn origin(root: &Path) -> Option<ClientTorrent> {
         name: origin.name,
         info_hash: origin.info_hash,
         source: origin.source,
+        // Which languages it has, its Data folder says.
+        languages: Vec::new(),
     })
 }
 
@@ -461,6 +520,9 @@ enum Found {
     /// The player's or the launcher's, of another length or missing: its
     /// pieces can't be compared.
     UntouchedOther,
+    /// The data of a language the client doesn't have: never downloaded,
+    /// so not missing; its pieces can't be compared.
+    Unwanted,
     /// Padding: zeros, never on disk.
     Padding,
     /// Not there.
@@ -473,7 +535,9 @@ enum Found {
 /// by piece, only reading: the files missing, and those whose contents
 /// differ. The player's files and the launcher's own (see
 /// [`Torrent::untouched`]) are neither: a piece shared with one that changed
-/// blames no other file. A piece that differs and is shared by other files
+/// blames no other file. Nor is the data of a language the client has no
+/// `Data` folder for: it was left out of the download, and an update
+/// brings no language. A piece that differs and is shared by other files
 /// blames them all, unless one of them differs anyway: downloading it
 /// writes the piece whole. `Wow.exe` with the Large Address Aware flag set
 /// otherwise than the torrent's is as released, the flag being the
@@ -499,6 +563,16 @@ pub fn check(
         starts.push(total);
         total += file.length;
     }
+    // The languages the client has data for: the torrent's others are
+    // left alone.
+    let root = torrent.root(folder);
+    let unwanted: BTreeSet<usize> = (0..torrent.files.len())
+        .filter(|index| {
+            torrent
+                .language_of(*index)
+                .is_some_and(|language| !root.join("Data").join(language).is_dir())
+        })
+        .collect();
 
     let mut found = Vec::with_capacity(torrent.files.len());
     let mut stamps = Vec::with_capacity(torrent.files.len());
@@ -519,6 +593,7 @@ pub fn check(
         found.push(
             match (file.padding, untouched.contains(&index), there, stamp) {
                 (true, ..) => Found::Padding,
+                _ if unwanted.contains(&index) => Found::Unwanted,
                 (false, true, _, Some(_)) => Found::Untouched,
                 (false, true, _, None) => Found::UntouchedOther,
                 (false, false, false, _) => Found::Missing,
@@ -575,10 +650,12 @@ pub fn check(
             .filter(|file| found[*file] == Found::Sized && !different.contains(file))
             .collect();
         if !readable || suspects.is_empty() {
-            if within
-                .iter()
-                .any(|file| matches!(found[*file], Found::Missing | Found::Resized))
-            {
+            if within.iter().any(|file| {
+                matches!(
+                    found[*file],
+                    Found::Missing | Found::Resized | Found::Unwanted
+                )
+            }) {
                 unread.extend(suspects);
             }
             if progress(end).is_break() {
@@ -962,6 +1039,55 @@ mod tests {
     }
 
     #[test]
+    fn the_data_of_a_language_the_client_lacks_is_neither_wanted_nor_missing() {
+        let mut files = files();
+        files.push(("Data/esES/locale-esES.MPQ", b"palabras".to_vec()));
+        files.push((
+            "Data/esES/realmlist.wtf",
+            b"set realmlist logon.example.com".to_vec(),
+        ));
+        let (folder, torrent) = downloaded(&files);
+
+        assert_eq!(torrent.languages(), ["enUS", "esES"]);
+        assert_eq!(torrent.language_of(0), None, "Wow.exe");
+        assert_eq!(torrent.language_of(1), None, "Data/common.MPQ");
+        assert_eq!(torrent.language_of(2), Some("enUS"));
+        assert_eq!(
+            named(&torrent, &torrent.files_of("esES")),
+            ["Data/esES/locale-esES.MPQ", "Data/esES/realmlist.wtf"]
+        );
+        assert_eq!(
+            named(&torrent, &torrent.files_in(&["esES".to_owned()])),
+            [
+                "Wow.exe",
+                "Data/common.MPQ",
+                "WTF/Config.wtf",
+                "Interface/AddOns/Atlas/Atlas.toc",
+                "Data/esES/locale-esES.MPQ",
+                "Data/esES/realmlist.wtf",
+            ],
+            "all but the data of the other language"
+        );
+        assert_eq!(torrent.files_in(&[]), (0..8).collect::<Vec<_>>(), "all");
+        assert_eq!(torrent.size_of(&torrent.files_of("esES")), 8 + 31);
+
+        // Downloaded in Spanish alone: nothing is missing.
+        fs::remove_dir_all(folder.path().join("Data/enUS")).unwrap();
+        let check = checked(folder.path(), &torrent);
+        assert!(check.is_current(), "{check:?}");
+
+        // With the folder there, its data is.
+        fs::create_dir(folder.path().join("Data/enUS")).unwrap();
+        let check = checked(folder.path(), &torrent);
+        assert_eq!(
+            named(&torrent, &check.missing),
+            ["Data/enUS/locale-enUS.MPQ"],
+            "the realmlist is the player's"
+        );
+        assert!(check.different.is_empty());
+    }
+
+    #[test]
     fn a_client_folder_keeps_the_torrent_it_comes_from() {
         let folder = tempfile::tempdir().unwrap();
         let below = folder.path().join("World of Warcraft");
@@ -978,6 +1104,7 @@ mod tests {
                 info_hash: hash.to_owned(),
                 source: format!("magnet:?xt=urn:btih:{hash}"),
                 folder: folder.path().to_path_buf(),
+                languages: Vec::new(),
             };
             keep_origin(root, &torrent).unwrap();
             assert_eq!(origin(root), Some(torrent), "{client:?}");

@@ -341,11 +341,16 @@ its files go into a folder named after the torrent, which must be missing,
 empty, or hold only a download of it cut short. `Wow.exe` downloads alone
 first, and its version is read; the rest once the player says so (turning
 it down deletes the staging folder, and the folder made for it if that
-leaves it empty). From then on, a copy of its `.torrent` is kept by info hash in
-the data directory (`~/.local/share/old_launcher/torrents`,
-`%APPDATA%\old_launcher\torrents`), and the settings file lists the
-download (`downloads`: name, info hash, what the player gave, a file as its
-magnet link since files go, and where its files go). A download cut short
+leaves it empty). A torrent with the data of several languages
+(`Data/enUS`, `Data/esES`, …) asks which to download first, each with its
+size; the data of the others never downloads, and a check against the
+torrent later leaves alone the data of any language the client has no
+`Data` folder for, so an update never brings one. From then on, a copy of
+its `.torrent` is kept by info hash in the data directory
+(`~/.local/share/old_launcher/torrents`, `%APPDATA%\old_launcher\torrents`),
+and the settings file lists the download (`downloads`: name, info hash,
+what the player gave, a file as its magnet link since files go, where its
+files go, and the languages chosen, for resuming). A download cut short
 resumes from a banner, librqbit checking what the staging folder has
 first, or is discarded from it, staging folder and all. Once its files are
 in place, the client is added, its torrent listed in `torrents` instead.

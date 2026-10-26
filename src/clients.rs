@@ -1463,6 +1463,7 @@ mod tests {
             info_hash: "0123456789abcdef0123456789abcdef01234567".into(),
             source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
             folder: WOTLK.into(),
+            languages: Vec::new(),
         }
     }
 

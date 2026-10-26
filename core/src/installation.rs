@@ -589,16 +589,20 @@ fn locales(root: &Path) -> Vec<String> {
         .filter_map(Result::ok)
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| {
-            let bytes = name.as_bytes();
-            bytes.len() == 4
-                && bytes[..2].iter().all(u8::is_ascii_lowercase)
-                && bytes[2..].iter().all(u8::is_ascii_uppercase)
-        })
+        .filter(|name| is_locale(name))
         .collect();
     locales.sort();
 
     locales
+}
+
+/// Whether `name` is a `Data` folder's of a language: `enUS`, `esES`, …
+pub(crate) fn is_locale(name: &str) -> bool {
+    let bytes = name.as_bytes();
+
+    bytes.len() == 4
+        && bytes[..2].iter().all(u8::is_ascii_lowercase)
+        && bytes[2..].iter().all(u8::is_ascii_uppercase)
 }
 
 /// What `WTF/Config.wtf` of the client at `root` sets `name` to, if

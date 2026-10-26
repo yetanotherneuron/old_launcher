@@ -63,6 +63,11 @@ pub struct ClientTorrent {
     pub source: String,
     /// The folder its files go in: the client folder, or one above it.
     pub folder: PathBuf,
+    /// The languages the player chose to download, when the torrent holds
+    /// several (`enUS`, `esES`, …): the data of the others stays out. All
+    /// of them when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
 }
 
 impl Config {
@@ -275,6 +280,7 @@ mod tests {
                     info_hash: "c0ffee".repeat(6) + "c0ff",
                     source: "magnet:?xt=urn:btih:c0ffee".into(),
                     folder: "/games/wotlk".into(),
+                    languages: Vec::new(),
                 },
             )]),
             downloads: vec![ClientTorrent {
@@ -282,6 +288,7 @@ mod tests {
                 info_hash: "decaf".repeat(8),
                 source: "/home/player/Downloads/hd.torrent".into(),
                 folder: "/games/HD".into(),
+                languages: vec!["esES".into()],
             }],
         };
         config.set_launch(
@@ -356,6 +363,7 @@ mod tests {
                     info_hash: "c0ffee".into(),
                     source: "https://example.com/wotlk.torrent".into(),
                     folder: "/games".into(),
+                    languages: Vec::new(),
                 },
             )]),
             downloads: Vec::new(),

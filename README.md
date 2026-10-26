@@ -29,7 +29,7 @@ It's a portable program: nothing to install, just run it.
 - **Recognizes** the addons you installed before the launcher, and tells when you changed one it installed.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
-- **Download a client** from a torrent, and check any client for updates against one.
+- **Download a client** from a torrent, in the languages you choose, and check any client for updates against one.
 - **Switch the language** of a client that has more than one.
 - **4 GB of memory** for a client's game (Large Address Aware), for HD textures and long view distances.
 - **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.

@@ -12,6 +12,7 @@
 //! link: with the copy gone, or the client added back, it is found again.
 //! Any client can be given a torrent to update from, the same way.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::net::SocketAddr;
@@ -21,7 +22,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
-use iced::widget::{Row, button, column, container, progress_bar, row, space, text};
+use iced::widget::{Row, button, checkbox, column, container, progress_bar, row, space, text};
 use iced::{Center, Element, Fill, Function, Subscription, Task, Widget};
 
 use crate::action::Action;
@@ -119,8 +120,14 @@ enum Stage {
     Identifying,
     /// Reading it.
     Opening,
-    /// Asking whether to download the new client.
-    Confirming(Installation),
+    /// Asking whether to download the new client, and in which of the
+    /// `languages` its torrent holds, when several: those `chosen` so far.
+    /// A torrent in one language or none leaves nothing to choose.
+    Confirming {
+        installation: Installation,
+        languages: Vec<String>,
+        chosen: BTreeSet<String>,
+    },
     /// Comparing the client with its torrent: `read` says how far it got,
     /// and `stop` stops it.
     Checking {
@@ -198,6 +205,8 @@ pub enum Message {
     ConfirmDiscard(String),
     /// Discarding it was thought better of.
     KeepDownload,
+    /// A language of the new client was ticked, or unticked.
+    Language(String, bool),
     /// "Download" was pressed: get the new client.
     Download,
     /// "Update" was pressed.
@@ -516,7 +525,12 @@ impl State {
                             );
                             torrent.executable().into_iter().collect()
                         } else {
-                            (0..torrent.files.len()).collect()
+                            // In the languages chosen when it began.
+                            let languages = job
+                                .saved
+                                .as_ref()
+                                .map_or(&[][..], |saved| saved.languages.as_slice());
+                            torrent.files_in(languages)
                         };
                         job.stage = Stage::Beginning;
                         let files = job.files.clone();
@@ -687,12 +701,31 @@ impl State {
 
                 match installation {
                     Ok(installation) => {
+                        let languages = job
+                            .found
+                            .as_ref()
+                            .map_or_else(Vec::new, |found| found.torrent.languages());
                         log::info!(
-                            "{} holds a client, version {}: asking whether to download it",
+                            "{} holds a client, version {}, in {}: asking whether to download it",
                             job.name(),
-                            installation.version()
+                            installation.version(),
+                            if languages.is_empty() {
+                                "no language".to_owned()
+                            } else {
+                                languages.join(", ")
+                            }
                         );
-                        job.stage = Stage::Confirming(installation);
+                        // One language takes no choosing; several do.
+                        let chosen = if languages.len() > 1 {
+                            BTreeSet::new()
+                        } else {
+                            languages.iter().cloned().collect()
+                        };
+                        job.stage = Stage::Confirming {
+                            installation,
+                            languages,
+                            chosen,
+                        };
                         Action::none()
                     }
                     Err(error) => Action::task(self.fail(format!(
@@ -700,31 +733,70 @@ impl State {
                     ))),
                 }
             }
+            Message::Language(language, ticked) => {
+                let Some(job) = &mut self.job else {
+                    return Action::none();
+                };
+                if let Stage::Confirming {
+                    languages, chosen, ..
+                } = &mut job.stage
+                    && languages.contains(&language)
+                {
+                    if ticked {
+                        let _ = chosen.insert(language);
+                    } else {
+                        let _ = chosen.remove(&language);
+                    }
+                }
+                Action::none()
+            }
             Message::Download => {
                 let Some(job) = &mut self.job else {
                     return Action::none();
                 };
-                let (Stage::Confirming(_), Kind::New { source }, Some(found)) =
-                    (&job.stage, &job.kind, &job.found)
+                let (
+                    Stage::Confirming {
+                        languages, chosen, ..
+                    },
+                    Kind::New { source },
+                    Some(found),
+                ) = (&job.stage, &job.kind, &job.found)
                 else {
                     return Action::none();
                 };
+                // Several languages, none chosen: nothing to download yet.
+                if languages.len() > 1 && chosen.is_empty() {
+                    return Action::none();
+                }
                 let torrent = found.torrent.clone();
+                // What the player chose among several; all of one.
+                let languages: Vec<String> = if languages.len() > 1 {
+                    chosen.iter().cloned().collect()
+                } else {
+                    Vec::new()
+                };
+                let files = torrent.files_in(&languages);
                 let saved = ClientTorrent {
                     name: torrent.name.clone(),
                     info_hash: torrent.info_hash.clone(),
                     source: kept_source(source, &torrent),
                     folder: found.folder.clone(),
+                    languages: languages.clone(),
                 };
                 log::info!(
-                    "Downloading {}, {}, for {}",
+                    "Downloading {}, {}{}, for {}",
                     torrent.name,
-                    size(torrent.size()),
+                    size(torrent.size_of(&files)),
+                    if languages.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" in {}", languages.join(", "))
+                    },
                     found.folder.display()
                 );
                 let pending = Instruction::Pending(saved.clone());
                 job.saved = Some(saved);
-                job.files = (0..torrent.files.len()).collect();
+                job.files = files;
                 // Until the engine was told, it says Wow.exe is all done.
                 job.stage = Stage::Beginning;
 
@@ -1022,7 +1094,7 @@ impl State {
             Stage::Finding
             | Stage::Identifying
             | Stage::Downloading { .. }
-            | Stage::Confirming(_)
+            | Stage::Confirming { .. }
             | Stage::Current
             | Stage::Outdated(_)
             | Stage::Failed(_) => false,
@@ -1175,34 +1247,78 @@ impl State {
                     row![hide, stop("Stop")],
                 ),
                 Stage::Opening => (waiting("Reading Wow.exe…"), row![stop("Stop")]),
-                Stage::Confirming(installation) => {
+                Stage::Confirming {
+                    installation,
+                    languages,
+                    chosen,
+                } => {
                     let torrent = found.map(|found| &*found.torrent);
-                    let bytes = torrent.map_or(0, Torrent::size);
-                    let files = torrent.map_or(0, |torrent| {
-                        torrent.files.iter().filter(|file| !file.padding).count()
+                    let choosing = languages.len() > 1;
+                    // What downloads: with several languages and none chosen
+                    // yet, what the languages add to.
+                    let picked: Vec<String> = if choosing {
+                        chosen.iter().cloned().collect()
+                    } else {
+                        Vec::new()
+                    };
+                    let files = torrent.map_or_else(Vec::new, |torrent| {
+                        if choosing && picked.is_empty() {
+                            torrent.files_in(&[String::new()])
+                        } else {
+                            torrent.files_in(&picked)
+                        }
+                    });
+                    let bytes = torrent.map_or(0, |torrent| torrent.size_of(&files));
+                    let count = torrent.map_or(0, |torrent| {
+                        files
+                            .iter()
+                            .filter(|index| !torrent.files[**index].padding)
+                            .count()
                     });
                     let folder = found.map_or_else(String::new, |found| {
                         within(&found.folder, &found.torrent.client().unwrap_or_default())
                             .display()
                             .to_string()
                     });
+                    let choice = choosing.then(|| {
+                        let boxes = languages.iter().map(|language| {
+                            let bytes = torrent
+                                .map_or(0, |torrent| torrent.size_of(&torrent.files_of(language)));
+                            let language = language.clone();
+                            checkbox(chosen.contains(&language))
+                                .label(format!("{language} ({})", size(bytes)))
+                                .text_size(14)
+                                .on_toggle(move |ticked| {
+                                    Message::Language(language.clone(), ticked)
+                                })
+                                .style(style::check)
+                                .boxed()
+                        });
+
+                        row![
+                            text("Languages").size(14).width(100).style(text::secondary),
+                            column(boxes).spacing(4),
+                        ]
+                        .spacing(12)
+                    });
+                    let download = button(text(format!("Download {}", size(bytes))))
+                        .style(style::primary)
+                        .on_press_maybe(
+                            (!(choosing && picked.is_empty())).then_some(Message::Download),
+                        );
 
                     (
                         column![
                             text("This torrent holds a client the launcher supports."),
                             fact("Version", installation.version().to_string()),
+                            choice,
                             fact("Size", size(bytes)),
-                            fact("Files", counted(files, "file")),
+                            fact("Files", counted(count, "file")),
                             fact("Folder", folder),
                         ]
                         .spacing(6)
                         .boxed(),
-                        row![
-                            stop("Cancel"),
-                            button(text(format!("Download {}", size(bytes))))
-                                .style(style::primary)
-                                .on_press(Message::Download),
-                        ],
+                        row![stop("Cancel"), download],
                     )
                 }
                 Stage::Checking { .. } => (
@@ -1313,7 +1429,7 @@ impl Job {
         match &self.stage {
             Stage::Finding | Stage::Opening => format!("Looking at {}…", self.name()),
             Stage::Identifying => format!("Downloading Wow.exe of {}…", self.name()),
-            Stage::Confirming(_) => format!("{} is ready to download.", self.name()),
+            Stage::Confirming { .. } => format!("{} is ready to download.", self.name()),
             Stage::Checking { .. } => format!(
                 "Checking {} for updates: {}",
                 self.name(),
@@ -1468,6 +1584,7 @@ async fn find_given(
         info_hash: torrent.info_hash.clone(),
         source: kept_source(&source, &torrent),
         folder: folder.clone(),
+        languages: Vec::new(),
     };
     let bytes = Arc::new(bytes);
     keep_copy(kept_in(&store, &torrent.info_hash), bytes.clone()).await?;
@@ -1550,6 +1667,7 @@ async fn find_again(
         info_hash: torrent.info_hash.clone(),
         source: kept_source(&source, &torrent),
         folder: saved.folder.clone(),
+        languages: saved.languages.clone(),
     };
     note_origin(root, now.clone()).await;
 
@@ -2189,7 +2307,148 @@ mod tests {
         let staging = job(state).staging.clone().unwrap();
         let opened = Installation::open(staging).map_err(|error| describe(&error));
         let _ = update(state, Message::Identified(1, opened), &config, false);
-        assert!(matches!(job(state).stage, Stage::Confirming(_)));
+        assert!(matches!(job(state).stage, Stage::Confirming { .. }));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_client_in_several_languages_downloads_those_chosen() {
+        let mut files = files();
+        files.push(("Data/enUS/locale-enUS.MPQ", vec![1; 20_000]));
+        files.push(("Data/esES/locale-esES.MPQ", vec![2; 20_000]));
+        files.push((
+            "Data/esES/realmlist.wtf",
+            b"set realmlist logon.example.com".to_vec(),
+        ));
+        let (bytes, _seeding, seeder) = seeded(&files).await;
+        let given = tempfile::tempdir().unwrap();
+        let path = given.path().join("client.torrent");
+        fs::write(&path, &bytes).unwrap();
+        let (cache, into) = (Cache::new(), tempfile::tempdir().unwrap());
+        let config = Config::default();
+        let mut state = downloading_from(&seeder, &cache).await;
+
+        confirming(&mut state, &path, into.path()).await;
+        let found = job(&state).found.clone().unwrap();
+        let torrent = found.torrent.clone();
+        let named = |files: &[usize]| -> Vec<String> {
+            files
+                .iter()
+                .map(|index| torrent.files[*index].path.clone())
+                .collect()
+        };
+        {
+            let mut ui = simulator(state.dialog(false).unwrap());
+            for line in [
+                "Languages",
+                "enUS (20 KB)",
+                "esES (20 KB)",
+                "Download 41 KB",
+            ] {
+                assert!(ui.find(line).is_ok(), "{line}");
+            }
+        }
+        // Nothing chosen yet: Download does nothing.
+        assert!(update(&mut state, Message::Download, &config, false).is_none());
+        assert!(matches!(job(&state).stage, Stage::Confirming { .. }));
+
+        let _ = update(
+            &mut state,
+            Message::Language("esES".to_owned(), true),
+            &config,
+            false,
+        );
+        let _ = update(
+            &mut state,
+            Message::Language("deDE".to_owned(), true),
+            &config,
+            false,
+        );
+        {
+            let mut ui = simulator(state.dialog(false).unwrap());
+            assert!(ui.find("Download 60 KB").is_ok(), "what Spanish adds");
+        }
+        let Some(Instruction::Pending(saved)) =
+            update(&mut state, Message::Download, &config, false)
+        else {
+            panic!("not kept to resume");
+        };
+        assert_eq!(saved.languages, ["esES"], "not one it hasn't");
+        assert_eq!(
+            named(&job(&state).files),
+            [
+                "Wow.exe",
+                "Data/common.MPQ",
+                "WTF/Config.wtf",
+                "Data/esES/locale-esES.MPQ",
+                "Data/esES/realmlist.wtf",
+            ]
+        );
+
+        keep_copy(state.kept(&saved.info_hash), found.bytes.clone())
+            .await
+            .unwrap();
+        let (engine, download) = (
+            state.engine.clone().unwrap(),
+            job(&state).download.clone().unwrap(),
+        );
+        let selected = engine.select(&download, &job(&state).files).await;
+        let _ = update(&mut state, Message::Selected(1, selected), &config, false);
+        ticked_through(&mut state, &config).await;
+        assert!(matches!(job(&state).stage, Stage::Moving { .. }));
+        let moved = moved(&state, download).await;
+        let Some(Instruction::Added { installation, .. }) =
+            update(&mut state, Message::Moved(1, moved), &config, false)
+        else {
+            panic!("not added");
+        };
+        assert!(found.folder.join("Data/esES/locale-esES.MPQ").is_file());
+        assert!(!found.folder.join("Data/enUS").exists(), "left out");
+        assert_eq!(
+            installation.locale(),
+            Some("esES"),
+            "its Config.wtf says enUS, which it hasn't"
+        );
+
+        // Checked against its torrent later, nothing is missing.
+        let check =
+            crate::core::torrent::check(
+                &found.folder,
+                &torrent,
+                &mut |_| ControlFlow::Continue(()),
+            )
+            .unwrap()
+            .unwrap();
+        assert!(check.is_current(), "{check:?}");
+
+        // Resumed, it downloads the same files.
+        let resuming = Config {
+            downloads: vec![saved.clone()],
+            ..Config::default()
+        };
+        let mut state = downloading_from(&seeder, &cache).await;
+        let _ = state.start(
+            Request::Resume(saved.info_hash.clone()),
+            &resuming,
+            Err("offline"),
+        );
+        let found = find_kept(
+            saved,
+            cache.store.path().to_path_buf(),
+            state.engine.clone(),
+            state.peers.clone(),
+        )
+        .await;
+        let _ = update(&mut state, Message::Found(1, found), &resuming, false);
+        assert_eq!(
+            named(&job(&state).files),
+            [
+                "Wow.exe",
+                "Data/common.MPQ",
+                "WTF/Config.wtf",
+                "Data/esES/locale-esES.MPQ",
+                "Data/esES/realmlist.wtf",
+            ]
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2366,6 +2625,7 @@ mod tests {
             info_hash: torrent.info_hash.clone(),
             source: format!("magnet:?xt=urn:btih:{}", torrent.info_hash),
             folder: root.clone(),
+            languages: Vec::new(),
         };
         let config = Config {
             installations: vec![root.clone()],
@@ -2494,6 +2754,7 @@ mod tests {
             info_hash: old.info_hash.clone(),
             source: given.display().to_string(),
             folder: client.path().to_path_buf(),
+            languages: Vec::new(),
         };
         let again = || {
             find_again(
@@ -2568,6 +2829,7 @@ mod tests {
                 info_hash: torrent.info_hash.clone(),
                 source,
                 folder: root.clone(),
+                languages: Vec::new(),
             };
 
             let found = find_again(
@@ -2652,6 +2914,7 @@ mod tests {
                 info_hash: torrent.info_hash.clone(),
                 source: torrent.magnet(),
                 folder: root.clone(),
+                languages: Vec::new(),
             }
         );
         assert!(saved.source.contains("&tr=udp"), "its trackers find it");
@@ -2905,6 +3168,7 @@ mod tests {
             info_hash: "c0ffee".into(),
             source: "magnet:?xt=urn:btih:c0ffee".into(),
             folder: into.path().join("WotLK"),
+            languages: Vec::new(),
         };
         let config = Config {
             downloads: vec![pending.clone()],
@@ -3182,7 +3446,7 @@ mod tests {
             .map_err(|error| describe(&error));
         println!("Wow.exe read: {opened:?}");
         let _ = update(&mut state, Message::Identified(1, opened), &config, false);
-        let Stage::Confirming(installation) = &job(&state).stage else {
+        let Stage::Confirming { installation, .. } = &job(&state).stage else {
             match &job(&state).stage {
                 Stage::Failed(error) => panic!("not offered: {error}"),
                 _ => panic!("not offered"),
@@ -3267,6 +3531,7 @@ mod tests {
             info_hash: torrent.info_hash.clone(),
             source: real_torrent().to_string(),
             folder: root.clone(),
+            languages: Vec::new(),
         };
         let config = Config {
             installations: vec![root.clone()],

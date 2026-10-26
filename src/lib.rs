@@ -1917,6 +1917,7 @@ mod tests {
             info_hash: info_hash.into(),
             source: format!("magnet:?xt=urn:btih:{info_hash}"),
             folder: folder.to_path_buf(),
+            languages: Vec::new(),
         };
         let _ = app
             .config
@@ -1973,6 +1974,7 @@ mod tests {
             info_hash: "0123456789abcdef0123456789abcdef01234567".into(),
             source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
             folder: root.clone(),
+            languages: Vec::new(),
         };
         let details = core::Details {
             torrent: Some(torrent.clone()),
