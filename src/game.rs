@@ -26,7 +26,7 @@ struct Game {
     /// Whether the command that started it is still running.
     command: bool,
     /// How many more checks to wait for `Wow.exe` once the command exited
-    /// fine without it: Steam or Lutris take the game over and exit.
+    /// fine without it: a wrapper may hand the game over and exit.
     patience: u8,
 }
 
@@ -53,6 +53,9 @@ pub const KEEPS_SETTINGS: &str =
 /// Why the language can't change while the client's game runs.
 pub const KEEPS_CONFIG: &str = "Close the game first: it rewrites Config.wtf when it quits.";
 
+/// Why `Wow.exe` can't change while the client's game runs.
+pub const KEEPS_EXE: &str = "Close the game first: Wow.exe can't change while it runs.";
+
 /// What happens to the games.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -77,13 +80,15 @@ impl State {
         })
     }
 
-    /// Starts `installation`'s game as `launch` says, unless it is running
-    /// already, for Discord to show while it runs when `discord`. What fails
-    /// goes to `errors`.
+    /// Starts `installation`'s game as `launch` says, with Wine told to load
+    /// the `natives` mods put beside `Wow.exe` (see [`launch::command`]),
+    /// unless it is running already, for Discord to show while it runs when
+    /// `discord`. What fails goes to `errors`.
     pub fn play(
         &mut self,
         installation: &Installation,
         launch: &Launch,
+        natives: &[String],
         discord: bool,
         errors: &mut Errors,
     ) -> Task<Message> {
@@ -93,7 +98,7 @@ impl State {
             return Task::none();
         }
 
-        match launch::command(installation, launch) {
+        match launch::command(installation, launch, natives) {
             Ok(command) => {
                 let command = if discord {
                     discord::wrapped(command)
@@ -206,7 +211,7 @@ impl State {
                     }
 
                     // Gone once seen: the game is over, even if what started
-                    // it lingers (Lutris' window, say).
+                    // it lingers (a runner's window, say).
                     if game.started {
                         log::info!("The game of {} is over", root.display());
                         return false;
@@ -266,7 +271,7 @@ mod tests {
     /// not run: the task is dropped.
     fn started(state: &mut State, installation: &Installation) -> PathBuf {
         let mut errors = Errors::default();
-        let _ = state.play(installation, &Launch::default(), false, &mut errors);
+        let _ = state.play(installation, &Launch::default(), &[], false, &mut errors);
         assert!(errors.messages().is_empty(), "{:?}", errors.messages());
 
         installation.root().to_path_buf()
@@ -332,7 +337,7 @@ mod tests {
         let mut errors = Errors::default();
         let root = started(&mut state, &installation);
 
-        // `steam steam://rungameid/…` exits as soon as Steam has the game.
+        // A wrapper handing the game over exits as soon as it did.
         let _ = state.update(Message::Exited(root.clone(), Ok(Some(0))), &mut errors);
         for _ in 1..Game::PATIENCE {
             let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);

@@ -17,10 +17,14 @@ pub const WOTLK: Version = Version {
     build: 12340,
 };
 
-/// A fake executable whose version resource says `version`, as
-/// [`Version::from_executable`] reads it.
+/// The headers of 3.3.5a's `Wow.exe` (its first KB, up to where `.text`
+/// starts), as the client ships them: not Large Address Aware.
+const HEADERS: &[u8] = include_bytes!("testing/Wow.exe-headers");
+
+/// A fake executable: the headers of 3.3.5a's `Wow.exe`, and a version
+/// resource that says `version`, as [`Version::from_executable`] reads it.
 pub fn fake_executable(version: Version) -> Vec<u8> {
-    let mut bytes = b"MZ\x90\x00 not really a PE file ".to_vec();
+    let mut bytes = HEADERS.to_vec();
     bytes.extend(0xFEEF_04BDu32.to_le_bytes());
     bytes.extend(0x0001_0000u32.to_le_bytes());
     bytes.extend((u32::from(version.major) << 16 | u32::from(version.minor)).to_le_bytes());

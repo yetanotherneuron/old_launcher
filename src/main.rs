@@ -22,6 +22,9 @@ pub fn main() -> iced::Result {
         size: Size::new(1200.0, 780.0),
         min_size: Some(App::MIN_SIZE),
         icon: old_launcher::icon(),
+        // The launcher quits itself, after asking when something is under
+        // way that quitting would cut short.
+        exit_on_close_request: false,
         ..window::Settings::default()
     };
 

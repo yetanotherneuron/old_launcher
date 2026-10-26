@@ -257,7 +257,7 @@ impl State {
         let repair = broken.first().map(|addon| {
             button("Repair")
                 .style(button::primary)
-                .on_press_maybe((!self.working).then(|| {
+                .on_press_maybe(self.working.is_none().then(|| {
                     Message::Ask(Confirm::Repair {
                         folder: addon.name.clone(),
                     })
@@ -295,16 +295,18 @@ impl State {
 
             let clean = button("Clean data")
                 .style(button::secondary)
-                .on_press_maybe((!data.is_empty() && !self.working && !playing).then(|| {
-                    Message::Ask(Confirm::Clean {
-                        title: title.clone(),
-                        files: data.clone(),
-                    })
-                }));
+                .on_press_maybe(
+                    (!data.is_empty() && self.working.is_none() && !playing).then(|| {
+                        Message::Ask(Confirm::Clean {
+                            title: title.clone(),
+                            files: data.clone(),
+                        })
+                    }),
+                );
 
             let uninstall = style::delete_button(
                 "Uninstall",
-                (!self.working).then(|| {
+                self.working.is_none().then(|| {
                     Message::Ask(Confirm::Uninstall {
                         title: title.clone(),
                         folders: group.folders(),

@@ -44,8 +44,8 @@ pub struct State {
     filter: Filter,
     jobs: HashMap<Key, Job>,
     confirm: Option<Confirm>,
-    /// Whether a confirmed deletion is running.
-    working: bool,
+    /// The confirmed deletion running, if one is, as it describes itself.
+    working: Option<String>,
     /// The dialog installing an addon from an archive or folder, while open.
     external: Option<External>,
     /// How downloads sign in to GitHub, when they do.
@@ -217,7 +217,7 @@ impl State {
             filter: Filter::default(),
             jobs: HashMap::new(),
             confirm: None,
-            working: false,
+            working: None,
             external: None,
             github: None,
         }
@@ -227,6 +227,33 @@ impl State {
     /// or not at all.
     pub fn sign_in(&mut self, github: Option<github::Signed>) {
         self.github = github;
+    }
+
+    /// What the screen is doing to the client's files that quitting would
+    /// cut short, one line each, for people: installs not being stopped, an
+    /// install from an archive or folder, and a confirmed deletion.
+    pub fn under_way(&self) -> Vec<String> {
+        let mut installs: Vec<String> = self
+            .jobs
+            .values()
+            .filter(|job| !matches!(job.stage, Stage::Cancelling))
+            .map(|job| format!("Installing {}", job.name))
+            .collect();
+        installs.sort();
+
+        let external = match &self.external {
+            Some(External::Installing(path)) => Some(format!(
+                "Installing from {}",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            )),
+            _ => None,
+        };
+
+        installs
+            .into_iter()
+            .chain(external)
+            .chain(self.working.clone())
+            .collect()
     }
 
     /// Handles an interaction. Changes happen in `installation`, whose saved
@@ -394,7 +421,7 @@ impl State {
                 Action::instruction(Instruction::Changed)
             }
             Message::Ask(confirm) => {
-                if !self.working {
+                if self.working.is_none() {
                     self.confirm = Some(confirm);
                 }
                 Action::none()
@@ -427,8 +454,9 @@ impl State {
                 let installation = installation.clone();
                 let failure = confirm.failure();
 
-                log::info!("{}", confirm.describe());
-                self.working = true;
+                let described = confirm.describe();
+                log::info!("{described}");
+                self.working = Some(described);
 
                 Action::task(Task::perform(
                     blocking(move || confirm.run(&installation)),
@@ -438,7 +466,7 @@ impl State {
                 ))
             }
             Message::Done(result) => {
-                self.working = false;
+                self.working = None;
 
                 match result {
                     Ok(()) => log::info!("Done"),
@@ -774,7 +802,7 @@ impl State {
             .iter()
             .flat_map(|(_, files)| files.iter().cloned())
             .collect();
-        let deletable = !self.working && !playing;
+        let deletable = self.working.is_none() && !playing;
         // Why the buttons are off, when it's the game.
         let explained = |button: Button<'a, Message, &'static str>| -> Element<'a, Message> {
             if playing {

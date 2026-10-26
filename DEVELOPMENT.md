@@ -1,7 +1,8 @@
 # Developing Old Launcher
 
-What the [README](README.md) leaves out: how the catalog is built, what the
-app does to a client folder, how the code is laid out, and how to test it.
+What the [README](README.md) leaves out: how the catalog and the list of
+mods are built, what the app does to a client folder, how the code is laid
+out, and how to test it.
 
 ## The catalog
 
@@ -9,7 +10,7 @@ app does to a client folder, how the code is laid out, and how to test it.
 tool and committed here:
 
 ```sh
-GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer   # writes index/wotlk.json and index/archives.json
+GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer   # writes index/wotlk.json and index/archives.json, then the mods (see below)
 ```
 
 The token only raises GitHub's API limits: a run makes about a hundred
@@ -90,6 +91,42 @@ The word "catalog" never appears in the app's own text: users see "the list
 of addons", what is "available" and what is "up to date". It stays in the
 code, the logs and here.
 
+## The mods
+
+`index/mods.json` lists the mods: changes to a client outside
+`Interface/AddOns`, such as a DLL the game loads beside `Wow.exe` or a
+patched archive in `Data`. The same indexer run writes it, and the same
+schedule commits it (`--mods-only` builds it alone, leaving the catalog as
+it is). Each mod says what it is and where it comes from, and lists its
+releases, the newest first: where to download each (an archive of its
+files, or its one file itself) and every file it puts in the client folder,
+by path, with its SHA-256. An archive holds them at the same paths, or in
+the folder a release names as `inside` (the rest of the archive is left
+out). Mods that need more say so: their `settings` (the player's files,
+never checked and kept by a reinstall), what they `write` as they run, the
+`setup` each release runs once its files are in place (the file each step
+`creates` tells whether it ran), the `config` `WTF/Config.wtf` must set,
+and the `platforms` they are for (`windows`, `linux`, `macos`; all when
+none), the launcher listing only those for its own.
+
+Each mod has a module in `indexer/src/mods/`, called from `mods::gather`,
+which finds its releases and writes down what can't be read from them. The
+indexer hashes every file of every release's download; what it found goes
+to `index/mod-archives.json`, by URL, for the next run to reuse, since a
+release's download never changes. Lumenveil's module reads its GitHub
+releases, checks each zip against the release's `SHA256SUMS.txt`, and knows
+its setup, what it writes and which files are the player's from its
+`Lumenveil-Setup.cmd` and `Lumenveil-Uninstall.cmd`. A release whose scripts
+it doesn't know, by checksum, is left out and reported, so the launcher
+goes on offering the last one it understands until the module learns the
+new scripts. DXVK's module lists the 32-bit `d3d9.dll` of every release from
+1.5, the first with Direct3D 9, inside each release's tarball
+(`dxvk-<version>/x32`), for Windows only: Proton, Lutris and the like bring
+their own.
+
+The app fetches, keeps and refreshes `index/mods.json` as it does the
+catalog; `OLD_LAUNCHER_MODS=<url or path>` points it at another one.
+
 ## How it works
 
 There is no database. Everything is read from the client folder itself:
@@ -115,7 +152,11 @@ The walk goes breadth-first until it finds a folder holding a `.toc`. That
 folder moves into place under the name its `.toc` declares, and the walk does
 not descend into it, since deeper `.toc` files belong to embedded libraries.
 So only `Name/Name.toc` layouts ever reach `Interface/AddOns`, whatever the
-archive looks like.
+archive looks like. What an install replaces moves into another staging
+folder, deleted once the new folders are in, so an install cut short (the
+launcher killed) never leaves a folder half deleted. Staging folders an
+install cut short leaves behind, here and beside `Wow.exe` for mods, are
+deleted the next time the client is read, once untouched for an hour.
 
 An update is offered when the catalog's `.toc` version of an installed
 folder is newer than the one on disk, or differs from it without comparing.
@@ -156,6 +197,13 @@ the first such folder; its `realmlist.wtf` is the one that counts. With
 several, the clients dialog switches it by rewriting that one line (the
 rest of the file stays byte for byte, and the file is made if missing).
 
+**Memory**: the game is a 32-bit program, given 2 GB of memory unless
+`Wow.exe`'s headers carry the Large Address Aware flag, which gets it 4 GB
+on 64-bit Windows and under Wine; HD textures and long view distances need
+them. The clients dialog shows the flag as `Wow.exe` has it, and its box
+sets or clears it: that one bit of the headers' characteristics, written
+beside the file and renamed over, not while the game runs.
+
 **While a client's game runs**, the launcher leaves alone what the game
 writes back: `WTF/Config.wtf` when it quits, and the SavedVariables of
 every addon it loaded when it logs out. So the language can't be switched,
@@ -168,44 +216,69 @@ Installs, updates and repairs go ahead: the game never writes
 runs the client's command with `sh`, the way Steam runs launch options: the
 environment variables are set and exported first, and `%command%` becomes
 the quoted path to `Wow.exe` (`wine %command%` when there is no command).
-`~` and `$HOME` expand as in a terminal.
+`~` and `$HOME` expand as in a terminal. A command must have `%command%`,
+since mods' setups run through it too: one without it (handing the game
+to Lutris or Steam, say) is refused, as the clients dialog says under it.
 
-**Lumenveil**, a graphics mod, is a `version.dll` that `Wow.exe` loads from
-its folder and that loads `CoAVolFog.dll` beside it (`core/src/lumenveil.rs`,
-`src/clients/lumenveil.rs`). Like the addons, it is looked for whenever the
-client is read (opened, refreshed, or after something was installed): any
-of its files there but the player's settings and saved spots, which
-uninstalling keeps, is Lumenveil, though a `version.dll` alone is another
-mod's unless it matches the release's checksums. What is there is checked
-against the checksums of its release that the launcher keeps in
-`Lumenveil/SHA256SUMS.txt`, written when it installs it or checks it, and
-said nothing of if it is as released. Otherwise the launcher needs to do
-something before starting the game, which waits for it (Play is disabled),
-and a banner above the addons says so:
-- never checked: Check compares the files with the checksums GitHub gives
-  for the version `CoAVolFog.dll` says it is, and keeps them;
-- files missing or changed (the `.ini` settings aside), the lamp and water
-  data its setup writes (`lampdata.bin`, `liquiddata.bin`) missing,
-  `SET gxApi "d3d9ex"` in `Config.wtf`, or a version that can't be told:
-  Repair removes what is there but the player's settings and spots, then
-  installs the release of that version (or the latest) and runs the setup.
+**Mods** (`core/src/mods.rs`, `src/clients/mods.rs`) are looked for, like
+the addons, whenever the client is read (opened, refreshed, or after
+something was installed), as the list of mods describes them. A mod is
+there when its marker is (`.old_launcher-<id>.toml` beside `Wow.exe`,
+recording the release installed), when anything it or its setup writes is,
+or when one of its releases' files is there with that release's contents,
+or several of them whatever their contents: a lone `version.dll` of other
+contents is another mod's. The player's files don't count: uninstalling
+keeps them. What is there is checked against the release its marker names,
+and nothing is said of it if it is as released. Otherwise the launcher
+needs to do something before starting the game, which waits for it (Play
+is disabled), and a banner above the addons says so:
+- no marker: Check looks for the release whose files are all there as
+  released, and records it in the marker;
+- files missing or changed, its setup not run to the end or what it
+  creates missing, `Config.wtf` set otherwise than it needs, files that
+  match none of its releases, or a release no longer listed: Repair
+  installs that release again, or the newest.
 
-The problems `CoAVolFog.log` reports are said in the clients dialog only:
-no repair fixes them, and only running it again tells whether they still
-hold. The dialog's Graphics section says the rest too, and installs,
-updates and uninstalls. Installing downloads the release from GitHub,
-signed in like any GitHub download, and checks the zip and each file
-against its checksums before anything changes, sets Direct3D 9 where the
-client used 9Ex, then runs `Lumenveil/lamp_extract.exe` twice as
-`Lumenveil-Setup.cmd` does (a minute or so under Wine). Off Windows the tool
-runs through the client's command. Wine loads its own `version.dll` unless
-told otherwise, so while Lumenveil is as released (`lumenveil::working`),
-the game starts with `version=n,b` in `WINEDLLOVERRIDES`
-(`launch::with_mods`): added to the client's own environment variables each
-time, merged with a `WINEDLLOVERRIDES` they set and in place of any setting
-of theirs for `version`, and never saved in them. Uninstalling asks first,
-and deletes `CoAVolFog.ini` and the spots saved in the game only when
-ticked. Checking aside, none of it runs while the game does.
+The marker records whether the setup ran to the end, since a setup cut
+short can leave what it writes half written. Check counts the setup as run
+when what it writes is there.
+
+Installing downloads the release, signed in when it is on GitHub, checks
+every file against the list before anything changes, removes what was
+there of the mod but the player's files, puts the files in place, records
+the release, sets what `Config.wtf` needs, then runs the setup through the
+client's command, the way the game starts (what it says goes to the
+launcher's log), and records in the marker that it ran to the end. It is
+the same runner, with the same environment variables (`WINEPREFIX`
+among them), or none: a command that can't run another program fails the
+setup rather than fall back to plain `wine`, which would update the prefix
+to its own Wine. Off
+Windows, Wine loads its own copy of DLLs such as
+`version.dll` unless told otherwise, so the game starts with `name=n,b` in
+`WINEDLLOVERRIDES` for each DLL the mods there put beside `Wow.exe`, while
+they are as released (`launch::command`): added to the client's own
+environment variables each time, merged with a `WINEDLLOVERRIDES` they set
+and in place of any setting of theirs for those DLLs, and never saved in
+them. The clients dialog's Mods section says the same, and installs,
+updates and uninstalls; uninstalling asks first, and deletes the player's
+files only when ticked. Checking aside, none of it runs while the game
+does.
+
+Two mods conflict when they may put something at the same path, ignoring
+case as Windows and Wine do (`mods::conflicts`, from the list alone: any
+release's files, the player's, and what they and their setups write). A mod
+can't be installed beside one there it conflicts with: the section says so
+instead of offering it. Nor can it go where a file of something else is
+(`mods::foreign`): one at a path of the release, not the player's, whose
+contents match none of its releases, as another mod installed by hand
+leaves. The section names the file, and installing refuses too. A mod
+already there takes the files of its own release for its own, broken: a
+repair puts them right.
+
+**Quitting** (Ctrl+Q, or closing the window) asks first while something
+it would cut short is under way: an addon being installed, uninstalled or
+repaired, saved settings being deleted or imported, or a mod being
+installed, repaired or removed. The dialog lists them.
 
 **Showing the game on Discord**, when the settings say so (`discord` in the
 settings file, off by default), runs the game's command as the child of the
@@ -217,9 +290,8 @@ played, and exits with the command's exit code when it exits, so the
 launcher sees what it would without it. Discord clears the status when the
 connection closes, so it goes with the game, whether the launcher is still
 open or not. When Discord isn't running, the wrapper looks for it again
-every 15 seconds. Commands that hand the game to Steam or Lutris and exit
-end the status with them. The application's ID is public and no secret is
-involved.
+every 15 seconds. A wrapper that hands the game over and exits ends the
+status with it. The application's ID is public and no secret is involved.
 
 The only file outside the clients lists the client folders, how each one
 starts, the sources picked per addon and whether to use the GitHub CLI's
@@ -234,10 +306,11 @@ edit it (then read it again), quit, or overwrite it with new settings.
 
 - `core/`: data and filesystem logic, no GUI and no network (TOC parsing,
   client detection, archive extraction, install/uninstall/repair/clean,
-  the catalog schema, adoption, launch commands, and the `library` the list
-  is filtered from). Unit-tested against temporary directories.
-- `indexer/`: the CLI that builds `index/wotlk.json` from the upstream
-  sources.
+  the catalog schema, adoption, launch commands, the `library` the list
+  is filtered from, and the mods). Unit-tested against temporary
+  directories.
+- `indexer/`: the CLI that builds `index/wotlk.json` and `index/mods.json`
+  from the upstream sources.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
   shell, with one TEA cell per screen (`setup`, `clients`, `settings`, and
   `addons` with its cards and confirmation dialogs), `github.rs` signs
@@ -263,8 +336,9 @@ OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
 # Downloads one file of each kind from GitHub, signed in with GH_TOKEN,
 # GITHUB_TOKEN or the GitHub CLI's login:
 cargo test --lib github -- --ignored
-# Installs Lumenveil's latest release into a temporary client:
-cargo test --lib lumenveil -- --ignored
+# Installs the newest Lumenveil index/mods.json lists into a temporary
+# client:
+cargo test --lib mods -- --ignored
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored

@@ -1,6 +1,6 @@
-//! Where the app's catalog comes from: the published one, kept on disk once
-//! fetched so it shows instantly and offline, and fetched again only when it
-//! changed.
+//! Where the app's catalogs come from, the addons' and the mods': the
+//! published ones, each kept on disk once fetched so it shows instantly and
+//! offline, and fetched again only when it changed.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -9,19 +9,49 @@ use reqwest::StatusCode;
 use reqwest::header::{ETAG, IF_NONE_MATCH};
 
 pub use crate::core::catalog::{Catalog, Entry};
+use crate::core::mods::Mods;
 
 use crate::describe;
 
-/// The published catalog: the repository's, as committed on its default
-/// branch, which a scheduled pipeline keeps up to date.
-const PUBLISHED: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/-/raw/main/index/wotlk.json");
+/// A catalog the indexer generates and the launcher reads.
+pub trait Document: Sized {
+    /// Its file's name, in the repository's `index` folder and in the cache,
+    /// without `.json`.
+    const NAME: &str;
+    /// The variable that points the app at another one: an `http(s)://`
+    /// URL or a file path.
+    const OVERRIDE: &str;
 
-/// Points the app at another catalog: an `http(s)://` URL or a file path.
-pub const OVERRIDE: &str = "OLD_LAUNCHER_INDEX";
+    /// Reads it.
+    fn parse(json: &[u8]) -> Result<Self, crate::core::Error>;
+}
 
-/// The catalog's file in the cache, and the tag it was served with.
-const CACHED: &str = "wotlk.json";
-const TAG: &str = "wotlk.etag";
+impl Document for Catalog {
+    const NAME: &str = "wotlk";
+    const OVERRIDE: &str = "OLD_LAUNCHER_INDEX";
+
+    fn parse(json: &[u8]) -> Result<Self, crate::core::Error> {
+        Catalog::parse(json)
+    }
+}
+
+impl Document for Mods {
+    const NAME: &str = "mods";
+    const OVERRIDE: &str = "OLD_LAUNCHER_MODS";
+
+    fn parse(json: &[u8]) -> Result<Self, crate::core::Error> {
+        Mods::parse(json)
+    }
+}
+
+/// The published `T`: the repository's, as committed on its default branch,
+/// which a scheduled pipeline keeps up to date.
+fn published<T: Document>() -> String {
+    format!(
+        concat!(env!("CARGO_PKG_REPOSITORY"), "/-/raw/main/index/{}.json"),
+        T::NAME
+    )
+}
 
 /// Where a catalog is read from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,18 +73,18 @@ pub enum Refresh {
 
 /// What a fetch found.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Fetched {
+pub enum Fetched<T> {
     /// The catalog is still the one shown.
     Unchanged,
     /// A catalog that differs from the one shown, or the first one.
     Changed {
-        catalog: Catalog,
+        catalog: T,
         /// The tag the server gave it, to ask next time whether it changed.
         tag: Option<String>,
     },
 }
 
-/// The folder keeping the last catalog fetched, with its tag.
+/// The folder keeping the last catalogs fetched, with their tags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cache {
     directory: PathBuf,
@@ -70,17 +100,18 @@ impl fmt::Display for Location {
 }
 
 impl Location {
-    /// `$OLD_LAUNCHER_INDEX` when set, otherwise the published catalog.
-    pub fn configured() -> Self {
-        match std::env::var(OVERRIDE) {
+    /// `T`'s override when set (`$OLD_LAUNCHER_INDEX` for the addons'),
+    /// otherwise the published `T`.
+    pub fn configured<T: Document>() -> Self {
+        match std::env::var(T::OVERRIDE) {
             Ok(value) if !value.trim().is_empty() => Self::parse(value.trim()),
-            _ => Self::Url(PUBLISHED.to_owned()),
+            _ => Self::Url(published::<T>()),
         }
     }
 
-    /// Whether this is the published catalog, the one worth keeping on disk.
-    pub fn is_published(&self) -> bool {
-        matches!(self, Self::Url(url) if url == PUBLISHED)
+    /// Whether this is the published `T`, the one worth keeping on disk.
+    pub fn is_published<T: Document>(&self) -> bool {
+        matches!(self, Self::Url(url) if *url == published::<T>())
     }
 
     fn parse(value: &str) -> Self {
@@ -93,16 +124,16 @@ impl Location {
         }
     }
 
-    /// Reads the catalog here, downloading it with `client` (or failing with
+    /// Reads the `T` here, downloading it with `client` (or failing with
     /// why there is none) when it is on the web. With `tag`, what the server
-    /// gave the catalog shown, the server may answer that it is unchanged
-    /// instead. A changed catalog is kept in `cache`, when given.
-    pub async fn fetch(
+    /// gave the one shown, the server may answer that it is unchanged
+    /// instead. A changed one is kept in `cache`, when given.
+    pub async fn fetch<T: Document>(
         self,
         client: Result<reqwest::Client, String>,
         tag: Option<String>,
         cache: Option<Cache>,
-    ) -> Result<Fetched, String> {
+    ) -> Result<Fetched<T>, String> {
         let (json, tag) = match &self {
             Self::Url(url) => {
                 let mut request = client?.get(url);
@@ -139,15 +170,15 @@ impl Location {
             ),
         };
 
-        let catalog =
-            Catalog::parse(&json).map_err(|error| format!("{self}: {}", describe(&error)))?;
+        let catalog = T::parse(&json).map_err(|error| format!("{self}: {}", describe(&error)))?;
 
         if let Some(cache) = cache
-            && let Err(error) = cache.write(&json, tag.as_deref()).await
+            && let Err(error) = cache.write::<T>(&json, tag.as_deref()).await
         {
             // Shown all the same; only the next start misses it.
             log::warn!(
-                "Could not keep the catalog in {}: {error}",
+                "Could not keep {}.json in {}: {error}",
+                T::NAME,
                 cache.directory.display()
             );
         }
@@ -167,22 +198,22 @@ impl Cache {
         Self { directory }
     }
 
-    /// The catalog kept, with its tag, if there is one and it parses.
-    pub fn read(&self) -> Option<(Catalog, Option<String>)> {
-        let path = self.directory.join(CACHED);
+    /// The `T` kept, with its tag, if there is one and it parses.
+    pub fn read<T: Document>(&self) -> Option<(T, Option<String>)> {
+        let path = self.directory.join(format!("{}.json", T::NAME));
         let json = std::fs::read(&path).ok()?;
-        let catalog = match Catalog::parse(&json) {
+        let catalog = match T::parse(&json) {
             Ok(catalog) => catalog,
             Err(error) => {
                 log::warn!(
-                    "The catalog kept in {} is unreadable, fetching it again: {}",
+                    "{} is unreadable, fetching it again: {}",
                     path.display(),
                     describe(&error)
                 );
                 return None;
             }
         };
-        let tag = std::fs::read_to_string(self.directory.join(TAG))
+        let tag = std::fs::read_to_string(self.directory.join(format!("{}.etag", T::NAME)))
             .ok()
             .map(|tag| tag.trim().to_owned())
             .filter(|tag| !tag.is_empty());
@@ -190,12 +221,12 @@ impl Cache {
         Some((catalog, tag))
     }
 
-    /// Keeps `json` as the catalog, with its `tag`. The file is written
-    /// beside its place and renamed over it, so a crash mid-write never
-    /// leaves a truncated catalog.
-    async fn write(&self, json: &[u8], tag: Option<&str>) -> Result<(), String> {
-        let path = self.directory.join(CACHED);
-        let partial = self.directory.join(format!("{CACHED}.partial"));
+    /// Keeps `json` as the `T`, with its `tag`. The file is written beside
+    /// its place and renamed over it, so a crash mid-write never leaves a
+    /// truncated one.
+    async fn write<T: Document>(&self, json: &[u8], tag: Option<&str>) -> Result<(), String> {
+        let path = self.directory.join(format!("{}.json", T::NAME));
+        let partial = self.directory.join(format!("{}.json.partial", T::NAME));
         let at = |error: std::io::Error| format!("{}: {error}", path.display());
 
         tokio::fs::create_dir_all(&self.directory)
@@ -204,7 +235,7 @@ impl Cache {
         tokio::fs::write(&partial, json).await.map_err(at)?;
         tokio::fs::rename(&partial, &path).await.map_err(at)?;
 
-        let tag_path = self.directory.join(TAG);
+        let tag_path = self.directory.join(format!("{}.etag", T::NAME));
         match tag {
             Some(tag) => tokio::fs::write(&tag_path, tag).await.map_err(at),
             None => match tokio::fs::remove_file(&tag_path).await {
@@ -313,13 +344,30 @@ mod tests {
     }
 
     #[test]
-    fn the_published_catalog_is_the_repositorys() {
+    fn the_published_catalogs_are_the_repositorys() {
         assert_eq!(
-            PUBLISHED,
+            published::<Catalog>(),
             "https://gitlab.com/juxuanu/old_launcher/-/raw/main/index/wotlk.json"
         );
-        assert!(Location::Url(PUBLISHED.to_owned()).is_published());
-        assert!(!Location::Url("https://example.com/wotlk.json".into()).is_published());
+        assert_eq!(
+            published::<Mods>(),
+            "https://gitlab.com/juxuanu/old_launcher/-/raw/main/index/mods.json"
+        );
+        assert!(Location::Url(published::<Catalog>()).is_published::<Catalog>());
+        assert!(!Location::Url(published::<Catalog>()).is_published::<Mods>());
+        assert!(!Location::Url("https://example.com/wotlk.json".into()).is_published::<Catalog>());
+    }
+
+    #[test]
+    fn the_repository_list_of_mods_parses() {
+        let json = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
+        let mods = Mods::parse(&json).unwrap();
+
+        assert!(
+            mods.mods
+                .iter()
+                .any(|listed| listed.id == "lumenveil" && !listed.releases.is_empty())
+        );
     }
 
     #[test]
@@ -387,7 +435,7 @@ mod tests {
         let client = Ok(client());
 
         let fetched = Location::Url(url.clone())
-            .fetch(client.clone(), None, Some(cache.clone()))
+            .fetch::<Catalog>(client.clone(), None, Some(cache.clone()))
             .await
             .unwrap();
         let Fetched::Changed { catalog, tag } = fetched else {
@@ -395,13 +443,16 @@ mod tests {
         };
         assert_eq!(tag.as_deref(), Some("\"v1\""));
         assert_eq!(
-            cache.read(),
+            cache.read::<Catalog>(),
             Some((catalog, tag.clone())),
             "kept for the next start"
         );
+        assert_eq!(cache.read::<Mods>(), None, "kept apart");
 
         assert_eq!(
-            Location::Url(url).fetch(client, tag, Some(cache)).await,
+            Location::Url(url)
+                .fetch::<Catalog>(client, tag, Some(cache))
+                .await,
             Ok(Fetched::Unchanged),
             "the server is asked whether it changed"
         );
@@ -414,11 +465,11 @@ mod tests {
         let cache = Cache::at(directory.path().to_path_buf());
 
         let error = Location::Url(url)
-            .fetch(Ok(client()), None, Some(cache.clone()))
+            .fetch::<Catalog>(Ok(client()), None, Some(cache.clone()))
             .await
             .unwrap_err();
 
         assert!(error.contains("wotlk.json"), "{error}");
-        assert_eq!(cache.read(), None);
+        assert_eq!(cache.read::<Catalog>(), None);
     }
 }

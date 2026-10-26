@@ -79,6 +79,13 @@ impl State {
         !matches!(self.stage, Stage::Idle)
     }
 
+    /// What an import is doing to the client's files that quitting would
+    /// cut short, for people: restoring its saved settings. The addons it
+    /// installs next are the addons screen's.
+    pub fn under_way(&self) -> Option<String> {
+        matches!(self.stage, Stage::Restoring { .. }).then(|| "Importing saved settings".to_owned())
+    }
+
     /// Handles an interaction with the client `installation`, as `snapshot`
     /// saw it; imports install from `catalog`, and restore no saved settings
     /// while its game runs (`playing`). Failures go to `errors`.

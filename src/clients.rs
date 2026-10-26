@@ -1,20 +1,20 @@
 //! The clients dialog: which client the launcher shows, what its folder
-//! holds, outside Windows how the game starts, and Lumenveil, a graphics mod
-//! for it.
+//! holds, outside Windows how the game starts, and its mods.
 
-pub mod lumenveil;
+pub mod mods;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use iced::widget::{
-    Row, TextInput, button, column, container, pick_list, row, scrollable, space, stack, text,
-    text_input,
+    Row, TextInput, button, checkbox, column, container, pick_list, row, scrollable, space, stack,
+    text, text_input,
 };
 use iced::{Center, Element, Fill, Font, Function, Task, Widget, padding};
 
 use crate::action::Action;
 use crate::core::launch::DEFAULT_COMMAND;
+use crate::core::mods::Mods;
 use crate::core::{Config, Details, Installation, Realmlist};
 use crate::errors::Errors;
 use crate::{blocking, game, github, size, style};
@@ -53,8 +53,8 @@ pub struct State {
     edited: bool,
     /// Whether the client shown is about to be removed, pending a yes.
     removing: bool,
-    /// The Lumenveil section.
-    lumenveil: lumenveil::State,
+    /// The mods, with their section and banners.
+    mods: mods::State,
 }
 
 /// Interactions with the dialog.
@@ -74,6 +74,11 @@ pub enum Message {
     Locale(String),
     /// The client shown was switched to this language, or couldn't be.
     Switched(String, Result<Installation, String>),
+    /// The box letting the game use 4 GB of memory was ticked or unticked.
+    LargeAddressAware(bool),
+    /// `Wow.exe` of a client folder was changed to let the game use 4 GB of
+    /// memory, or 2, or couldn't be.
+    Patched(PathBuf, bool, Result<(), String>),
     /// The environment variables were edited.
     Env(String),
     /// The command was edited.
@@ -88,9 +93,9 @@ pub enum Message {
     CancelRemove,
     /// The dialog was closed.
     Close,
-    /// Something happened in the Lumenveil section, or its work ended,
-    /// which may be after the dialog closed.
-    Lumenveil(lumenveil::Message),
+    /// Something happened in the mods' section or banners, or their work
+    /// ended, which may be while the dialog is closed.
+    Mods(mods::Message),
 }
 
 /// What the dialog asks of its parent.
@@ -129,7 +134,19 @@ impl State {
 
     /// Downloads from GitHub sign in with `github` from now on.
     pub fn sign_in(&mut self, github: Option<github::Signed>) {
-        self.lumenveil.sign_in(github);
+        self.mods.sign_in(github);
+    }
+
+    /// Takes `list` as the list of mods, and looks at the `current` client
+    /// again with it.
+    pub fn list_mods(&mut self, list: Mods, current: Option<&Path>) -> Task<Message> {
+        self.mods.list(list, current).map(Message::Mods)
+    }
+
+    /// Notes why the list of mods couldn't be fetched, which the dialog says
+    /// while there is none.
+    pub fn mods_unfetched(&mut self, error: String) {
+        self.mods.unfetched(error);
     }
 
     /// Closes the dialog without a word to the parent: there is nothing
@@ -141,8 +158,8 @@ impl State {
 
     /// Notes that the client folder at `root` was just read, or changed
     /// (addons came or went), so what it holds is read again: now, if the
-    /// dialog shows it (`current`), or when it next does. Lumenveil is
-    /// looked for in it at once, for the banner above the addons.
+    /// dialog shows it (`current`), or when it next does. Its mods are
+    /// looked for at once, for the banners above the addons.
     pub fn changed(&mut self, root: &Path, current: Option<&Path>) -> Task<Message> {
         let _ = self.stale.insert(root.to_path_buf());
 
@@ -152,21 +169,33 @@ impl State {
             Task::none()
         };
 
-        Task::batch([read, lumenveil::find(root).map(Message::Lumenveil)])
+        Task::batch([read, self.mods.find(root).map(Message::Mods)])
     }
 
     /// Whether starting the game of the client at `root` waits for the
-    /// launcher to check or repair Lumenveil in it, as its banner says.
+    /// launcher to check or repair a mod in it, as its banner says.
     pub fn holds_back(&self, root: &Path) -> bool {
-        self.lumenveil.holds_back(root)
+        self.mods.holds_back(root)
     }
 
-    /// The banner above the addons about Lumenveil in the `current` client,
+    /// What is being done to a mod that quitting would cut short (see
+    /// [`mods::State::under_way`]).
+    pub fn under_way(&self) -> Option<String> {
+        self.mods.under_way()
+    }
+
+    /// The DLLs the mods in the client at `root` put beside `Wow.exe`, which
+    /// Wine has to be told to load from there (see [`mods::State::natives`]).
+    pub fn natives(&self, root: &Path) -> Vec<String> {
+        self.mods.natives(root)
+    }
+
+    /// The banners above the addons about the mods in the `current` client,
     /// when there is something to say; `playing` says whether its game runs.
     pub fn banner(&self, current: Option<&Path>, playing: bool) -> Option<impl Widget<Message>> {
-        self.lumenveil
+        self.mods
             .banner(current?, playing)
-            .map(|banner| banner.map(Message::Lumenveil))
+            .map(|banner| banner.map(Message::Mods))
     }
 
     /// Reads what the client folder at `root` holds, unless it was read
@@ -228,12 +257,12 @@ impl State {
                     ),
                     Err(error) => log::warn!("Could not read {}: {error}", path.display()),
                 }
-                let lumenveil = match &result {
-                    Ok(_) => self.lumenveil.shown(&path, client).map(Message::Lumenveil),
+                let mods = match &result {
+                    Ok(_) => self.mods.shown(&path).map(Message::Mods),
                     Err(_) => Task::none(),
                 };
                 let _ = self.details.insert(path, Some(result));
-                Action::task(lumenveil)
+                Action::task(mods)
             }
             Message::EditRealmlist(path) => {
                 log::info!("Opening {} in an editor", path.display());
@@ -300,6 +329,32 @@ impl State {
                 ));
                 Action::none()
             }
+            Message::LargeAddressAware(on) => {
+                let Some(installation) = installation.filter(|_| !playing).cloned() else {
+                    return Action::none();
+                };
+                let root = installation.root().to_path_buf();
+                log::info!(
+                    "Letting the game in {} use {} of memory",
+                    root.display(),
+                    if on { "4 GB" } else { "2 GB" }
+                );
+
+                Action::task(Task::perform(
+                    blocking(move || installation.set_large_address_aware(on)),
+                    move |result| Message::Patched(root, on, result),
+                ))
+            }
+            Message::Patched(root, on, Ok(())) => {
+                if let Some(Some(Ok(details))) = self.details.get_mut(&root) {
+                    details.large_address_aware = Some(on);
+                }
+                Action::none()
+            }
+            Message::Patched(_, _, Err(error)) => {
+                errors.report(format!("Could not change Wow.exe: {error}"));
+                Action::none()
+            }
             Message::Env(env) => {
                 if let Some(root) = current {
                     let mut launch = config.launch(root);
@@ -340,8 +395,8 @@ impl State {
                     edited: std::mem::take(&mut self.edited),
                 })
             }
-            Message::Lumenveil(message) => {
-                let action = self.lumenveil.update(
+            Message::Mods(message) => {
+                let action = self.mods.update(
                     message,
                     current,
                     installation,
@@ -350,10 +405,10 @@ impl State {
                     client,
                     errors,
                 );
-                let task = action.task.map(Message::Lumenveil);
+                let task = action.task.map(Message::Mods);
 
                 match action.instruction {
-                    Some(lumenveil::Instruction::Changed(root)) => {
+                    Some(mods::Instruction::Changed(root)) => {
                         let read = self.changed(&root, current);
                         Action::task(Task::batch([task, read]))
                     }
@@ -471,13 +526,20 @@ impl State {
                         None => fact("Realmlist", "No realmlist.wtf".to_owned()),
                     },
                     fact("Size", size(details.size)),
+                    details
+                        .large_address_aware
+                        .map(|on| memory(on, playing).align_y(Center)),
                 ]
                 .spacing(6)
                 .boxed(),
                 Some(Some(Err(error))) => text(format!("Could not read the folder: {error}"))
+                    .size(14)
                     .style(text::danger)
                     .boxed(),
-                Some(None) | None => text("Reading the folder…").style(text::secondary).boxed(),
+                Some(None) | None => text("Reading the folder…")
+                    .size(14)
+                    .style(text::secondary)
+                    .boxed(),
             };
 
             container(
@@ -501,7 +563,7 @@ impl State {
             let command = launch.map_or("", |launch| launch.command.as_str());
 
             column![
-                text("Starting the game").size(14).font(style::BOLD),
+                text("Starting the game").size(16).font(style::BOLD),
                 field(
                     "Environment variables",
                     text_input("WINEPREFIX=~/.wine-wow WINEDEBUG=-all", env)
@@ -517,30 +579,24 @@ impl State {
                     launch.and_then(|launch| launch.command_problem()),
                 ),
                 text(
-                    "%command% stands for Wow.exe; left empty, the game runs with \
-                     wine %command%. Other runners work too: umu-run %command% for \
-                     Proton, or lutris lutris:rungameid/1 for a game set up in Lutris."
+                    "Left empty, the game runs with wine %command%. Other runners work \
+                     too, such as umu-run %command% for Proton."
                 )
-                .size(12)
+                .size(13)
                 .style(text::secondary),
             ]
             .spacing(10)
         });
 
         // Nothing to say of a folder that can't be read.
-        let graphics = current
+        let mods = current
             .filter(|root| !matches!(self.details.get(*root), Some(Some(Err(_)))))
-            .map(|root| {
-                self.lumenveil
-                    .view(root, playing)
-                    .boxed()
-                    .map(Message::Lumenveil)
-            });
+            .map(|root| self.mods.view(root, playing).boxed().map(Message::Mods));
 
         // A short window scrolls what is under the title, so Close stays in
         // sight.
         let body =
-            scrollable(column![picker, removal, about, launch, graphics].spacing(14)).spacing(10);
+            scrollable(column![picker, removal, about, launch, mods].spacing(14)).spacing(10);
 
         container(column![title, body].spacing(14))
             .padding(24)
@@ -569,7 +625,9 @@ fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
         [] => fact("Languages", "None found".to_owned()),
         [locale] => fact("Languages", locale.clone()),
         locales => {
-            let picker = pick_list(details.locale.clone(), locales, String::clone).padding([2, 10]);
+            let picker = pick_list(details.locale.clone(), locales, String::clone)
+                .text_size(14)
+                .padding([2, 10]);
 
             let language = if playing {
                 labelled("Language", style::tip(picker, game::KEEPS_CONFIG))
@@ -582,15 +640,44 @@ fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
     }
 }
 
+/// Whether the game may use 4 GB of memory (`on`), as `Wow.exe` says, which
+/// is changed there, but not while the game runs (`playing`).
+fn memory<'a>(on: bool, playing: bool) -> Row<Element<'a, Message>> {
+    let check = checkbox(on)
+        .label("Up to 4 GB (Large Address Aware)")
+        .text_size(14);
+
+    labelled(
+        "Memory",
+        if playing {
+            style::tip(check, game::KEEPS_EXE)
+        } else {
+            style::tip(
+                check.on_toggle(Message::LargeAddressAware),
+                "The game is a 32-bit program, given 2 GB of memory unless Wow.exe asks for 4: HD \
+                 textures and long view distances need them. Ticking it sets that flag in \
+                 Wow.exe, and unticking it clears it.",
+            )
+        },
+    )
+}
+
 /// A labelled fact about the client, to which more can be pushed after the
 /// value.
 fn fact(label: &str, value: String) -> Row<Element<'_, Message>> {
-    labelled(label, text(value).wrapping(text::Wrapping::WordOrGlyph))
+    labelled(
+        label,
+        text(value).size(14).wrapping(text::Wrapping::WordOrGlyph),
+    )
 }
 
 /// `value`, labelled as a fact about the client.
 fn labelled<'a>(label: &'a str, value: impl Widget<Message> + 'a) -> Row<Element<'a, Message>> {
-    row![text(label).width(100).style(text::secondary), value].spacing(12)
+    row![
+        text(label).size(14).width(100).style(text::secondary),
+        value
+    ]
+    .spacing(12)
 }
 
 /// A labelled text field, with what is wrong with its contents under it.
@@ -600,9 +687,9 @@ fn field<'a>(
     problem: Option<String>,
 ) -> impl Widget<Message> + 'a {
     column![
-        text(label).size(13),
-        input.padding(8),
-        problem.map(|problem| text(problem).size(12).style(text::danger)),
+        text(label).size(14),
+        input.size(14).padding(8),
+        problem.map(|problem| text(problem).size(13).style(text::danger)),
     ]
     .spacing(4)
 }
@@ -628,6 +715,7 @@ mod tests {
             locales: vec!["enUS".into()],
             locale: Some("enUS".into()),
             realmlist,
+            large_address_aware: Some(false),
         }
     }
 
@@ -693,6 +781,53 @@ mod tests {
         for line in [WOTLK, "Languages", "enUS", "logon.example.com", "17.3 GB"] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
+    }
+
+    #[test]
+    fn the_game_is_given_4_gb_of_memory_in_wow_exe_on_request_but_not_while_it_runs() {
+        let (mut state, mut config) = opened(Some(details(None)));
+        let root = Path::new(WOTLK);
+        let label = "Up to 4 GB (Large Address Aware)";
+
+        let messages: Vec<Message> = {
+            let mut ui = simulator(state.view(&config, Some(root), None, false));
+            assert!(ui.find("Memory").is_ok());
+            let _ = ui.click(label).unwrap();
+            ui.into_messages().collect()
+        };
+        assert!(matches!(messages[..], [Message::LargeAddressAware(true)]));
+
+        let messages: Vec<Message> = {
+            let mut ui = simulator(state.view(&config, Some(root), None, true));
+            let _ = ui.click(label).unwrap();
+            ui.into_messages().collect()
+        };
+        assert!(messages.is_empty(), "not while the game runs");
+
+        let _ = update(
+            &mut state,
+            &mut config,
+            Message::Patched(root.into(), true, Ok(())),
+        );
+        assert!(matches!(
+            state.details.get(root),
+            Some(Some(Ok(Details {
+                large_address_aware: Some(true),
+                ..
+            })))
+        ));
+
+        let mut errors = Errors::default();
+        let _ = state.update(
+            Message::Patched(root.into(), false, Err("denied".to_owned())),
+            &mut config,
+            Some(root),
+            None,
+            false,
+            Err("offline"),
+            &mut errors,
+        );
+        assert_eq!(errors.messages(), ["Could not change Wow.exe: denied"]);
     }
 
     #[test]
@@ -875,8 +1010,8 @@ mod tests {
         state.close();
         assert_eq!(state.open(Some(root)).units(), 0, "remembered");
 
-        // Addons came or went while the dialog was closed: only Lumenveil
-        // is looked for at once, for the banner above the addons.
+        // Addons came or went while the dialog was closed: only its mods are
+        // looked for at once, for the banners above the addons.
         state.close();
         assert_eq!(state.changed(root, None).units(), 1, "read when next shown");
         assert!(state.open(Some(root)).units() > 0);
@@ -897,23 +1032,31 @@ mod tests {
     }
 
     #[test]
-    fn lumenveil_found_in_a_client_read_says_above_the_addons_what_it_needs() {
+    fn mods_found_in_a_client_read_say_above_the_addons_what_they_need() {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
+        let json = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
+        let looking = state.list_mods(Mods::parse(&json).unwrap(), Some(root));
+        assert!(looking.units() > 0, "the client shown is looked at again");
         assert!(
             state.banner(Some(root), false).is_none(),
-            "not looked for yet"
+            "not looked at yet"
         );
 
-        let found = crate::core::lumenveil::Status {
-            version: Some("0.1.1".to_owned()),
-            loaded: false,
-            problems: vec![crate::core::lumenveil::Problem::Unchecked],
+        let seen = mods::Seen {
+            held: BTreeMap::from([(
+                "lumenveil".to_owned(),
+                crate::core::mods::Status {
+                    release: None,
+                    problems: vec![crate::core::mods::Problem::Unchecked],
+                },
+            )]),
+            foreign: BTreeMap::new(),
         };
         let _ = update(
             &mut state,
             &mut config,
-            Message::Lumenveil(lumenveil::Message::Found(root.into(), Some(found))),
+            Message::Mods(mods::Message::Found(root.into(), seen)),
         );
         state.close();
 

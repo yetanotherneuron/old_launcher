@@ -27,10 +27,6 @@ const ON_DISCORD: &str = "From the next game on, Discord's desktop app shows you
                           of Warcraft 3.3.5a while a game started here runs, even with the \
                           launcher closed.";
 
-/// The games Discord isn't told of: their command hands them over and
-/// exits.
-const HANDED_OVER: &str = "Not for games handed to Steam or Lutris.";
-
 /// Where to ask for an addon the list lacks: a new issue on the project,
 /// with the template for addon requests.
 pub const REQUEST_ADDON: &str = concat!(
@@ -105,12 +101,6 @@ impl State {
             Login::Anonymous | Login::Asking => text::secondary,
         };
         let [first, second] = VARIABLES;
-        // Steam and Lutris run games on Linux only.
-        let on_discord = if cfg!(windows) {
-            ON_DISCORD.to_owned()
-        } else {
-            format!("{ON_DISCORD} {HANDED_OVER}")
-        };
 
         container(
             column![
@@ -145,7 +135,7 @@ impl State {
                 .spacing(4),
                 column![
                     text("Discord").size(16).font(style::BOLD),
-                    text(on_discord).size(13).style(text::secondary),
+                    text(ON_DISCORD).size(13).style(text::secondary),
                 ]
                 .spacing(4),
                 checkbox(config.discord)
@@ -260,12 +250,7 @@ mod tests {
         let mut ui = simulator(state.view(&Config::default(), &Login::Anonymous));
         assert!(ui.find("Discord").is_ok());
         assert!(ui.find(SHOW_ON_DISCORD).is_ok());
-        let explanation = if cfg!(windows) {
-            ON_DISCORD.to_owned()
-        } else {
-            format!("{ON_DISCORD} {HANDED_OVER}")
-        };
-        assert!(ui.find(explanation.as_str()).is_ok());
+        assert!(ui.find(ON_DISCORD).is_ok());
 
         let _ = ui.click(SHOW_ON_DISCORD).unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();

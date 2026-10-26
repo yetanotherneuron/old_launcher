@@ -1,4 +1,4 @@
-//! Extraction of downloaded addon archives (zip, 7z and rar).
+//! Extraction of downloaded archives (zip, 7z, rar and gzipped tar).
 
 use std::fs;
 use std::io::{self, Cursor, Write};
@@ -17,6 +17,8 @@ pub enum Format {
     SevenZip,
     /// RAR, any version from 1.3 to 7.
     Rar,
+    /// A tar archive, gzipped (`.tar.gz`).
+    TarGz,
 }
 
 impl Format {
@@ -28,6 +30,8 @@ impl Format {
             Some(Self::SevenZip)
         } else if bytes.starts_with(b"Rar!\x1A\x07") {
             Some(Self::Rar)
+        } else if bytes.starts_with(b"\x1F\x8B") {
+            Some(Self::TarGz)
         } else {
             None
         }
@@ -135,6 +139,46 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                 Ok(Box::new(fs::File::create(&path)?) as Box<dyn Write>)
             })?;
         }
+        Format::TarGz => {
+            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+
+            for entry in archive.entries().map_err(io_at(destination))? {
+                let mut entry = entry.map_err(io_at(destination))?;
+                let kind = entry.header().entry_type();
+
+                // Links, devices and the like: only files and folders.
+                if !kind.is_file() && !kind.is_dir() {
+                    continue;
+                }
+
+                newer(
+                    &mut newest,
+                    entry
+                        .header()
+                        .mtime()
+                        .ok()
+                        .map(|seconds| civil((seconds / 86_400) as i64)),
+                );
+
+                let name = entry
+                    .path()
+                    .map_err(io_at(destination))?
+                    .to_string_lossy()
+                    .into_owned();
+                let path = contained(destination, &name)?;
+
+                if kind.is_dir() {
+                    fs::create_dir_all(&path).map_err(io_at(&path))?;
+                    continue;
+                }
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).map_err(io_at(parent))?;
+                }
+
+                let mut output = fs::File::create(&path).map_err(io_at(&path))?;
+                let _ = io::copy(&mut entry, &mut output).map_err(io_at(&path))?;
+            }
+        }
     }
 
     Ok(newest.map(|(year, month, day)| format!("{year:04}-{month:02}-{day:02}")))
@@ -226,6 +270,27 @@ pub(crate) fn zip_of(files: &[(&str, &str)]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    /// A gzipped tar of `entries` (path, contents) dated 2024-09-10, the
+    /// names written as they are, `..` included, as a hostile archive would.
+    fn tar_gz_of(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+
+        for (path, contents) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_mtime(1_726_000_000);
+            header.as_old_mut().name[..path.len()].copy_from_slice(path.as_bytes());
+            header.set_cksum();
+            builder.append(&header, contents.as_bytes()).unwrap();
+        }
+
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
     #[test]
     fn formats_are_detected_by_magic_bytes() {
         assert_eq!(Format::detect(b"PK\x03\x04rest"), Some(Format::Zip));
@@ -234,7 +299,57 @@ mod tests {
             Some(Format::SevenZip)
         );
         assert_eq!(Format::detect(b"Rar!\x1A\x07\x01\x00"), Some(Format::Rar));
+        assert_eq!(Format::detect(b"\x1F\x8B\x08\x00rest"), Some(Format::TarGz));
         assert_eq!(Format::detect(b"<!DOCTYPE html>"), None);
+    }
+
+    #[test]
+    fn a_gzipped_tar_is_extracted_with_its_folders_and_date() {
+        let destination = tempfile::tempdir().unwrap();
+        let archive = tar_gz_of(&[
+            ("dxvk-3.1.1/x32/d3d9.dll", "32-bit"),
+            ("dxvk-3.1.1/x64/d3d9.dll", "64-bit"),
+        ]);
+
+        assert_eq!(
+            extract(&archive, destination.path()).unwrap().as_deref(),
+            Some("2024-09-10")
+        );
+        let dll = fs::read_to_string(destination.path().join("dxvk-3.1.1/x32/d3d9.dll")).unwrap();
+        assert_eq!(dll, "32-bit");
+    }
+
+    #[test]
+    fn a_tar_entry_escaping_the_destination_stops_the_extraction() {
+        let destination = tempfile::tempdir().unwrap();
+        let inside = destination.path().join("inside");
+        fs::create_dir(&inside).unwrap();
+        let archive = tar_gz_of(&[("../evil.dll", "evil")]);
+
+        assert!(matches!(
+            extract(&archive, &inside),
+            Err(Error::UnsafeEntry(_))
+        ));
+        assert!(!destination.path().join("evil.dll").exists());
+    }
+
+    #[test]
+    fn links_in_a_tar_are_left_out() {
+        let destination = tempfile::tempdir().unwrap();
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        builder
+            .append_link(&mut header, "d3d9.dll", "/etc/passwd")
+            .unwrap();
+        let archive = builder.into_inner().unwrap().finish().unwrap();
+
+        assert_eq!(extract(&archive, destination.path()).unwrap(), None);
+        assert!(fs::symlink_metadata(destination.path().join("d3d9.dll")).is_err());
     }
 
     #[test]

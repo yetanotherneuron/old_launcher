@@ -335,9 +335,10 @@ index:
     - git fetch origin "$CI_DEFAULT_BRANCH"
     - git checkout -q FETCH_HEAD
     - cargo run --release --locked --package indexer
-    # The catalog, and what was found in archives that never change, which
-    # the next run reuses instead of downloading them again.
-    - git add index/wotlk.json index/archives.json
+    # The catalog and the list of mods, and what was found in archives that
+    # never change, which the next run reuses instead of downloading them
+    # again.
+    - git add index/wotlk.json index/archives.json index/mods.json index/mod-archives.json
     - >-
       if git diff --cached --quiet; then echo "The catalog is up to date."; exit 0; fi
     # No pipeline for it: nothing built depends on the catalog.

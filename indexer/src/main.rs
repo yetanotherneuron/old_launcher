@@ -1,9 +1,10 @@
 //! Builds the launcher's catalog from every upstream source: lists their
 //! addons, downloads every archive to check it and record the folders it
 //! installs, merges the listings of the same addon from different sources,
-//! and writes the result.
+//! and writes the result. Then the same for the list of mods.
 
 mod fetch;
+mod mods;
 mod source;
 
 use std::cmp::{Ordering, Reverse};
@@ -15,6 +16,7 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use clap::Parser;
 use old_launcher_core::catalog::Contents;
+use old_launcher_core::mods::Mods;
 use old_launcher_core::{Catalog, Toc, catalog, toc};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -37,6 +39,16 @@ struct Arguments {
     /// How many archives to download at once.
     #[arg(long, default_value_t = 8)]
     jobs: usize,
+    /// Where to write the list of mods.
+    #[arg(long, default_value = "index/mods.json")]
+    mods: PathBuf,
+    /// Where to keep what was found in the mods' downloads, for the next run
+    /// to reuse instead of downloading them again.
+    #[arg(long, default_value = "index/mod-archives.json")]
+    mod_archives: PathBuf,
+    /// Only build the list of mods, leaving the catalog of addons as it is.
+    #[arg(long)]
+    mods_only: bool,
 }
 
 /// A listing whose archive was downloaded and looked into.
@@ -66,21 +78,31 @@ async fn main() -> anyhow::Result<()> {
         .timeout(Duration::from_secs(300))
         .build()?;
 
+    if !arguments.mods_only {
+        addons(&client, &arguments).await?;
+    }
+
+    list_mods(&client, &arguments).await
+}
+
+/// Builds the catalog of addons and writes it, with what was found in
+/// archives that never change.
+async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Result<()> {
     // Every source, in order of preference: when several list the same addon,
     // the first describes it (so English descriptions come before German
     // ones).
     let mut gathered = vec![
-        gather(&client, &nom0re::Collection).await?,
-        gather(&client, &locus313::Collection).await?,
+        gather(client, &nom0re::Collection).await?,
+        gather(client, &locus313::Collection).await?,
     ];
     for owner in github::MAINTAINERS {
-        gathered.push(gather(&client, &github::Maintainer(owner)).await?);
+        gathered.push(gather(client, &github::Maintainer(owner)).await?);
     }
     for author in gitlab::AUTHORS {
-        gathered.push(gather(&client, author).await?);
+        gathered.push(gather(client, author).await?);
     }
-    gathered.push(gather(&client, &wowinterface::Site).await?);
-    gathered.push(gather(&client, &rising_gods::Collection).await?);
+    gathered.push(gather(client, &wowinterface::Site).await?);
+    gathered.push(gather(client, &rising_gods::Collection).await?);
 
     let mut sources = Vec::new();
     let mut listings = Vec::new();
@@ -297,6 +319,49 @@ async fn main() -> anyhow::Result<()> {
     if !skipped.is_empty() {
         skipped.sort();
         println!("Skipped {}:", skipped.len());
+        for line in &skipped {
+            println!("  {line}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Builds the list of mods and writes it, with what was found in their
+/// releases' downloads.
+async fn list_mods(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Result<()> {
+    let known = mods::known(&arguments.mod_archives);
+    let (listed, found, skipped) = mods::gather(client, &known).await?;
+
+    let list = Mods {
+        version: Mods::VERSION,
+        mods: listed,
+    };
+
+    for (path, json) in [
+        (&arguments.mods, list.to_json()?),
+        (
+            &arguments.mod_archives,
+            serde_json::to_string_pretty(&found)? + "\n",
+        ),
+    ] {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, json).with_context(|| format!("writing {}", path.display()))?;
+    }
+
+    println!(
+        "\nWrote {} mods with {} releases to {}.",
+        list.mods.len(),
+        list.mods
+            .iter()
+            .map(|listed| listed.releases.len())
+            .sum::<usize>(),
+        arguments.mods.display()
+    );
+    if !skipped.is_empty() {
+        println!("Left out {}:", skipped.len());
         for line in &skipped {
             println!("  {line}");
         }

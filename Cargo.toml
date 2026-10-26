@@ -9,6 +9,7 @@ homepage.workspace = true
 [dependencies]
 old_launcher_core = { workspace = true }
 iced = { workspace = true }
+sipper = { workspace = true }
 # The connection to Discord, and waiting before trying it again.
 tokio = { workspace = true, features = ["net", "io-util", "time"] }
 reqwest = { workspace = true }
@@ -61,7 +62,11 @@ unimplemented = "deny"
 # short directory `core/`, prefixed package (bare `core` collides with std)
 old_launcher_core = { path = "core" }
 
-iced = { version = "0.15.0-dev", features = ["tokio", "sipper", "svg"] }
+# `advanced`: for the one widget of our own, the bar of work that can't say
+# how far it got.
+iced = { version = "0.15.0-dev", features = ["tokio", "sipper", "svg", "advanced"] }
+# The progress a long task reports, which iced's tasks take but don't name.
+sipper = "0.2"
 iced_test = "0.15.0-dev"
 tokio = { version = "1", features = ["fs", "rt-multi-thread", "macros", "sync", "process"] }
 # rustls on `ring`: no cmake/NASM toolchain needed on any platform.
@@ -90,6 +95,10 @@ clap = { version = "4", features = ["derive"] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma"] }
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["util", "bzip2", "ppmd", "deflate"] }
 rars = "0.12"
+# Gzipped tarballs, as DXVK publishes its releases; gzip through the same
+# pure-Rust zlib the zip crate uses.
+tar = { version = "0.4", default-features = false }
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 # Reads and quotes the shell words of a client's launch settings.
 shlex = "2"
 # Checks downloads against the checksums their publishers give.

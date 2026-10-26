@@ -8,6 +8,7 @@
 pub use old_launcher_core as core;
 
 mod action;
+mod activity;
 mod addons;
 mod catalog;
 mod clients;
@@ -40,6 +41,7 @@ use iced::{
 };
 
 use crate::catalog::Catalog;
+use crate::core::mods::Mods;
 use crate::core::{Config, Installation, Snapshot};
 use crate::errors::Errors;
 
@@ -79,7 +81,9 @@ pub struct App {
     refreshed: Option<Instant>,
     /// The tag the server gave the catalog shown, to ask whether it changed.
     tag: Option<String>,
-    /// Where the catalog fetched last is kept for the next start.
+    /// The same for the list of mods.
+    mods_tag: Option<String>,
+    /// Where the catalogs fetched last are kept for the next start.
     cache: catalog::Cache,
     selected: Selected,
     addons: addons::State,
@@ -99,6 +103,9 @@ pub struct App {
     game: game::State,
     /// A newer launcher version than this one, when published.
     latest: Option<String>,
+    /// Whether quitting was asked for while something it would cut short
+    /// is under way, so the launcher asks first (see [`App::under_way`]).
+    quitting: bool,
 }
 
 /// The state of the client folder being shown.
@@ -171,7 +178,9 @@ pub enum Message {
     /// A client folder was scanned.
     Scanned(PathBuf, Result<Snapshot, String>),
     /// The published catalog was fetched.
-    CatalogLoaded(Result<catalog::Fetched, String>),
+    CatalogLoaded(Result<catalog::Fetched<Catalog>, String>),
+    /// The published list of mods was fetched.
+    ModsLoaded(Result<catalog::Fetched<Mods>, String>),
     /// Whether a newer launcher is published was checked.
     UpdateChecked(Option<String>),
     /// Open `Interface/AddOns` in the file manager.
@@ -192,8 +201,12 @@ pub enum Message {
     Escape,
     /// Ctrl+F was pressed.
     FocusSearch,
-    /// Ctrl+Q was pressed.
+    /// Ctrl+Q was pressed, or the window asked to close.
     Quit,
+    /// Quit even though something is under way.
+    QuitAnyway,
+    /// Don't quit after all.
+    KeepOpen,
 }
 
 impl App {
@@ -259,10 +272,16 @@ impl App {
         // The catalog fetched last time shows right away, and a fresh one is
         // fetched in a moment. Another catalog, when asked for, comes alone.
         let cache = catalog::Cache::default_location();
-        let (mut catalog, tag) = if catalog::Location::configured().is_published() {
+        let (mut catalog, tag) =
+            if catalog::Location::configured::<Catalog>().is_published::<Catalog>() {
+                cache.read().unwrap_or_default()
+            } else {
+                (Catalog::default(), None)
+            };
+        let (mods, mods_tag) = if catalog::Location::configured::<Mods>().is_published::<Mods>() {
             cache.read().unwrap_or_default()
         } else {
-            (Catalog::default(), None)
+            (Mods::default(), None)
         };
         catalog.prefer(&config.sources);
         if catalog.entries.is_empty() {
@@ -285,6 +304,7 @@ impl App {
             refresh: catalog::Refresh::Idle,
             refreshed: None,
             tag,
+            mods_tag,
             cache,
             selected: Selected::Nothing,
             addons: addons::State::new(),
@@ -297,7 +317,10 @@ impl App {
             clients: clients::State::default(),
             game: game::State::default(),
             latest: None,
+            quitting: false,
         };
+        // No client is open yet to look at with it.
+        let _ = app.clients.list_mods(mods, None);
 
         let start = if app.recovery.is_some() {
             Task::none()
@@ -453,8 +476,9 @@ impl App {
                 }
             }
             Message::Clients(message) => {
-                // Lumenveil's work may end after the dialog closed.
-                if !self.clients.is_open() && !matches!(message, clients::Message::Lumenveil(_)) {
+                // The mods' banners show, and their work ends, with the
+                // dialog closed too.
+                if !self.clients.is_open() && !matches!(message, clients::Message::Mods(_)) {
                     return Task::none();
                 }
                 let current = self.selected.path().map(Path::to_path_buf);
@@ -600,9 +624,16 @@ impl App {
                     return Task::none();
                 }
                 let launch = self.config.launch(installation.root());
+                let natives = self.clients.natives(installation.root());
 
                 self.game
-                    .play(installation, &launch, self.config.discord, &mut self.errors)
+                    .play(
+                        installation,
+                        &launch,
+                        &natives,
+                        self.config.discord,
+                        &mut self.errors,
+                    )
                     .map(Message::Game)
             }
             Message::Game(message) => self
@@ -722,6 +753,28 @@ impl App {
 
                 Task::none()
             }
+            Message::ModsLoaded(result) => match result {
+                Ok(catalog::Fetched::Unchanged) => {
+                    log::info!("The list of mods is unchanged");
+                    Task::none()
+                }
+                Ok(catalog::Fetched::Changed { catalog: mods, tag }) => {
+                    log::info!(
+                        "Refreshed the list of mods: {}",
+                        counted(mods.mods.len(), "mod")
+                    );
+                    self.mods_tag = tag;
+                    self.clients
+                        .list_mods(mods, self.selected.path())
+                        .map(Message::Clients)
+                }
+                // Said where the mods are: the clients dialog.
+                Err(error) => {
+                    log::warn!("Could not fetch the list of mods: {error}");
+                    self.clients.mods_unfetched(error);
+                    Task::none()
+                }
+            },
             Message::UpdateChecked(latest) => {
                 self.latest = latest;
                 Task::none()
@@ -835,7 +888,9 @@ impl App {
                 }
             }
             Message::Escape => {
-                if self.setup.is_some() {
+                if self.quitting {
+                    self.update(Message::KeepOpen)
+                } else if self.setup.is_some() {
                     self.update(Message::Setup(setup::Message::Cancel))
                 } else if self.settings.is_open() {
                     self.update(Message::Settings(settings::Message::Close))
@@ -850,8 +905,33 @@ impl App {
                 }
             }
             Message::FocusSearch => operation::focus(addons::SEARCH),
-            Message::Quit => iced::exit(),
+            Message::Quit => {
+                if self.under_way().is_empty() {
+                    return iced::exit();
+                }
+                self.quitting = true;
+                Task::none()
+            }
+            Message::QuitAnyway => {
+                log::info!("Quitting with {} under way", self.under_way().join(", "));
+                iced::exit()
+            }
+            Message::KeepOpen => {
+                self.quitting = false;
+                Task::none()
+            }
         }
+    }
+
+    /// What the launcher is doing to the clients' files that quitting would
+    /// cut short, one line each, for people.
+    fn under_way(&self) -> Vec<String> {
+        self.addons
+            .under_way()
+            .into_iter()
+            .chain(self.clients.under_way())
+            .chain(self.transfer.under_way())
+            .collect()
     }
 
     /// Draws the launcher.
@@ -1075,7 +1155,13 @@ impl App {
         .spacing(14)
         .padding(20);
 
-        let (dialog, on_blur) = if let Some(setup) = &self.setup {
+        let (dialog, on_blur) = if self.quitting {
+            // Over whatever dialog the work goes on in.
+            (
+                Some(quit_dialog(self.under_way()).boxed()),
+                Message::KeepOpen,
+            )
+        } else if let Some(setup) = &self.setup {
             // Added from the clients dialog, which comes back afterwards.
             (
                 Some(setup.view().map(Message::Setup).boxed()),
@@ -1125,11 +1211,13 @@ impl App {
         style::modal(content, dialog, on_blur).boxed()
     }
 
-    /// Keyboard shortcuts (see [`shortcut`]), the window getting the focus
-    /// back, and the games being followed.
+    /// Keyboard shortcuts (see [`shortcut`]), the window asking to close or
+    /// getting the focus back, and the games being followed.
     pub fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
+            // Closing the window quits as Ctrl+Q does (see `main`).
+            window::close_requests().map(|_| Message::Quit),
             event::listen_with(|event, _status, _window| {
                 matches!(event, Event::Window(window::Event::Focused)).then_some(Message::Focused)
             }),
@@ -1152,22 +1240,36 @@ impl App {
             return Task::none();
         }
 
-        let location = catalog::Location::configured();
-        // The tag and the copy kept belong to the published catalog only.
-        let (tag, cache) = if location.is_published() {
+        let location = catalog::Location::configured::<Catalog>();
+        let mods = catalog::Location::configured::<Mods>();
+        // The tags and the copies kept belong to the published ones only.
+        let (tag, cache) = if location.is_published::<Catalog>() {
             (self.tag.clone(), Some(self.cache.clone()))
         } else {
             (None, None)
         };
+        let (mods_tag, mods_cache) = if mods.is_published::<Mods>() {
+            (self.mods_tag.clone(), Some(self.cache.clone()))
+        } else {
+            (None, None)
+        };
 
-        log::info!("Refreshing the catalog from {location}");
+        log::info!(
+            "Checking whether the catalog changed at {location}, and the list of mods at {mods}"
+        );
         self.refresh = catalog::Refresh::Running;
         self.refreshed = Some(Instant::now());
 
-        Task::perform(
-            location.fetch(self.client.clone(), tag, cache),
-            Message::CatalogLoaded,
-        )
+        Task::batch([
+            Task::perform(
+                location.fetch(self.client.clone(), tag, cache),
+                Message::CatalogLoaded,
+            ),
+            Task::perform(
+                mods.fetch(self.client.clone(), mods_tag, mods_cache),
+                Message::ModsLoaded,
+            ),
+        ])
     }
 
     /// Proposes recognizing the selected client's addons that were installed
@@ -1264,6 +1366,49 @@ impl App {
         self.addons.sign_in(signed);
         self.github = login;
     }
+}
+
+/// The dialog asking whether to quit while the `under_way` work isn't
+/// finished. Should it all finish meanwhile, it says so.
+fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
+    let finished = under_way.is_empty();
+    let explanation = if finished {
+        "Everything is finished now."
+    } else {
+        "Quitting stops this halfway. An addon cut short may need installing again, and a mod \
+         repairing before the game starts."
+    };
+
+    container(
+        column![
+            text("Quit now?").size(20).font(style::BOLD),
+            (!finished).then(|| {
+                container(column(under_way.into_iter().map(|line| text(line).size(13))).spacing(2))
+                    .padding(10)
+                    .width(Fill)
+                    .style(container::rounded_box)
+            }),
+            text(explanation).style(text::secondary),
+            row![
+                space::horizontal(),
+                button("Keep the launcher open")
+                    .style(button::text)
+                    .on_press(Message::KeepOpen),
+                button(if finished { "Quit" } else { "Quit anyway" })
+                    .style(if finished {
+                        button::primary
+                    } else {
+                        button::danger
+                    })
+                    .on_press(Message::QuitAnyway),
+            ]
+            .spacing(8),
+        ]
+        .spacing(14),
+    )
+    .padding(24)
+    .width(Fill.max(560))
+    .style(style::card)
 }
 
 /// What a key press does: Escape closes dialogs, F5 rescans, Ctrl+F
@@ -1370,6 +1515,7 @@ mod tests {
             refresh: catalog::Refresh::Idle,
             refreshed: None,
             tag: None,
+            mods_tag: None,
             cache: catalog::Cache::at("cache".into()),
             selected: Selected::Nothing,
             addons: addons::State::new(),
@@ -1382,6 +1528,7 @@ mod tests {
             clients: clients::State::default(),
             game: game::State::default(),
             latest: None,
+            quitting: false,
         }
     }
 
@@ -1472,6 +1619,52 @@ mod tests {
             Some(Message::Quit)
         ));
         assert!(shortcut(press(keyboard::Modifiers::empty())).is_none());
+    }
+
+    #[test]
+    fn quitting_asks_first_while_something_it_would_cut_short_is_under_way() {
+        let (_root, installation) = core::testing::client(&["Interface/AddOns/ACP/ACP.toc"]);
+        let mut app = opened(installation);
+
+        let _ = app.update(Message::Quit);
+        assert!(!app.quitting, "nothing under way: it just quits");
+
+        let _ = app.update(Message::Addons(addons::Message::Ask(
+            addons::Confirm::Uninstall {
+                title: "ACP".into(),
+                folders: vec!["ACP".into()],
+                data: Vec::new(),
+                delete_data: false,
+                required_by: Vec::new(),
+                optionally_used_by: Vec::new(),
+            },
+        )));
+        let _ = app.update(Message::Addons(addons::Message::Confirm));
+        let _ = app.update(Message::Quit);
+        assert!(app.quitting);
+
+        let messages: Vec<Message> = {
+            let mut ui = simulator(app.view());
+            for wanted in ["Quit now?", "Uninstalling ACP: 1 folder", "Quit anyway"] {
+                assert!(ui.find(wanted).is_ok(), "{wanted}");
+            }
+            let _ = ui.click("Keep the launcher open").unwrap();
+            ui.into_messages().collect()
+        };
+        assert!(matches!(messages[..], [Message::KeepOpen]));
+        let _ = app.update(Message::KeepOpen);
+        assert!(!app.quitting);
+
+        // Finished while asking: it says so.
+        let _ = app.update(Message::Quit);
+        let _ = app.update(Message::Addons(addons::Message::Done(Ok(()))));
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Everything is finished now.").is_ok());
+        assert!(ui.find("Quit").is_ok());
+        drop(ui);
+
+        let _ = app.update(Message::Escape);
+        assert!(!app.quitting, "Escape keeps it open too");
     }
 
     #[test]
@@ -1938,24 +2131,32 @@ mod tests {
     }
 
     #[test]
-    fn the_game_waits_for_the_launcher_to_check_lumenveil() {
+    fn the_game_waits_for_the_launcher_to_check_a_mod() {
         let (_root, installation) = crate::testing::client(&["CoAVolFog.dll"]);
         let root = installation.root().to_path_buf();
         let mut app = opened(installation);
-        let found = |problems| {
-            Message::Clients(clients::Message::Lumenveil(
-                clients::lumenveil::Message::Found(
-                    root.clone(),
-                    Some(crate::core::lumenveil::Status {
-                        version: Some("0.1.1".to_owned()),
-                        loaded: false,
-                        problems,
-                    }),
-                ),
-            ))
+        let json = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
+        let _ = app.update(Message::ModsLoaded(Ok(catalog::Fetched::Changed {
+            catalog: Mods::parse(&json).unwrap(),
+            tag: None,
+        })));
+        let found = |release: Option<&str>, problems| {
+            Message::Clients(clients::Message::Mods(clients::mods::Message::Found(
+                root.clone(),
+                clients::mods::Seen {
+                    held: std::collections::BTreeMap::from([(
+                        "lumenveil".to_owned(),
+                        crate::core::mods::Status {
+                            release: release.map(str::to_owned),
+                            problems,
+                        },
+                    )]),
+                    foreign: std::collections::BTreeMap::new(),
+                },
+            )))
         };
 
-        let _ = app.update(found(vec![crate::core::lumenveil::Problem::Unchecked]));
+        let _ = app.update(found(None, vec![crate::core::mods::Problem::Unchecked]));
         let mut ui = simulator(app.view());
         assert!(
             ui.find(
@@ -1969,9 +2170,10 @@ mod tests {
         let _ = app.update(Message::Play);
         assert!(app.game.phase(&root).is_none(), "nothing was started");
 
-        // Checked, its files as released.
-        let _ = app.update(found(Vec::new()));
+        // Checked, its files as released: Wine loads its DLLs.
+        let _ = app.update(found(Some("0.1.1"), Vec::new()));
         assert!(play_button(&app, "Play"));
+        assert_eq!(app.clients.natives(&root), ["CoAVolFog", "version"]);
     }
 
     #[cfg(not(windows))]

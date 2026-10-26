@@ -695,8 +695,12 @@ mod tests {
     async fn the_first_socket_listened_on_is_used() {
         let folder = tempfile::tempdir().unwrap();
         let sockets = sockets_in(folder.path());
-        // Left behind by a Discord that crashed: nobody listens.
-        drop(tokio::net::UnixListener::bind(&sockets[0]).unwrap());
+        // Left behind by a Discord that crashed: nobody listens. Bound and
+        // never listened on, rather than a listener dropped: a process
+        // another test starts holds a copy of every open socket until it
+        // runs its program, which keeps a dropped listener listening.
+        let left = tokio::net::UnixSocket::new_stream().unwrap();
+        left.bind(&sockets[0]).unwrap();
         let flatpak = folder.path().join("app/com.discordapp.Discord");
         std::fs::create_dir_all(&flatpak).unwrap();
         let _listener = tokio::net::UnixListener::bind(flatpak.join("discord-ipc-0")).unwrap();

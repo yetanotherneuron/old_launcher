@@ -25,6 +25,11 @@ pub enum Error {
     #[error("could not read the client version from {}", .0.display())]
     UnknownVersion(PathBuf),
 
+    /// An executable without the headers of a Windows program, so nothing
+    /// in them can be changed.
+    #[error("{} has no Windows program headers", .0.display())]
+    NoHeaders(PathBuf),
+
     /// The client is not 3.3.5a.
     #[error("client version {0} is not supported; only 3.3.5a is")]
     UnsupportedVersion(Version),
@@ -57,14 +62,23 @@ pub enum Error {
     #[error("{} is in Interface/AddOns already", .0.display())]
     InAddOns(PathBuf),
 
-    /// A file of a release that doesn't match the checksum the release
-    /// gives for it.
-    #[error("{0} doesn't match the checksum its release gives")]
+    /// A file of a mod's release that doesn't match the checksum the list of
+    /// mods gives for it.
+    #[error("{0} isn't the file its release has")]
     Checksum(String),
 
-    /// A file the release's checksums name that its archive lacks.
-    #[error("{0} is missing from the release's archive")]
+    /// A file of a mod's release that its download lacks.
+    #[error("{0} is missing from the download")]
     NotInRelease(String),
+
+    /// Files in the client folder where a mod's release puts its own, which
+    /// aren't the mod's: another mod's, say. Installing would replace them.
+    #[error(
+        "{} in the client folder {} to something else",
+        .0.join(", "),
+        if .0.len() == 1 { "belongs" } else { "belong" }
+    )]
+    Foreign(Vec<String>),
 
     /// An addon folder name that is not a single, plain path component.
     #[error("invalid addon folder name: {0:?}")]
@@ -87,6 +101,17 @@ pub enum Error {
         "the catalog uses format version {0}, which this version of the launcher does not support"
     )]
     CatalogVersion(u32),
+
+    /// A list of mods could not be parsed.
+    #[error("invalid list of mods: {0}")]
+    Mods(serde_json::Error),
+
+    /// A list of mods uses a schema version this build does not know.
+    #[error(
+        "the list of mods uses format version {0}, which this version of the launcher does not \
+         support"
+    )]
+    ModsVersion(u32),
 
     /// The config file is not valid TOML for [`Config`](crate::Config).
     #[error("invalid config file: {0}")]

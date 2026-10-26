@@ -310,7 +310,7 @@ mod tests {
         };
         let custom = Launch {
             env: String::new(),
-            command: "lutris lutris:rungameid/3".into(),
+            command: "umu-run %command%".into(),
         };
         config.set_launch(Path::new("/games/wotlk"), custom.clone());
         config.set_launch(Path::new("/games/warmane"), custom);

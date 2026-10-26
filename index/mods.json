@@ -1,0 +1,827 @@
+{
+  "version": 1,
+  "mods": [
+    {
+      "id": "dxvk",
+      "name": "DXVK",
+      "description": "Runs the game's Direct3D 9 graphics on Vulkan, which plays smoother on many modern graphics cards.",
+      "source": {
+        "name": "DXVK on GitHub",
+        "page": "https://github.com/doitsujin/dxvk"
+      },
+      "releases": [
+        {
+          "version": "3.1.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v3.1.1/dxvk-3.1.1.tar.gz",
+          "updated": "2026-09-15",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v3.1.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "265888c31ca78dffa290c39cb7e50bfb02762590e41927906e46fb32f01497fa"
+            ]
+          ],
+          "inside": "dxvk-3.1.1/x32"
+        },
+        {
+          "version": "3.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v3.1/dxvk-3.1.tar.gz",
+          "updated": "2026-08-28",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v3.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "2efb4c004abed6028349010f1a647d5b09616c67fd7f40fa8175ddb7b5f16e58"
+            ]
+          ],
+          "inside": "dxvk-3.1/x32"
+        },
+        {
+          "version": "3.0.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v3.0.2/dxvk-3.0.2.tar.gz",
+          "updated": "2026-07-17",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v3.0.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "44a2e749694128710cce3a545c954bd9d986dd6a8ea61bb08d931c2ef0190488"
+            ]
+          ],
+          "inside": "dxvk-3.0.2/x32"
+        },
+        {
+          "version": "3.0.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v3.0.1/dxvk-3.0.1.tar.gz",
+          "updated": "2026-07-05",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v3.0.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "3bcc7134759ac64897e492e3fb666ae00d341fa06edb4b27867d5a6ab2c6e5a7"
+            ]
+          ],
+          "inside": "dxvk-3.0.1/x32"
+        },
+        {
+          "version": "3.0",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v3.0/dxvk-3.0.tar.gz",
+          "updated": "2026-06-25",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v3.0",
+          "files": [
+            [
+              "d3d9.dll",
+              "576d0877b166f7d10b71096b0ef58c7839167192ba59e45bca721b273f3152b8"
+            ]
+          ],
+          "inside": "dxvk-3.0/x32"
+        },
+        {
+          "version": "2.7.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-2.7.1.tar.gz",
+          "updated": "2025-08-30",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.7.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "00ecd422b3b12e9d3b309785f3f19431405389d80eb4a37018ebc63e2d87d900"
+            ]
+          ],
+          "inside": "dxvk-2.7.1/x32"
+        },
+        {
+          "version": "2.7",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.7/dxvk-2.7.tar.gz",
+          "updated": "2025-07-05",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.7",
+          "files": [
+            [
+              "d3d9.dll",
+              "1950b62696f5c88784fe243f25eed299fc6608ddea1b8117198953043767569f"
+            ]
+          ],
+          "inside": "dxvk-2.7/x32"
+        },
+        {
+          "version": "2.6.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.6.2/dxvk-2.6.2.tar.gz",
+          "updated": "2025-06-10",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.6.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "00bc142e98ddad1e334a4d88fa630038e092b0758b3d79e295172b181a4c772d"
+            ]
+          ],
+          "inside": "dxvk-2.6.2/x32"
+        },
+        {
+          "version": "2.6.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.6.1/dxvk-2.6.1.tar.gz",
+          "updated": "2025-04-07",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.6.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "0349923a6618f2383451c170a0f24d9c8f328392179aca71826a853655982405"
+            ]
+          ],
+          "inside": "dxvk-2.6.1/x32"
+        },
+        {
+          "version": "2.6",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.6/dxvk-2.6.tar.gz",
+          "updated": "2025-03-13",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.6",
+          "files": [
+            [
+              "d3d9.dll",
+              "7069ab4ab6ede0e95ad448ca86ccf024e13d2a5b87f4f7bb7713a205d615e75d"
+            ]
+          ],
+          "inside": "dxvk-2.6/x32"
+        },
+        {
+          "version": "2.5.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.5.3/dxvk-2.5.3.tar.gz",
+          "updated": "2025-01-13",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.5.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "3d6b529dc4f7f55639aad580e81b2939ab1489cdbb9f1550dce74e41656bbf5b"
+            ]
+          ],
+          "inside": "dxvk-2.5.3/x32"
+        },
+        {
+          "version": "2.5.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.5.2/dxvk-2.5.2.tar.gz",
+          "updated": "2024-12-20",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.5.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "4cf5eb3f7c3efb7b56d4dfe02d3bd175041abdcdf7e69cf2f09d3857e18c77ca"
+            ]
+          ],
+          "inside": "dxvk-2.5.2/x32"
+        },
+        {
+          "version": "2.5.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.5.1/dxvk-2.5.1.tar.gz",
+          "updated": "2024-11-18",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.5.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "f8ba5139c4a1d75b9653f66204fb4da20b0a2ed947dccd8fabf757429935cc8f"
+            ]
+          ],
+          "inside": "dxvk-2.5.1/x32"
+        },
+        {
+          "version": "2.5",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.5/dxvk-2.5.tar.gz",
+          "updated": "2024-11-11",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.5",
+          "files": [
+            [
+              "d3d9.dll",
+              "98c9650200a3ec6009ec2d45c6f9de55c25cafeb9f52c9d9f2c31f9354c54a8b"
+            ]
+          ],
+          "inside": "dxvk-2.5/x32"
+        },
+        {
+          "version": "2.4.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.4.1/dxvk-2.4.1.tar.gz",
+          "updated": "2024-09-26",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.4.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "cc556331fc3388989749620bceead4c2da95c3932ed38cf5cc24f3f0a878866e"
+            ]
+          ],
+          "inside": "dxvk-2.4.1/x32"
+        },
+        {
+          "version": "2.4",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.4/dxvk-2.4.tar.gz",
+          "updated": "2024-07-10",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.4",
+          "files": [
+            [
+              "d3d9.dll",
+              "b2c451064705afa824b6b24e71b7bfa5dccbce92c326665a30482908abd6ec5c"
+            ]
+          ],
+          "inside": "dxvk-2.4/x32"
+        },
+        {
+          "version": "2.3.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.3.1/dxvk-2.3.1.tar.gz",
+          "updated": "2024-03-20",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.3.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "942c5c314c39841a1257df6dd3a5048a84e115aa16b0c1fd4512254c53539af3"
+            ]
+          ],
+          "inside": "dxvk-2.3.1/x32"
+        },
+        {
+          "version": "2.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.3/dxvk-2.3.tar.gz",
+          "updated": "2023-09-04",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "188c743f866516fccd7ead7594cb98e8abc260ba7aad3063c489ca00e7bc517f"
+            ]
+          ],
+          "inside": "dxvk-2.3/x32"
+        },
+        {
+          "version": "2.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.2/dxvk-2.2.tar.gz",
+          "updated": "2023-05-12",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "40ab9bd2a11be8242e9286f799f711acac9d9dd63a5afc4c91add1f84ce3dbe2"
+            ]
+          ],
+          "inside": "dxvk-2.2/x32"
+        },
+        {
+          "version": "2.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.1/dxvk-2.1.tar.gz",
+          "updated": "2023-01-24",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "d2907f31511fe3aa28fca888e275a2dc9b85b45aa5f22af11333e2413d4b892c"
+            ]
+          ],
+          "inside": "dxvk-2.1/x32"
+        },
+        {
+          "version": "2.0",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v2.0/dxvk-2.0.tar.gz",
+          "updated": "2022-11-10",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v2.0",
+          "files": [
+            [
+              "d3d9.dll",
+              "7f8e166035e30cc6568e857151971419aacf64c668f9bfc6a145ef34db85200e"
+            ]
+          ],
+          "inside": "dxvk-2.0/x32"
+        },
+        {
+          "version": "1.10.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.10.3/dxvk-1.10.3.tar.gz",
+          "updated": "2022-08-02",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.10.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "b6cfa2cd62af73b80d461085d126004b0e22dd3944c9246c58e3a68e747b56b6"
+            ]
+          ],
+          "inside": "dxvk-1.10.3/x32"
+        },
+        {
+          "version": "1.10.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.10.2/dxvk-1.10.2.tar.gz",
+          "updated": "2022-07-13",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.10.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "49e08f45bd9db8efee4adcb4439c3c1567f542446c35474fcca05cab5b87992f"
+            ]
+          ],
+          "inside": "dxvk-1.10.2/x32"
+        },
+        {
+          "version": "1.10.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.10.1/dxvk-1.10.1.tar.gz",
+          "updated": "2022-03-26",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.10.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "bd4e0b3a91f8a45e4c8ff000238b872043fea9afa7a7ba1d82e3cd18f7d65ff7"
+            ]
+          ],
+          "inside": "dxvk-1.10.1/x32"
+        },
+        {
+          "version": "1.10",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.10/dxvk-1.10.tar.gz",
+          "updated": "2022-03-04",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.10",
+          "files": [
+            [
+              "d3d9.dll",
+              "5fe2c5422bc17444bf57887d1bedcd2a71ad2d939e14120ca9180e97374dc998"
+            ]
+          ],
+          "inside": "dxvk-1.10/x32"
+        },
+        {
+          "version": "1.9.4",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.9.4/dxvk-1.9.4.tar.gz",
+          "updated": "2022-01-24",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.9.4",
+          "files": [
+            [
+              "d3d9.dll",
+              "ace5ef3543ed727e2beeda23298b60b75d2939aae28ec9e389e903a2906d30b2"
+            ]
+          ],
+          "inside": "dxvk-1.9.4/x32"
+        },
+        {
+          "version": "1.9.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.9.3/dxvk-1.9.3.tar.gz",
+          "updated": "2022-01-11",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.9.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "35297d384754efe271ef106a6da6e643faccf0914ac6ffa8c2c91e9bb81b71fa"
+            ]
+          ],
+          "inside": "dxvk-1.9.3/x32"
+        },
+        {
+          "version": "1.9.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.9.2/dxvk-1.9.2.tar.gz",
+          "updated": "2021-09-20",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.9.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "9c780a24c9ff7610b9a3ec26d2217eeccb77dff3472a86c42b7b7e212d135f60"
+            ]
+          ],
+          "inside": "dxvk-1.9.2/x32"
+        },
+        {
+          "version": "1.9.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.9.1/dxvk-1.9.1.tar.gz",
+          "updated": "2021-07-26",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.9.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "d8eac305dc594ca53f8035bd70400954f47e9feb02eb3a2aa774abb5a2acb6dd"
+            ]
+          ],
+          "inside": "dxvk-1.9.1/x32"
+        },
+        {
+          "version": "1.9",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.9/dxvk-1.9.tar.gz",
+          "updated": "2021-06-15",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.9",
+          "files": [
+            [
+              "d3d9.dll",
+              "0493c11b37d603f5a02336fb5aa8ff57f0589ddb7c58d304274c1cb55b161d4c"
+            ]
+          ],
+          "inside": "dxvk-1.9/x32"
+        },
+        {
+          "version": "1.8.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.8.1/dxvk-1.8.1.tar.gz",
+          "updated": "2021-03-01",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.8.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "b8b1b9ed5efe96b11c0387ad8bbe86c72358698b0d6418c0603255ea92083340"
+            ]
+          ],
+          "inside": "dxvk-1.8.1/x32"
+        },
+        {
+          "version": "1.8",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.8/dxvk-1.8.tar.gz",
+          "updated": "2021-02-19",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.8",
+          "files": [
+            [
+              "d3d9.dll",
+              "df64ac69db0354676d51d95dbd81051c83afa9939952eaa0bb6ee898608c97ba"
+            ]
+          ],
+          "inside": "dxvk-1.8/x32"
+        },
+        {
+          "version": "1.7.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.7.3/dxvk-1.7.3.tar.gz",
+          "updated": "2020-12-02",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.7.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "221283e2543c8957240daf465dc8077ccd7b7f5a74439888a679b965dcca6e2d"
+            ]
+          ],
+          "inside": "dxvk-1.7.3/x32"
+        },
+        {
+          "version": "1.7.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.7.2/dxvk-1.7.2.tar.gz",
+          "updated": "2020-10-07",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.7.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "e5924d2e7a19a3efbf7b90708c5e6f4a7a2d0bd6f87a8f308e8728dc485fd959"
+            ]
+          ],
+          "inside": "dxvk-1.7.2/x32"
+        },
+        {
+          "version": "1.7.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.7.1/dxvk-1.7.1.tar.gz",
+          "updated": "2020-08-13",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.7.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "de5627f963d2f6faef291f3e76d44831a853e4f61655a65d52ce5128c13465a0"
+            ]
+          ],
+          "inside": "dxvk-1.7.1/x32"
+        },
+        {
+          "version": "1.7",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.7/dxvk-1.7.tar.gz",
+          "updated": "2020-05-16",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.7",
+          "files": [
+            [
+              "d3d9.dll",
+              "c332f336ec97382358b3420bb6a43ecbdb7632e8c605d0933b36ec81b2856e1d"
+            ]
+          ],
+          "inside": "dxvk-1.7/x32"
+        },
+        {
+          "version": "1.6.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.6.1/dxvk-1.6.1.tar.gz",
+          "updated": "2020-04-20",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.6.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "ebffb12e13909d4582c4621d3aaab8fd8861ca74835572d2c58ad8d39ebac56c"
+            ]
+          ],
+          "inside": "dxvk-1.6.1/x32"
+        },
+        {
+          "version": "1.6",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.6/dxvk-1.6.tar.gz",
+          "updated": "2020-03-20",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.6",
+          "files": [
+            [
+              "d3d9.dll",
+              "79363c237331f64043de23b445075b685d79a3ed0a4cda949eb71a0942f1c425"
+            ]
+          ],
+          "inside": "dxvk-1.6/x32"
+        },
+        {
+          "version": "1.5.5",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5.5/dxvk-1.5.5.tar.gz",
+          "updated": "2020-02-29",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5.5",
+          "files": [
+            [
+              "d3d9.dll",
+              "75f21a0a64d78d017a4756d77ba9bdc244f3421a993b1ed5f258ecfd1b11bd65"
+            ]
+          ],
+          "inside": "dxvk-1.5.5/x32"
+        },
+        {
+          "version": "1.5.4",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5.4/dxvk-1.5.4.tar.gz",
+          "updated": "2020-02-07",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5.4",
+          "files": [
+            [
+              "d3d9.dll",
+              "d736c32ffe3e866d6ccb6fd09a89319ecbf268e2606309d84c1b4586ef604e75"
+            ]
+          ],
+          "inside": "dxvk-1.5.4/x32"
+        },
+        {
+          "version": "1.5.3",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5.3/dxvk-1.5.3.tar.gz",
+          "updated": "2020-01-30",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5.3",
+          "files": [
+            [
+              "d3d9.dll",
+              "9fc2a551256d0f772eee223f4cf86aee2d2032896b0457dc0ebb696254324422"
+            ]
+          ],
+          "inside": "dxvk-1.5.3/x32"
+        },
+        {
+          "version": "1.5.2",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5.2/dxvk-1.5.2.tar.gz",
+          "updated": "2020-01-25",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5.2",
+          "files": [
+            [
+              "d3d9.dll",
+              "f39a40ff9a57cd9c39ecf4c906ec8da044f926e29a8792531cfca5cc2e94891a"
+            ]
+          ],
+          "inside": "dxvk-1.5.2/x32"
+        },
+        {
+          "version": "1.5.1",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5.1/dxvk-1.5.1.tar.gz",
+          "updated": "2020-01-09",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5.1",
+          "files": [
+            [
+              "d3d9.dll",
+              "816b95374c5f5f272895f729ad4ca0193943fc6d0216cf24d662274656a9bf7c"
+            ]
+          ],
+          "inside": "dxvk-1.5.1/x32"
+        },
+        {
+          "version": "1.5",
+          "url": "https://github.com/doitsujin/dxvk/releases/download/v1.5/dxvk-1.5.tar.gz",
+          "updated": "2019-12-16",
+          "changes": "https://github.com/doitsujin/dxvk/releases/tag/v1.5",
+          "files": [
+            [
+              "d3d9.dll",
+              "5d7d2af0a3c4d30bb02742635789e51a9e5908ae583b5ed112455313a1b32c43"
+            ]
+          ],
+          "inside": "dxvk-1.5/x32"
+        }
+      ],
+      "settings": [
+        "dxvk.conf"
+      ],
+      "writes": [
+        "Wow_d3d9.log",
+        "Wow.dxvk-cache"
+      ],
+      "platforms": [
+        "windows"
+      ]
+    },
+    {
+      "id": "lumenveil",
+      "name": "Lumenveil",
+      "description": "Volumetric fog, night lights, light shafts and water. In the game, Ctrl+F12 switches it off and on, and Ctrl+F7 opens its settings.",
+      "source": {
+        "name": "Lumenveil on GitHub",
+        "page": "https://github.com/lumenveil/Lumenveil"
+      },
+      "releases": [
+        {
+          "version": "0.1.1",
+          "url": "https://github.com/lumenveil/Lumenveil/releases/download/v0.1.1/Lumenveil-0.1.1.zip",
+          "updated": "2026-10-23",
+          "changes": "https://github.com/lumenveil/Lumenveil/releases/tag/v0.1.1",
+          "files": [
+            [
+              "CoAVolFog-regions.ini",
+              "a21c2616c866ea29bdf2c75af2607e8cb982fdaaef1167375b23f1490325a0a5"
+            ],
+            [
+              "CoAVolFog.dll",
+              "19ebfe1cccd4d947b4775794dcc1eb0aec238bdda19c7777edcab07215ea2227"
+            ],
+            [
+              "CoAVolFog.ini",
+              "aabdbe4ba9e6d4c3f265ef610c95a36ea522cdfbf89f80d2b2d9b215654c39e1"
+            ],
+            [
+              "Lumenveil-Setup.cmd",
+              "5d10a76c23acefb325c27aeec4cb2ba309f39e3c66d42d5cce0ee042f12a9ac3"
+            ],
+            [
+              "Lumenveil-Uninstall.cmd",
+              "7d09a1cc933f2b3fab75d6225450dfe29c2a91ad513ea1f466c8c4cf6055dea2"
+            ],
+            [
+              "Lumenveil/LEGAL.txt",
+              "18fc74e5ac1df1aef31152f2019cee4e4dbe8a78bf7f685f233eddd9f05ea9af"
+            ],
+            [
+              "Lumenveil/LICENSE.txt",
+              "7a50ab8ca2c8ea67ad182d9ccda0797144ca8c485a74d37d69c42783cdf936a4"
+            ],
+            [
+              "Lumenveil/README.txt",
+              "8a7d3efa6bc29e80ec6e3d61fb5db0bc7736264bb904ea355374716ae78951a4"
+            ],
+            [
+              "Lumenveil/THIRD-PARTY-NOTICES.txt",
+              "be75d97e93be19667b26cd61721c35d985a01e82d8b0c79289e58ff93afb540e"
+            ],
+            [
+              "Lumenveil/lamp_extract.exe",
+              "f76304e0fb3ef8156301984921ca1b4d47f570a8a3ff49dade10ef14ce1501f5"
+            ],
+            [
+              "Lumenveil/licenses/DearImGui-MIT.txt",
+              "f20418b409e53c8c9f4e90917ff395554a60320d4dfbf833da89b339cad8628a"
+            ],
+            [
+              "Lumenveil/licenses/Everwood-MIT.txt",
+              "73db804864b2286d8044445ac5c58c562b960ed705f338d55a0f21116785a6d5"
+            ],
+            [
+              "Lumenveil/licenses/GPL-2.0.txt",
+              "7a50ab8ca2c8ea67ad182d9ccda0797144ca8c485a74d37d69c42783cdf936a4"
+            ],
+            [
+              "Lumenveil/licenses/bzip2.txt",
+              "ace879711aad0985482856336c66eb972c59b2b3268b4ba7cca1fa162c52e931"
+            ],
+            [
+              "Lumenveil/licenses/zlib.txt",
+              "ebc93851dd4e9e88e4c6dbc4192bd19cc38c78be5031a9cb70960c395837f562"
+            ],
+            [
+              "version.dll",
+              "cc7e3045fca1ba0694d11d09e89723f58ff836eedebc09755414ab95a2fa925a"
+            ]
+          ],
+          "setup": [
+            {
+              "run": "Lumenveil/lamp_extract.exe",
+              "arguments": [
+                "--data",
+                "Data",
+                "--out",
+                "lampdata.bin",
+                "--locale",
+                "{locale}",
+                "--background"
+              ],
+              "creates": "lampdata.bin"
+            },
+            {
+              "run": "Lumenveil/lamp_extract.exe",
+              "arguments": [
+                "--data",
+                "Data",
+                "--liquids",
+                "liquiddata.bin",
+                "--maps",
+                "0,1,530,571",
+                "--locale",
+                "{locale}",
+                "--background"
+              ],
+              "creates": "liquiddata.bin"
+            }
+          ]
+        },
+        {
+          "version": "0.1.0",
+          "url": "https://github.com/lumenveil/Lumenveil/releases/download/v0.1.0/Lumenveil-0.1.0.zip",
+          "updated": "2026-10-21",
+          "changes": "https://github.com/lumenveil/Lumenveil/releases/tag/v0.1.0",
+          "files": [
+            [
+              "CoAVolFog-regions.ini",
+              "a21c2616c866ea29bdf2c75af2607e8cb982fdaaef1167375b23f1490325a0a5"
+            ],
+            [
+              "CoAVolFog.dll",
+              "2d7892c1daeaa522ec1457ee4c679d98215493c4fef8512e09e441ff50fe6fcb"
+            ],
+            [
+              "CoAVolFog.ini",
+              "aabdbe4ba9e6d4c3f265ef610c95a36ea522cdfbf89f80d2b2d9b215654c39e1"
+            ],
+            [
+              "Lumenveil-Setup.cmd",
+              "5d10a76c23acefb325c27aeec4cb2ba309f39e3c66d42d5cce0ee042f12a9ac3"
+            ],
+            [
+              "Lumenveil-Uninstall.cmd",
+              "7d09a1cc933f2b3fab75d6225450dfe29c2a91ad513ea1f466c8c4cf6055dea2"
+            ],
+            [
+              "Lumenveil/LEGAL.txt",
+              "18fc74e5ac1df1aef31152f2019cee4e4dbe8a78bf7f685f233eddd9f05ea9af"
+            ],
+            [
+              "Lumenveil/LICENSE.txt",
+              "7a50ab8ca2c8ea67ad182d9ccda0797144ca8c485a74d37d69c42783cdf936a4"
+            ],
+            [
+              "Lumenveil/README.txt",
+              "c1c753aeaab0e24279fabd92f2ccb18f318302e13c584bd0f55603154f3b7b60"
+            ],
+            [
+              "Lumenveil/THIRD-PARTY-NOTICES.txt",
+              "be75d97e93be19667b26cd61721c35d985a01e82d8b0c79289e58ff93afb540e"
+            ],
+            [
+              "Lumenveil/lamp_extract.exe",
+              "8fd522bd66edcdbfb2c446a4c9d8b36e8de1452bb94bbb2a4c3f1d0ae6a95c10"
+            ],
+            [
+              "Lumenveil/licenses/DearImGui-MIT.txt",
+              "173506a2d6f7fb67990d257fb2507f188690eca39060c39469ae7bef43aae2a3"
+            ],
+            [
+              "Lumenveil/licenses/Everwood-MIT.txt",
+              "73db804864b2286d8044445ac5c58c562b960ed705f338d55a0f21116785a6d5"
+            ],
+            [
+              "Lumenveil/licenses/GPL-2.0.txt",
+              "7a50ab8ca2c8ea67ad182d9ccda0797144ca8c485a74d37d69c42783cdf936a4"
+            ],
+            [
+              "Lumenveil/licenses/bzip2.txt",
+              "4919cfb14a73cd64fcef67b107613970cf1659a09aa675dba31314f373bc7204"
+            ],
+            [
+              "Lumenveil/licenses/zlib.txt",
+              "ebc93851dd4e9e88e4c6dbc4192bd19cc38c78be5031a9cb70960c395837f562"
+            ],
+            [
+              "version.dll",
+              "715ffe9b31d807b131e543a95f33f211aa301ebcaea90659cea79f90ba077e61"
+            ]
+          ],
+          "setup": [
+            {
+              "run": "Lumenveil/lamp_extract.exe",
+              "arguments": [
+                "--data",
+                "Data",
+                "--out",
+                "lampdata.bin",
+                "--locale",
+                "{locale}",
+                "--background"
+              ],
+              "creates": "lampdata.bin"
+            },
+            {
+              "run": "Lumenveil/lamp_extract.exe",
+              "arguments": [
+                "--data",
+                "Data",
+                "--liquids",
+                "liquiddata.bin",
+                "--maps",
+                "0,1,530,571",
+                "--locale",
+                "{locale}",
+                "--background"
+              ],
+              "creates": "liquiddata.bin"
+            }
+          ]
+        }
+      ],
+      "settings": [
+        "CoAVolFog.ini",
+        "CoAVolFog-regions.ini",
+        "CoAVolFog-spots.txt",
+        "CoAVolFog-spots"
+      ],
+      "writes": [
+        "CoAVolFog.log",
+        "Lumenveil/setup-lamps.log",
+        "Lumenveil/setup-water.log"
+      ],
+      "config": {
+        "gxApi": "d3d9"
+      }
+    }
+  ]
+}

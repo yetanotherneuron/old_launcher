@@ -515,11 +515,13 @@ fn confirming_runs_the_deletion_and_asks_for_a_rescan() {
 
     let confirmed = update(&mut state, Message::Confirm);
     assert!(confirmed.instruction.is_none());
-    assert!(state.working && state.confirm.is_none());
+    assert!(state.working.is_some() && state.confirm.is_none());
+    assert_eq!(state.under_way(), ["Uninstalling ACP: 1 folder"]);
 
     let done = update(&mut state, Message::Done(Ok(())));
     assert!(matches!(done.instruction, Some(Instruction::Changed)));
-    assert!(!state.working);
+    assert!(state.working.is_none());
+    assert!(state.under_way().is_empty());
     assert!(errors.messages().is_empty());
 }
 
@@ -967,7 +969,7 @@ fn a_failed_repair_keeps_the_list_scrolled_where_it_was() {
         }),
     );
     let mut working = State::new();
-    working.working = true;
+    working.working = Some("Repairing Foo-master".into());
     let mut failed = State::new();
     let reported = apply(
         &mut failed,

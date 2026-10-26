@@ -34,6 +34,10 @@ pub struct Details {
     pub locale: Option<String>,
     /// Which server the client connects to, when it has a `realmlist.wtf`.
     pub realmlist: Option<Realmlist>,
+    /// Whether `Wow.exe` may use 4 GB of memory, not just 2; see
+    /// [`Installation::set_large_address_aware`]. `None` when its headers
+    /// can't be read.
+    pub large_address_aware: Option<bool>,
 }
 
 /// The `realmlist.wtf` of the language a client plays in, which says which
@@ -137,22 +141,39 @@ impl Installation {
         let wtf = self.wtf_directory();
         fs::create_dir_all(&wtf).map_err(io_at(&wtf))?;
         let path = child(&wtf, "Config.wtf");
-        let (config, permissions) = match fs::read(&path) {
-            Ok(config) => {
-                let metadata = fs::metadata(&path).map_err(io_at(&path))?;
-                (config, Some(metadata.permissions()))
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), None),
+        let config = match fs::read(&path) {
+            Ok(config) => config,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
             Err(error) => return Err(io_at(&path)(error)),
         };
 
-        let partial = path.with_extension("wtf.partial");
-        fs::write(&partial, with_setting(&config, name, value)).map_err(io_at(&partial))?;
-        // The file it replaces keeps its permissions.
-        if let Some(permissions) = permissions {
-            fs::set_permissions(&partial, permissions).map_err(io_at(&partial))?;
+        write_over(&path, &with_setting(&config, name, value))
+    }
+
+    /// Lets the game use 4 GB of memory instead of 2 GB (`on`), or takes
+    /// that back: the Large Address Aware flag of `Wow.exe`'s headers, which
+    /// a 32-bit program needs to be given more than 2 GB on 64-bit Windows,
+    /// and under Wine. HD textures and long view distances need it. Nothing
+    /// else in the file changes, and like `Config.wtf` it is written beside
+    /// itself and renamed over. Not while the game runs: Windows keeps the
+    /// file of a running program.
+    pub fn set_large_address_aware(&self, on: bool) -> Result<(), Error> {
+        let path = &self.executable;
+        let mut bytes = fs::read(path).map_err(io_at(path))?;
+        let offset = characteristics(&bytes).ok_or_else(|| Error::NoHeaders(path.clone()))?;
+
+        let flags = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
+        let wanted = if on {
+            flags | LARGE_ADDRESS_AWARE
+        } else {
+            flags & !LARGE_ADDRESS_AWARE
+        };
+        if wanted == flags {
+            return Ok(());
         }
-        fs::rename(&partial, &path).map_err(io_at(&path))
+        bytes[offset..offset + 2].copy_from_slice(&wanted.to_le_bytes());
+
+        write_over(path, &bytes)
     }
 
     /// `Interface/AddOns`, whether or not it exists yet.
@@ -166,11 +187,12 @@ impl Installation {
     }
 
     /// Reads the installed addons and their data files. Staging folders an
-    /// interrupted install left behind are removed first (see
-    /// [`sweep_staging`]).
+    /// interrupted install left behind, in `Interface/AddOns` and beside
+    /// `Wow.exe` for mods, are removed first (see [`sweep_staging`]).
     pub fn scan(&self) -> Result<Snapshot, Error> {
         let addons = self.addons_directory();
         sweep_staging(&addons);
+        sweep_staging(&self.root);
 
         Ok(Snapshot {
             addons: Addon::scan(&addons)?,
@@ -277,6 +299,10 @@ impl Installation {
     /// gets `marker`, when there is one. A module left out is deleted from
     /// inside its addon, where the client wouldn't load it anyway. Returns
     /// their folder names.
+    ///
+    /// What is replaced moves aside, into a staging folder deleted at the
+    /// end: an install cut short leaves no folder half deleted, and the
+    /// staging folder is swept later (see [`sweep_staging`]).
     fn place(
         &self,
         staging: &Path,
@@ -293,7 +319,10 @@ impl Installation {
             return Err(Error::NoAddon);
         }
 
-        self.uninstall(replacing)?;
+        let aside = self.staging()?;
+        for name in replacing {
+            set_aside(&addons.join(plain(name)?), aside.path())?;
+        }
 
         for folder in &left_out {
             if folders
@@ -310,7 +339,7 @@ impl Installation {
         for folder in folders.into_iter().rev() {
             let target = addons.join(plain(&folder.name)?);
 
-            remove_folder(&target)?;
+            set_aside(&target, aside.path())?;
             fs::rename(&folder.path, &target).map_err(io_at(&target))?;
             if let Some(marker) = marker {
                 marker.write(&target)?;
@@ -352,11 +381,10 @@ impl Installation {
         let broken = addons.join(plain(folder)?);
 
         // Moving the folder aside first lets a nested addon take its name.
-        let staging = tempfile::Builder::new()
-            .prefix(".old_launcher-")
-            .tempdir_in(&addons)
-            .map_err(io_at(&addons))?;
+        let staging = self.staging()?;
         let aside = staging.path().join(folder);
+        // Where the folders it replaces go, as an install's (see `place`).
+        let replaced = self.staging()?;
 
         fs::rename(&broken, &aside).map_err(io_at(&broken))?;
 
@@ -371,7 +399,7 @@ impl Installation {
             for folder in folders.into_iter().rev() {
                 let target = addons.join(plain(&folder.name)?);
 
-                remove_folder(&target)?;
+                set_aside(&target, replaced.path())?;
                 fs::rename(&folder.path, &target).map_err(io_at(&target))?;
 
                 repaired.push(folder.name);
@@ -459,6 +487,9 @@ impl Details {
             locales: locales(root),
             locale: locale(root),
             realmlist: Realmlist::of(root),
+            large_address_aware: fs::read(child(root, "Wow.exe"))
+                .ok()
+                .and_then(|bytes| large_address_aware(&bytes)),
         })
     }
 }
@@ -479,6 +510,51 @@ impl Realmlist {
             path,
         })
     }
+}
+
+/// The flag of a Windows program's headers (`IMAGE_FILE_LARGE_ADDRESS_AWARE`)
+/// that lets a 32-bit program use 4 GB of memory instead of 2 GB.
+const LARGE_ADDRESS_AWARE: u16 = 0x0020;
+
+/// Where the characteristics of the Windows program in `bytes` are, if it
+/// is one: in its file header, after the `PE\0\0` its DOS header points to,
+/// and the machine, section count, time stamp, symbols and optional header
+/// size (18 bytes).
+fn characteristics(bytes: &[u8]) -> Option<usize> {
+    let header = u32::from_le_bytes(bytes.get(0x3C..0x40)?.try_into().ok()?) as usize;
+    let offset = header.checked_add(4 + 18)?;
+
+    (bytes.starts_with(b"MZ")
+        && bytes.get(header..header.checked_add(4)?)? == b"PE\0\0"
+        && bytes.len() >= offset + 2)
+        .then_some(offset)
+}
+
+/// Whether the Windows program in `bytes` may use 4 GB of memory, if it is
+/// one.
+fn large_address_aware(bytes: &[u8]) -> Option<bool> {
+    let offset = characteristics(bytes)?;
+    let flags = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
+
+    Some(flags & LARGE_ADDRESS_AWARE != 0)
+}
+
+/// Writes `bytes` over the file at `path`, beside it first and renamed
+/// over, so a crash mid-write never leaves it truncated. A file it replaces
+/// keeps its permissions.
+fn write_over(path: &Path, bytes: &[u8]) -> Result<(), Error> {
+    let permissions = fs::metadata(path)
+        .ok()
+        .map(|metadata| metadata.permissions());
+    let mut partial = path.as_os_str().to_owned();
+    partial.push(".partial");
+    let partial = PathBuf::from(partial);
+
+    fs::write(&partial, bytes).map_err(io_at(&partial))?;
+    if let Some(permissions) = permissions {
+        fs::set_permissions(&partial, permissions).map_err(io_at(&partial))?;
+    }
+    fs::rename(&partial, path).map_err(io_at(path))
 }
 
 /// The language the client at `root` plays in: the one `WTF/Config.wtf`
@@ -620,19 +696,20 @@ fn size(root: &Path) -> Result<u64, Error> {
 }
 
 /// The prefix of the staging folders installs and repairs extract into,
-/// inside `Interface/AddOns`.
-const STAGING_PREFIX: &str = ".old_launcher-";
+/// inside `Interface/AddOns`, and mod installs beside `Wow.exe`.
+pub(crate) const STAGING_PREFIX: &str = ".old_launcher-";
 
 /// How long a staging folder gets to be in use before it counts as left
 /// behind by an install that never finished (the launcher was closed
 /// halfway through, say).
 const STAGING_AGE: Duration = Duration::from_secs(60 * 60);
 
-/// Deletes the staging folders in `addons` that an interrupted install left
+/// Deletes the staging folders in `folder` that an interrupted install left
 /// behind: those untouched for [`STAGING_AGE`], so one in use is left alone.
-/// What can't be read or removed is left for next time.
-fn sweep_staging(addons: &Path) {
-    let Ok(entries) = fs::read_dir(addons) else {
+/// Only folders: the mods' markers, files beside `Wow.exe`, share the
+/// prefix. What can't be read or removed is left for next time.
+fn sweep_staging(folder: &Path) {
+    let Ok(entries) = fs::read_dir(folder) else {
         return;
     };
 
@@ -765,6 +842,20 @@ fn copy_folder(from: &Path, to: &Path, leaving: &[&Path]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Moves the addon folder at `path`, or just the link if it is a symlink,
+/// into the staging folder `aside`, when there is one: renamed, it is never
+/// left half deleted.
+fn set_aside(path: &Path, aside: &Path) -> Result<(), Error> {
+    let Some(name) = path.file_name() else {
+        return Ok(());
+    };
+    if fs::symlink_metadata(path).is_err() {
+        return Ok(());
+    }
+
+    fs::rename(path, aside.join(name)).map_err(io_at(path))
+}
+
 /// Removes an addon folder, or just the link if it is a symlink.
 fn remove_folder(path: &Path) -> Result<(), Error> {
     let Ok(metadata) = fs::symlink_metadata(path) else {
@@ -855,6 +946,45 @@ mod tests {
                 server: None,
             })
         );
+        assert_eq!(details.large_address_aware, Some(false), "as shipped");
+    }
+
+    #[test]
+    fn the_game_is_given_4_gb_of_memory_and_back_with_one_flag_of_wow_exe() {
+        let (root, installation) = client();
+        let exe = root.path().join("Wow.exe");
+        let shipped = fs::read(&exe).unwrap();
+        let aware = || {
+            Details::read(installation.root())
+                .unwrap()
+                .large_address_aware
+        };
+
+        installation.set_large_address_aware(true).unwrap();
+        assert_eq!(aware(), Some(true));
+        let changed: Vec<usize> = fs::read(&exe)
+            .unwrap()
+            .iter()
+            .zip(&shipped)
+            .enumerate()
+            .filter(|(_, (now, before))| now != before)
+            .map(|(offset, _)| offset)
+            .collect();
+        assert_eq!(changed, [0x126], "the characteristics' low byte alone");
+        installation.set_large_address_aware(true).unwrap();
+        assert_eq!(aware(), Some(true), "set already: nothing to do");
+
+        installation.set_large_address_aware(false).unwrap();
+        assert_eq!(fs::read(&exe).unwrap(), shipped, "byte for byte");
+        assert!(!root.path().join("Wow.exe.partial").exists());
+
+        // Its version found, but no headers around it.
+        fs::write(&exe, &shipped[0x400..]).unwrap();
+        assert_eq!(aware(), None);
+        assert!(matches!(
+            installation.set_large_address_aware(true),
+            Err(Error::NoHeaders(_))
+        ));
     }
 
     #[test]
@@ -1096,10 +1226,15 @@ mod tests {
     fn scanning_sweeps_staging_folders_left_behind_but_not_ones_in_use() {
         let (_root, installation) = client();
         let addons = installation.addons_directory();
+        let root = installation.root();
         let abandoned = addons.join(format!("{STAGING_PREFIX}abandoned"));
         let in_use = addons.join(format!("{STAGING_PREFIX}in-use"));
+        let abandoned_by_a_mod = root.join(format!("{STAGING_PREFIX}abandoned"));
+        let mod_marker = root.join(format!("{STAGING_PREFIX}glow.toml"));
         fs::create_dir(&abandoned).unwrap();
         fs::create_dir(&in_use).unwrap();
+        fs::create_dir(&abandoned_by_a_mod).unwrap();
+        fs::write(&mod_marker, "version = \"1.0\"").unwrap();
 
         // Windows opens a folder only with FILE_FLAG_BACKUP_SEMANTICS, and
         // sets its times only through FILE_WRITE_ATTRIBUTES access.
@@ -1110,17 +1245,21 @@ mod tests {
             use std::os::windows::fs::OpenOptionsExt;
             options.custom_flags(0x0200_0000).access_mode(0x100);
         }
-        options
-            .open(&abandoned)
-            .unwrap()
-            .set_modified(std::time::SystemTime::now() - 2 * STAGING_AGE)
-            .unwrap();
+        for left in [&abandoned, &abandoned_by_a_mod, &mod_marker] {
+            options
+                .open(left)
+                .unwrap()
+                .set_modified(std::time::SystemTime::now() - 2 * STAGING_AGE)
+                .unwrap();
+        }
 
         let snapshot = installation.scan().unwrap();
 
         assert!(!abandoned.exists());
         assert!(in_use.exists());
         assert!(snapshot.addons.is_empty(), "staging folders are not addons");
+        assert!(!abandoned_by_a_mod.exists(), "beside Wow.exe too");
+        assert!(mod_marker.exists(), "a mod's marker isn't a staging folder");
     }
 
     #[test]
@@ -1665,5 +1804,33 @@ mod tests {
 
         assert!(shared.join("A.toc").exists());
         assert_eq!(folders(&installation), [] as [String; 0]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installing_over_a_symlinked_addon_replaces_only_the_link() {
+        let (root, installation) = client();
+        let shared = root.path().join("shared/A");
+        fs::create_dir_all(&shared).unwrap();
+        fs::write(shared.join("A.toc"), "## Version: 1").unwrap();
+        let link = installation.addons_directory().join("A");
+        std::os::unix::fs::symlink(&shared, &link).unwrap();
+
+        let archive = zip_of(&[("A/A.toc", "## Version: 2")]);
+        installation
+            .install(&archive, &marker("A"), &["A".to_owned()])
+            .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(shared.join("A.toc")).unwrap(),
+            "## Version: 1",
+            "set aside, then deleted as a link"
+        );
+        assert!(!link.is_symlink());
+        assert_eq!(
+            fs::read_to_string(link.join("A.toc")).unwrap(),
+            "## Version: 2"
+        );
+        assert_eq!(folders(&installation), ["A"], "no staging folder left");
     }
 }

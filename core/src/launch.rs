@@ -1,6 +1,6 @@
 //! Starting the game: `Wow.exe` itself on Windows, and elsewhere whatever
 //! command the client is set up with (Wine, Proton through umu-launcher,
-//! Lutris, Steam, …), the way Steam runs a game's launch options.
+//! …), the way Steam runs a game's launch options.
 
 use std::ops::Range;
 #[cfg(windows)]
@@ -12,9 +12,10 @@ use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Installation, lumenveil};
+use crate::{Error, Installation};
 
-/// What stands for the client's `Wow.exe` in a [`Launch`] command.
+/// What stands for the program the launcher runs in a [`Launch`] command:
+/// `Wow.exe`, or a mod's setup program.
 pub const PLACEHOLDER: &str = "%command%";
 
 /// The command a client starts with when it has none: Wine running `Wow.exe`.
@@ -28,9 +29,10 @@ pub struct Launch {
     /// in a shell: `WINEPREFIX=~/.wine-wow WINEDEBUG=-all`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub env: String,
-    /// A shell command line in which [`PLACEHOLDER`] stands for the client's
-    /// `Wow.exe`, already quoted: `umu-run %command%`. [`DEFAULT_COMMAND`]
-    /// when empty.
+    /// A shell command line in which [`PLACEHOLDER`] stands for the program
+    /// the launcher runs, already quoted: `umu-run %command%`. It must have
+    /// one: the launcher runs mods' setups through it too, with the game's
+    /// runner. [`DEFAULT_COMMAND`] when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
 }
@@ -60,11 +62,16 @@ impl Launch {
             .collect()
     }
 
-    /// Why the command can't be used, if it can't.
+    /// Why the command can't be used, if it can't: a quote never closed, or
+    /// no [`PLACEHOLDER`].
     pub fn command_problem(&self) -> Option<String> {
-        shlex::split(&self.command)
-            .is_none()
-            .then(|| "A quote is never closed.".to_owned())
+        if shlex::split(&self.command).is_none() {
+            return Some("A quote is never closed.".to_owned());
+        }
+
+        let command = self.command.trim();
+        (!command.is_empty() && !command.contains(PLACEHOLDER))
+            .then(|| format!("{PLACEHOLDER} is missing: the launcher puts what it runs there."))
     }
 
     /// The shell command line that starts `executable`: the environment
@@ -78,24 +85,10 @@ impl Launch {
 
     /// The shell command line that runs another Windows program of the
     /// client, `program` with `arguments`, the way [`Launch::line`] starts
-    /// the game: in place of [`PLACEHOLDER`], all of them quoted. A command
-    /// without the placeholder starts the game some way of its own (Lutris
-    /// does), so it can't run anything else.
+    /// the game: in place of [`PLACEHOLDER`], all of them quoted, with the
+    /// game's runner. Plain `wine` is no stand-in for it: a Wine other than
+    /// the game's updates the prefix to its own version.
     pub fn tool_line(&self, program: &Path, arguments: &[String]) -> Result<String, Error> {
-        let command = match self.command.trim() {
-            "" => DEFAULT_COMMAND,
-            command => command,
-        };
-        if !command.contains(PLACEHOLDER) {
-            return Err(Error::Launch {
-                setting: "command",
-                problem: format!(
-                    "It has no {PLACEHOLDER}, so it can't run {} instead of the game.",
-                    program.file_name().unwrap_or_default().to_string_lossy()
-                ),
-            });
-        }
-
         self.line_running(program, arguments)
     }
 
@@ -283,30 +276,27 @@ fn name(word: &str) -> Option<&str> {
     valid.then_some(name)
 }
 
-/// `launch`, with what the mods in `installation`'s folder need on top of
-/// the client's own environment variables: while Lumenveil is installed
-/// with nothing to repair ([`lumenveil::working`]), Wine loading its
-/// loader, `version.dll`, from there.
-fn with_mods(installation: &Installation, launch: &Launch) -> Launch {
-    if lumenveil::working(installation.root()) {
-        launch.with_native("version")
-    } else {
-        launch.clone()
-    }
-}
-
 /// The process that starts `installation`'s client, from its folder:
 /// `Wow.exe` on Windows, where `launch` is not used, and elsewhere
-/// `launch`'s [`line`](Launch::line), with what the mods in the folder
-/// need (see [`with_mods`]), run by `sh`.
-pub fn command(installation: &Installation, launch: &Launch) -> Result<Command, Error> {
+/// `launch`'s [`line`](Launch::line), run by `sh`, with Wine told to load
+/// the `natives` (DLLs by name without `.dll`, which mods put beside
+/// `Wow.exe`) from there before its own, on top of the client's own
+/// environment variables (see [`Launch::with_native`]).
+pub fn command(
+    installation: &Installation,
+    launch: &Launch,
+    natives: &[String],
+) -> Result<Command, Error> {
     let mut command = if cfg!(windows) {
         Command::new(installation.executable())
     } else {
         let mut shell = Command::new("sh");
-        shell
-            .arg("-c")
-            .arg(with_mods(installation, launch).line(installation.executable())?);
+        shell.arg("-c").arg(
+            natives
+                .iter()
+                .fold(launch.clone(), |launch, dll| launch.with_native(dll))
+                .line(installation.executable())?,
+        );
         shell
     };
 
@@ -661,12 +651,22 @@ mod tests {
     }
 
     #[test]
-    fn a_command_without_the_placeholder_runs_as_written() {
-        let line = launch("", "lutris lutris:rungameid/3")
-            .line(Path::new("/games/wow/Wow.exe"))
-            .unwrap();
+    fn a_command_needs_the_placeholder_or_nothing() {
+        let handing_over = launch("", "lutris lutris:rungameid/3");
 
-        assert_eq!(line, "lutris lutris:rungameid/3");
+        assert_eq!(
+            handing_over.command_problem().as_deref(),
+            Some("%command% is missing: the launcher puts what it runs there.")
+        );
+        assert!(matches!(
+            handing_over.line(Path::new("/games/wow/Wow.exe")),
+            Err(Error::Launch {
+                setting: "command",
+                ..
+            })
+        ));
+        assert_eq!(launch("", "  ").command_problem(), None, "the default");
+        assert_eq!(launch("", "umu-run %command%").command_problem(), None);
     }
 
     #[test]
@@ -728,52 +728,36 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn while_lumenveil_works_wine_loads_it_whatever_the_client_sets() {
-        let files = ["version.dll", "CoAVolFog.dll", "Lumenveil/lamp_extract.exe"];
-        let (_root, installation) =
-            crate::testing::client(&[&files[..], &["lampdata.bin", "liquiddata.bin"]].concat());
+    fn wine_loads_the_dlls_mods_put_beside_wow_exe_whatever_the_client_sets() {
+        let (_root, installation) = crate::testing::client(&[]);
         let client = launch(
             "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
             "umu-run %command%",
         );
         let line = |command: Command| command.get_args().nth(1).unwrap().to_owned();
-        let game = || line(command(&installation, &client).unwrap());
+        let game = |natives: &[String]| line(command(&installation, &client, natives).unwrap());
         let own = "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'; export WINEPREFIX \
                    WINEDLLOVERRIDES; umu-run ";
 
+        assert!(game(&[]).to_str().unwrap().starts_with(own));
         assert!(
-            game().to_str().unwrap().starts_with(own),
-            "not until its files are checked against its release"
-        );
-        let sums: String = files
-            .iter()
-            .map(|file| format!("{}  {file}\n", lumenveil::sha256(b"")))
-            .collect();
-        lumenveil::keep(installation.root(), &lumenveil::Sums::parse(&sums)).unwrap();
-
-        assert!(
-            game().to_str().unwrap().starts_with(
-                "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=n,b'; export WINEPREFIX \
-                 WINEDLLOVERRIDES; umu-run "
-            ),
-            "{:?}",
-            game()
+            game(&["version".to_owned(), "Glow".to_owned()])
+                .to_str()
+                .unwrap()
+                .starts_with(
+                    "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=n,b;Glow=n,b'; export \
+                     WINEPREFIX WINEDLLOVERRIDES; umu-run "
+                ),
         );
         assert_eq!(
             client.env, "WINEPREFIX=~/wow WINEDLLOVERRIDES='d3d9=n;version=b'",
             "the client's own settings stay as they are"
         );
-        let setup = tool(&installation, &client, "Lumenveil/lamp_extract.exe", &[]).unwrap();
+        let setup = tool(&installation, &client, "Glow/setup.exe", &[]).unwrap();
         assert!(
             line(setup).to_str().unwrap().starts_with(own),
             "not the game"
         );
-
-        // Not while it needs repairing, nor once it's gone.
-        std::fs::remove_file(installation.root().join(lumenveil::LAMPS)).unwrap();
-        assert!(game().to_str().unwrap().starts_with(own));
-        lumenveil::uninstall(&installation, false).unwrap();
-        assert!(game().to_str().unwrap().starts_with(own));
     }
 
     #[test]
@@ -955,6 +939,7 @@ mod tests {
                 "GREETING='hello there' PREFIX=~/.wine-wow",
                 "cp %command% copy.exe && printenv GREETING PREFIX > env.txt",
             ),
+            &[],
         )
         .unwrap()
         .env("HOME", "/home/player")
