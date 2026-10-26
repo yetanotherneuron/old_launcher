@@ -42,7 +42,7 @@ impl Errors {
             container(
                 row![
                     column(self.0.iter().map(text)).spacing(4).width(Fill),
-                    button("Dismiss").style(button::text).on_press(dismiss),
+                    button("Dismiss").style(style::quiet).on_press(dismiss),
                 ]
                 .spacing(8)
                 .align_y(Center),

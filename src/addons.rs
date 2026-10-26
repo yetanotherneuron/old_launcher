@@ -634,6 +634,8 @@ impl State {
 
             format!("{label} ({count})")
         })
+        .style(style::picker)
+        .menu_style(style::choices)
         .on_select(Message::StatusSelected)
         .padding(10)
         .width(Fill.max(200))
@@ -659,6 +661,8 @@ impl State {
                 .map_or_else(|| id.clone(), |source| source.name.clone()),
             Origin::Manual => "Installed manually".to_owned(),
         })
+        .style(style::picker)
+        .menu_style(style::choices)
         .on_select(Message::OriginSelected)
         .padding(10)
         .width(Fill.max(220))
@@ -671,6 +675,8 @@ impl State {
             }
             .to_owned()
         })
+        .style(style::picker)
+        .menu_style(style::choices)
         .on_select(Message::OrderSelected)
         .padding(10)
         .width(Fill.max(180))
@@ -680,6 +686,7 @@ impl State {
             // Twice the room of a dropdown when space is short.
             text_input("Search addons…", &self.query)
                 .id(SEARCH)
+                .style(style::field)
                 .on_input(Message::QueryChanged)
                 .padding(10)
                 .width(FillPortion(2)),
@@ -699,7 +706,7 @@ impl State {
                     row![
                         text("Got an external addon?").width(Fill),
                         button("Install…")
-                            .style(button::secondary)
+                            .style(style::secondary)
                             .on_press_maybe(can_install.then_some(Message::OpenExternal)),
                     ]
                     .spacing(8)
@@ -763,6 +770,7 @@ impl State {
                 )
                 .id(LIST)
                 .height(Fill)
+                .style(style::scroll)
                 .boxed()
             }
         };
@@ -824,7 +832,7 @@ impl State {
                 ]
                 .spacing(2),
                 space::horizontal(),
-                explained(button("Delete all").style(button::danger).on_press_maybe(
+                explained(button("Delete all").style(style::danger).on_press_maybe(
                     deletable.then(|| {
                         Message::Ask(Confirm::Clean {
                             title: "all leftover data".to_owned(),
@@ -847,7 +855,7 @@ impl State {
                         })
                         .size(13)
                         .style(text::secondary),
-                        explained(button("Delete").style(button::text).on_press_maybe(
+                        explained(button("Delete").style(style::quiet).on_press_maybe(
                             deletable.then(|| {
                                 Message::Ask(Confirm::Clean {
                                     title: name,
@@ -870,6 +878,7 @@ impl State {
         )
         .id(LIST)
         .height(Fill)
+        .style(style::scroll)
         .boxed()
     }
 }
@@ -884,7 +893,7 @@ fn empty<'a>(message: &'a str, action: Option<(&'a str, Message)>) -> impl Widge
     center(
         column![
             text(message).style(text::secondary),
-            action.map(|(label, message)| button(label).style(button::secondary).on_press(message)),
+            action.map(|(label, message)| button(label).style(style::secondary).on_press(message)),
         ]
         .spacing(12)
         .align_x(Center),

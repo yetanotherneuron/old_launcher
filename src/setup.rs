@@ -248,9 +248,9 @@ impl State {
         let choice = |mode: Mode, label: &'static str| {
             button(text(label).size(14))
                 .style(if self.mode == mode {
-                    button::primary
+                    style::primary
                 } else {
-                    button::secondary
+                    style::secondary
                 })
                 .on_press_maybe((idle && self.mode != mode).then_some(Message::Mode(mode)))
         };
@@ -270,6 +270,7 @@ impl State {
                 row![
                     text_input("/games/World of Warcraft 3.3.5a", &self.path)
                         .id(PATH)
+                        .style(style::field)
                         .on_input_maybe(idle.then_some(Message::PathChanged))
                         .on_submit(Message::Submit)
                         .padding(10),
@@ -286,6 +287,7 @@ impl State {
                 row![
                     text_input("magnet:?xt=… or https://…/client.torrent", &self.torrent)
                         .id(TORRENT)
+                        .style(style::field)
                         .on_input_maybe(idle.then_some(Message::TorrentChanged))
                         .on_submit(Message::Submit)
                         .padding(10),
@@ -295,6 +297,7 @@ impl State {
                 text("Download into").size(14),
                 row![
                     text_input("/games", &self.into)
+                        .style(style::field)
                         .on_input_maybe(idle.then_some(Message::IntoChanged))
                         .on_submit(Message::Submit)
                         .padding(10),
@@ -315,7 +318,7 @@ impl State {
 
         let cancel = self.cancellable.then(|| {
             button("Cancel")
-                .style(button::text)
+                .style(style::quiet)
                 .on_press(Message::Cancel)
         });
 
@@ -329,7 +332,7 @@ impl State {
             (Stage::Picking, _) => "Choosing…",
             (Stage::Checking, _) => "Checking…",
         })
-        .style(button::primary)
+        .style(style::primary)
         .on_press_maybe((idle && filled).then_some(Message::Submit));
 
         container(
@@ -353,7 +356,7 @@ impl State {
 /// A button beside a field, which picks what goes in it.
 fn browse(label: &str, on_press: Option<Message>) -> impl Widget<Message> + '_ {
     button(label)
-        .style(button::secondary)
+        .style(style::secondary)
         .padding(10)
         .on_press_maybe(on_press)
 }

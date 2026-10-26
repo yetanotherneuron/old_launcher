@@ -667,7 +667,7 @@ impl State {
                     .iter()
                     .map(|problem| sentence(listed, problem))
                     .collect();
-                let repair = button("Repair").style(button::primary);
+                let repair = button("Repair").style(style::primary);
                 let repair: Element<'_, Message> = if playing {
                     style::tip(repair, CLOSE_THE_GAME).boxed()
                 } else {
@@ -689,7 +689,7 @@ impl State {
                 text(&work.said).boxed(),
                 row![
                     button("Dismiss")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::Dismiss)
                 ],
                 style::Tone::Success,
@@ -810,7 +810,7 @@ impl State {
             None => row![newest.filter(|_| blocked.is_none()).map(|release| action(
                 format!("Install {}", release.version),
                 Message::Install(listed.id.clone()),
-                button::primary,
+                style::primary,
             ))],
             Some(_) => row![
                 offered
@@ -818,17 +818,17 @@ impl State {
                     .map(|(label, _)| action(
                         label,
                         Message::Install(listed.id.clone()),
-                        button::primary,
+                        style::primary,
                     )),
                 (needed == Some(Need::Repair)).then(|| action(
                     "Repair".to_owned(),
                     Message::Repair(listed.id.clone()),
-                    button::secondary
+                    style::secondary
                 )),
                 action(
                     "Uninstall".to_owned(),
                     Message::Remove(listed.id.clone()),
-                    button::secondary
+                    style::secondary
                 ),
             ],
         }
@@ -876,16 +876,17 @@ impl State {
                         row![
                             (!listed.settings.is_empty()).then(|| {
                                 checkbox(*delete)
+                                    .style(style::check)
                                     .label("Delete its settings too")
                                     .on_toggle(Message::DeleteSettings)
                                     .text_size(13)
                             }),
                             space::horizontal(),
                             button("Cancel")
-                                .style(button::text)
+                                .style(style::quiet)
                                 .on_press(Message::CancelRemove),
                             button("Remove")
-                                .style(button::danger)
+                                .style(style::danger)
                                 .on_press_maybe(idle.then_some(Message::ConfirmRemove)),
                         ]
                         .spacing(8)
@@ -907,7 +908,7 @@ impl State {
                                 .size(14)
                                 .font(style::BOLD)
                         )
-                        .style(button::text)
+                        .style(style::quiet)
                         .padding(0)
                         .on_press(Message::OpenPage(listed.source.page.clone())),
                         text(&listed.source.name).size(13).style(text::secondary),
@@ -980,6 +981,7 @@ fn progress(work: &Work) -> Option<Element<'_, Message>> {
     let steps = work.steps.max(step);
     let bar: Element<'_, Message> = match stage.fraction() {
         Some(fraction) => progress_bar(0.0..=1.0, fraction)
+            .style(style::bar)
             .length(160)
             .girth(6)
             .boxed(),

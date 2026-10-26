@@ -140,10 +140,10 @@ impl State {
                 row![
                     style::link_badge(&path, "Show it in the file manager", Message::OpenFolder),
                     button("Edit config file manually")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Edit),
                     button("Read it again")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Retry),
                 ]
                 .spacing(8)
@@ -161,10 +161,10 @@ impl State {
                 row![
                     space::horizontal(),
                     button("Quit to fix it manually")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::Quit),
                     button("Overwrite with new settings")
-                        .style(button::danger)
+                        .style(style::danger)
                         .on_press(Message::Overwrite),
                 ]
                 .spacing(8),

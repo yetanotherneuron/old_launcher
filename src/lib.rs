@@ -1063,7 +1063,7 @@ impl App {
         if let Some(recovery) = &self.recovery {
             return column![
                 self.errors.view(Message::DismissError),
-                center(scrollable(recovery.view().map(Message::Recovery))),
+                center(scrollable(recovery.view().map(Message::Recovery)).style(style::scroll)),
             ]
             .spacing(14)
             .padding(20)
@@ -1120,7 +1120,7 @@ impl App {
         let newer = self.latest.as_deref().map(|latest| {
             style::tip(
                 button(text(format!("Update to {latest} ↗")).size(13))
-                    .style(button::text)
+                    .style(style::quiet)
                     .padding([2, 6])
                     .on_press(Message::OpenPage),
                 "A newer launcher is published. This opens its page, where the downloads \
@@ -1143,14 +1143,14 @@ impl App {
             space::horizontal(),
             style::icon_button(
                 settings::OPEN,
-                style::COG,
+                &style::COG,
                 32.0,
-                button::secondary,
+                style::secondary,
                 "Settings",
                 Some(Message::OpenSettings),
             ),
             button("Manage clients…")
-                .style(button::secondary)
+                .style(style::secondary)
                 .on_press(Message::ManageClients),
             button(
                 text(match game {
@@ -1161,7 +1161,7 @@ impl App {
                 .font(style::BOLD),
             )
             .padding([6, 26])
-            .style(button::primary)
+            .style(style::primary)
             .on_press_maybe(
                 (matches!(self.selected, Selected::Open { .. })
                     && game.is_none()
@@ -1212,17 +1212,17 @@ impl App {
                 style::tip(
                     match self.refresh {
                         catalog::Refresh::Idle => button("Refresh")
-                            .style(button::text)
+                            .style(style::quiet)
                             .on_press(Message::Refresh),
-                        catalog::Refresh::Running => button("Refreshing…").style(button::text),
+                        catalog::Refresh::Running => button("Refreshing…").style(style::quiet),
                     },
                     "Shortcut: F5",
                 ),
                 button("Open AddOns folder")
-                    .style(button::text)
+                    .style(style::quiet)
                     .on_press(Message::OpenAddOns),
                 style::tip(
-                    button("Export…").style(button::text).on_press_maybe(
+                    button("Export…").style(style::quiet).on_press_maybe(
                         (snapshot_ready && !self.transfer.busy())
                             .then_some(Message::Transfer(transfer::Message::Export)),
                     ),
@@ -1231,7 +1231,7 @@ impl App {
                      account and characters.",
                 ),
                 style::tip(
-                    button("Import…").style(button::text).on_press_maybe(
+                    button("Import…").style(style::quiet).on_press_maybe(
                         (snapshot_ready && !self.transfer.busy())
                             .then_some(Message::Transfer(transfer::Message::Import)),
                     ),
@@ -1251,7 +1251,7 @@ impl App {
                 row![
                     text(notice).width(Fill),
                     button("Dismiss")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::DismissNotice),
                 ]
                 .spacing(8)
@@ -1590,13 +1590,13 @@ fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
             row![
                 space::horizontal(),
                 button("Keep the launcher open")
-                    .style(button::text)
+                    .style(style::quiet)
                     .on_press(Message::KeepOpen),
                 button(if finished { "Quit" } else { "Quit anyway" })
                     .style(if finished {
-                        button::primary
+                        style::primary
                     } else {
-                        button::danger
+                        style::danger
                     })
                     .on_press(Message::QuitAnyway),
             ]

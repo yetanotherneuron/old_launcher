@@ -179,11 +179,11 @@ impl State {
                 row![
                     text(proposal).width(Fill),
                     button("Details")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Show),
                     self.accept(),
                     button("Not now")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press_maybe((!self.working).then_some(Message::Decline)),
                 ]
                 .spacing(8)
@@ -236,6 +236,7 @@ impl State {
                     container(
                         scrollable(column(addons).spacing(10).padding(padding::right(14)))
                             .height(Fit.max(360))
+                            .style(style::scroll)
                             .width(Fill)
                     )
                     .padding(10)
@@ -243,7 +244,7 @@ impl State {
                     .style(style::inset),
                     row![
                         space::horizontal(),
-                        button("Close").style(button::text).on_press(Message::Close),
+                        button("Close").style(style::quiet).on_press(Message::Close),
                         self.accept(),
                     ]
                     .spacing(8),
@@ -263,7 +264,7 @@ impl State {
         } else {
             "Recognize"
         })
-        .style(button::primary)
+        .style(style::primary)
         .on_press_maybe((!self.working).then_some(Message::Accept))
     }
 }
