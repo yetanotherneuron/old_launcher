@@ -497,6 +497,24 @@ podman run --rm -v "$PWD:/src:ro" -v old_launcher-target:/target \
 
 The launcher says what it does on stderr; `RUST_LOG=old_launcher=debug` says more.
 
+## The look
+
+The launcher is drawn the way the game draws its own interface, as far
+as its colors and shapes go (`src/style.rs`; the plan is
+`docs/plans/wotlk-look.md`): white text on near-black navy, headings in
+gold capitals, square frames with a gold edge and, on dialogs, a gold
+bracket at each corner, shaded red-and-gold panel buttons, sunk
+gold-edged fields, blue-black tooltips, and the item-quality colors for
+the badges (uncommon green, rare blue, legendary orange, poor grey).
+Nothing is Blizzard's: the textures and fonts of the game are licensed,
+so the corners and icons are the launcher's own SVGs in `assets/`, and
+the headings are set in Cinzel, bundled under the SIL Open Font License
+(`assets/fonts/`), the body in iced's own Fira Sans. The fonts are loaded
+when the window starts and by the screenshots' simulator, so every system
+draws the same thing. The SVGs' handles are made once (`style::Art`), so
+the renderer finds each drawing in its cache without hashing the file
+again each frame.
+
 ## Releasing
 
 Pushes are only checked. A release is a push to `main` that changes the

@@ -1,7 +1,10 @@
 # A look like the game's
 
-Status: planned on 2026-10-26, not started. Names refer to the code as it
-is at 0.11.0.
+Status: built on 2026-10-26, after 0.11.0, as planned below, with these
+calls made: Cinzel for titles and Fira Sans for the body; the badges in
+the item-quality colors; square corners with ornaments; all four phases.
+The screenshots' renderer (tiny-skia) doesn't turn an SVG, so each corner
+is its own file. DEVELOPMENT.md ("The look") says how it is.
 
 ## The ask
 

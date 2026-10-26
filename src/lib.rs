@@ -1085,9 +1085,12 @@ impl App {
                 .map(|banner| banner.map(Message::Download));
 
             return style::modal(
-                column![downloading, center(setup.view().map(Message::Setup))]
-                    .spacing(14)
-                    .padding(20),
+                column![
+                    downloading,
+                    center(style::ornamented(setup.view().map(Message::Setup)))
+                ]
+                .spacing(14)
+                .padding(20),
                 dialog,
                 on_blur,
             )
@@ -1158,7 +1161,8 @@ impl App {
                     Some(game::Phase::SettingUp) => "Setting up…",
                     Some(game::Phase::Running) => "Game running",
                 })
-                .font(style::BOLD),
+                .font(style::TITLE)
+                .size(18),
             )
             .padding([6, 26])
             .style(style::primary)
