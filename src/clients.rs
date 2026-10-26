@@ -551,9 +551,9 @@ impl State {
         downloading: bool,
     ) -> impl Widget<Message> + 'a {
         let title = row![
-            text("Clients").size(20).font(style::BOLD),
+            style::heading("Clients", 20.0),
             space::horizontal(),
-            button("Close").style(button::text).on_press(Message::Close),
+            button("Close").style(style::quiet).on_press(Message::Close),
         ]
         .align_y(Center);
 
@@ -567,6 +567,8 @@ impl State {
                     config.installations.as_slice(),
                     |path: &PathBuf| path.display().to_string(),
                 )
+                .style(style::picker)
+                .menu_style(style::choices)
                 .placeholder("Select a client")
                 .on_select(Message::Select)
                 .ellipsis(text::Ellipsis::Middle)
@@ -581,17 +583,17 @@ impl State {
             .width(Fill),
             style::icon_button(
                 ADD,
-                style::PLUS,
+                &style::PLUS,
                 PICKER_BUTTON,
-                button::secondary,
+                style::secondary,
                 "Add a client",
                 Some(Message::Add),
             ),
             style::icon_button(
                 REMOVE,
-                style::TRASH,
+                &style::TRASH,
                 PICKER_BUTTON,
-                button::danger,
+                style::danger,
                 "Remove this client from the launcher. Its folder is left as it is.",
                 current.filter(|_| !self.removing).map(|_| Message::Remove),
             ),
@@ -608,10 +610,10 @@ impl State {
                     ))
                     .width(Fill),
                     button("Cancel")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::CancelRemove),
                     button("Remove")
-                        .style(button::danger)
+                        .style(style::danger)
                         .on_press(Message::ConfirmRemove),
                 ]
                 .spacing(8)
@@ -637,9 +639,9 @@ impl State {
                         .push(
                             style::icon_button(
                                 EDIT_REALMLIST,
-                                style::PEN,
+                                &style::PEN,
                                 26.0,
-                                button::text,
+                                style::quiet,
                                 "Edit realmlist.wtf",
                                 Some(Message::EditRealmlist(realmlist.path.clone())),
                             )
@@ -689,7 +691,7 @@ impl State {
             )
             .padding(12)
             .width(Fill)
-            .style(container::rounded_box)
+            .style(style::inset)
         });
 
         // Windows starts Wow.exe itself.
@@ -723,12 +725,13 @@ impl State {
             .spacing(2);
 
             column![
-                text("Starting the game").size(16).font(style::BOLD),
+                style::heading("Starting the game", 16.0),
                 column![
                     field(
                         "Environment variables",
                         text_input(set.join(" "), env)
                             .id(ENV)
+                            .style(style::field)
                             .on_input(Message::Env),
                         launch.and_then(|launch| launch.env_problem()),
                     ),
@@ -739,6 +742,7 @@ impl State {
                     "Command",
                     text_input(defaults.command, command)
                         .id(COMMAND)
+                        .style(style::field)
                         .on_input(Message::Command),
                     launch.and_then(|launch| launch.command_problem()),
                 ),
@@ -753,8 +757,9 @@ impl State {
 
         // A short window scrolls what is under the title, so Close stays in
         // sight.
-        let body =
-            scrollable(column![picker, removal, about, launch, mods].spacing(14)).spacing(10);
+        let body = scrollable(column![picker, removal, about, launch, mods].spacing(14))
+            .spacing(10)
+            .style(style::scroll);
 
         container(column![title, body].spacing(14))
             .padding(24)
@@ -773,14 +778,14 @@ impl State {
             fact("Updates", "From its torrent".to_owned())
                 .push(small(
                     "Check for updates",
-                    button::secondary,
+                    style::secondary,
                     (!downloading).then_some(Message::Torrent),
                 ))
-                .push(small("Change source", button::text, set))
+                .push(small("Change source", style::quiet, set))
         } else {
             fact("Updates", "Not set".to_owned()).push(small(
                 "Set update source",
-                button::secondary,
+                style::secondary,
                 set,
             ))
         };
@@ -793,12 +798,13 @@ impl State {
                 row![
                     text_input("magnet:?xt=… or https://…/client.torrent", source)
                         .id(SOURCE)
+                        .style(style::field)
                         .on_input(Message::SourceChanged)
                         .on_submit_maybe(submit.clone())
                         .size(14)
                         .padding(8),
                     button(text("Choose file…").size(14))
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .padding(8)
                         .on_press_maybe((!self.choosing).then_some(Message::ChooseSource)),
                 ]
@@ -812,9 +818,9 @@ impl State {
                 row![
                     space::horizontal(),
                     button("Cancel")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::CancelSource),
-                    button("Set").style(button::primary).on_press_maybe(submit),
+                    button("Set").style(style::primary).on_press_maybe(submit),
                 ]
                 .spacing(8),
             ]
@@ -860,6 +866,8 @@ fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
         [locale] => fact("Languages", locale.clone()),
         locales => {
             let picker = pick_list(details.locale.clone(), locales, String::clone)
+                .style(style::picker)
+                .menu_style(style::choices)
                 .text_size(14)
                 .padding([2, 10]);
 
@@ -878,6 +886,7 @@ fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
 /// is changed there, but not while the game runs (`playing`).
 fn memory<'a>(on: bool, playing: bool) -> Row<Element<'a, Message>> {
     let check = checkbox(on)
+        .style(style::check)
         .label("Up to 4 GB (Large Address Aware)")
         .text_size(14);
 

@@ -189,12 +189,13 @@ impl Confirm {
                     let label = format!("Also delete its saved settings ({files})");
                     let (checkbox, consequence) = if playing {
                         (
-                            checkbox(false).label(label),
+                            checkbox(false).label(label).style(style::check),
                             text(game::KEEPS_SETTINGS).style(text::warning),
                         )
                     } else {
                         (
                             checkbox(*delete_data)
+                                .style(style::check)
                                 .label(label)
                                 .on_toggle(Message::DeleteData),
                             text(if *delete_data {
@@ -246,7 +247,7 @@ impl Confirm {
 
         container(
             column![
-                text(title).size(20).font(style::BOLD),
+                style::heading(title, 20.0),
                 text(explanation).style(text::secondary),
                 warnings,
                 container(
@@ -254,18 +255,19 @@ impl Confirm {
                         column(items.into_iter().map(|item| text(item).size(13))).spacing(2)
                     )
                     .height(Fit.max(240))
+                    .style(style::scroll)
                     .width(Fill)
                 )
                 .padding(10)
                 .width(Fill)
-                .style(container::rounded_box),
+                .style(style::inset),
                 row![
                     space::horizontal(),
                     button("Cancel")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::Cancel),
                     button(action)
-                        .style(button::danger)
+                        .style(style::danger)
                         .on_press_maybe((!blocked).then_some(Message::Confirm)),
                 ]
                 .spacing(8),

@@ -71,6 +71,12 @@ pub fn icon() -> Option<iced::window::Icon> {
     iced::window::icon::from_rgba(ICON.to_vec(), ICON_WIDTH, ICON_HEIGHT).ok()
 }
 
+/// The fonts the launcher brings, for the window to load before drawing
+/// (see [`style::fonts`]).
+pub fn fonts() -> [&'static [u8]; 2] {
+    style::fonts()
+}
+
 /// The launcher.
 pub struct App {
     config_path: PathBuf,
@@ -1057,7 +1063,7 @@ impl App {
         if let Some(recovery) = &self.recovery {
             return column![
                 self.errors.view(Message::DismissError),
-                center(scrollable(recovery.view().map(Message::Recovery))),
+                center(scrollable(recovery.view().map(Message::Recovery)).style(style::scroll)),
             ]
             .spacing(14)
             .padding(20)
@@ -1079,16 +1085,19 @@ impl App {
                 .map(|banner| banner.map(Message::Download));
 
             return style::modal(
-                column![downloading, center(setup.view().map(Message::Setup))]
-                    .spacing(14)
-                    .padding(20),
+                column![
+                    downloading,
+                    center(style::ornamented(setup.view().map(Message::Setup)))
+                ]
+                .spacing(14)
+                .padding(20),
                 dialog,
                 on_blur,
             )
             .boxed();
         }
 
-        let title = button(text("Old Launcher").size(24).font(style::BOLD))
+        let title = button(style::heading("Old Launcher", 24.0))
             .padding(0)
             .on_press(Message::OpenRepository)
             .style(|theme: &Theme, status| {
@@ -1114,7 +1123,7 @@ impl App {
         let newer = self.latest.as_deref().map(|latest| {
             style::tip(
                 button(text(format!("Update to {latest} ↗")).size(13))
-                    .style(button::text)
+                    .style(style::quiet)
                     .padding([2, 6])
                     .on_press(Message::OpenPage),
                 "A newer launcher is published. This opens its page, where the downloads \
@@ -1129,7 +1138,7 @@ impl App {
                 title,
                 container(text(REPOSITORY).size(12))
                     .padding([4, 8])
-                    .style(container::rounded_box),
+                    .style(style::tooltip_box),
                 tooltip::Position::Bottom,
             ),
             version,
@@ -1137,14 +1146,14 @@ impl App {
             space::horizontal(),
             style::icon_button(
                 settings::OPEN,
-                style::COG,
+                &style::COG,
                 32.0,
-                button::secondary,
+                style::secondary,
                 "Settings",
                 Some(Message::OpenSettings),
             ),
             button("Manage clients…")
-                .style(button::secondary)
+                .style(style::secondary)
                 .on_press(Message::ManageClients),
             button(
                 text(match game {
@@ -1152,10 +1161,11 @@ impl App {
                     Some(game::Phase::SettingUp) => "Setting up…",
                     Some(game::Phase::Running) => "Game running",
                 })
-                .font(style::BOLD),
+                .font(style::TITLE)
+                .size(18),
             )
             .padding([6, 26])
-            .style(button::primary)
+            .style(style::primary)
             .on_press_maybe(
                 (matches!(self.selected, Selected::Open { .. })
                     && game.is_none()
@@ -1206,17 +1216,17 @@ impl App {
                 style::tip(
                     match self.refresh {
                         catalog::Refresh::Idle => button("Refresh")
-                            .style(button::text)
+                            .style(style::quiet)
                             .on_press(Message::Refresh),
-                        catalog::Refresh::Running => button("Refreshing…").style(button::text),
+                        catalog::Refresh::Running => button("Refreshing…").style(style::quiet),
                     },
                     "Shortcut: F5",
                 ),
                 button("Open AddOns folder")
-                    .style(button::text)
+                    .style(style::quiet)
                     .on_press(Message::OpenAddOns),
                 style::tip(
-                    button("Export…").style(button::text).on_press_maybe(
+                    button("Export…").style(style::quiet).on_press_maybe(
                         (snapshot_ready && !self.transfer.busy())
                             .then_some(Message::Transfer(transfer::Message::Export)),
                     ),
@@ -1225,7 +1235,7 @@ impl App {
                      account and characters.",
                 ),
                 style::tip(
-                    button("Import…").style(button::text).on_press_maybe(
+                    button("Import…").style(style::quiet).on_press_maybe(
                         (snapshot_ready && !self.transfer.busy())
                             .then_some(Message::Transfer(transfer::Message::Import)),
                     ),
@@ -1245,7 +1255,7 @@ impl App {
                 row![
                     text(notice).width(Fill),
                     button("Dismiss")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::DismissNotice),
                 ]
                 .spacing(8)
@@ -1573,24 +1583,24 @@ fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
 
     container(
         column![
-            text("Quit now?").size(20).font(style::BOLD),
+            style::heading("Quit now?", 20.0),
             (!finished).then(|| {
                 container(column(under_way.into_iter().map(|line| text(line).size(13))).spacing(2))
                     .padding(10)
                     .width(Fill)
-                    .style(container::rounded_box)
+                    .style(style::inset)
             }),
             text(explanation).style(text::secondary),
             row![
                 space::horizontal(),
                 button("Keep the launcher open")
-                    .style(button::text)
+                    .style(style::quiet)
                     .on_press(Message::KeepOpen),
                 button(if finished { "Quit" } else { "Quit anyway" })
                     .style(if finished {
-                        button::primary
+                        style::primary
                     } else {
-                        button::danger
+                        style::danger
                     })
                     .on_press(Message::QuitAnyway),
             ]

@@ -100,7 +100,7 @@ impl State {
         let error = container(text(&self.error).font(Font::MONOSPACE).size(13))
             .padding(10)
             .width(Fill)
-            .style(container::rounded_box);
+            .style(style::inset);
 
         let retried = self.retried.then(|| {
             text("Read again just now: still unreadable.")
@@ -131,9 +131,7 @@ impl State {
 
         container(
             column![
-                text("The settings file can't be read")
-                    .size(22)
-                    .font(style::BOLD),
+                style::heading("The settings file can't be read", 22.0),
                 text(
                     "It lists the client folders you added to the launcher. Nothing was \
                      changed: the launcher stopped before using or saving it."
@@ -142,10 +140,10 @@ impl State {
                 row![
                     style::link_badge(&path, "Show it in the file manager", Message::OpenFolder),
                     button("Edit config file manually")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Edit),
                     button("Read it again")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Retry),
                 ]
                 .spacing(8)
@@ -163,10 +161,10 @@ impl State {
                 row![
                     space::horizontal(),
                     button("Quit to fix it manually")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press(Message::Quit),
                     button("Overwrite with new settings")
-                        .style(button::danger)
+                        .style(style::danger)
                         .on_press(Message::Overwrite),
                 ]
                 .spacing(8),

@@ -104,9 +104,9 @@ impl State {
 
         container(
             column![
-                text("Settings").size(20).font(style::BOLD),
+                style::heading("Settings", 20.0),
                 column![
-                    text("GitHub").size(16).font(style::BOLD),
+                    style::heading("GitHub", 16.0),
                     text(
                         "Many addons download from GitHub, which limits downloads made without \
                          an account. Signed in, the limits are far higher."
@@ -117,6 +117,7 @@ impl State {
                 .spacing(4),
                 column![
                     checkbox(config.github_cli)
+                        .style(style::check)
                         .label(USE_CLI)
                         .text_size(14)
                         .on_toggle(Message::UseCli),
@@ -134,11 +135,12 @@ impl State {
                 ]
                 .spacing(4),
                 column![
-                    text("Discord").size(16).font(style::BOLD),
+                    style::heading("Discord", 16.0),
                     text(ON_DISCORD).size(13).style(text::secondary),
                 ]
                 .spacing(4),
                 checkbox(config.discord)
+                    .style(style::check)
                     .label(SHOW_ON_DISCORD)
                     .text_size(14)
                     .on_toggle(Message::ShowOnDiscord),
@@ -160,7 +162,7 @@ impl State {
                 row![
                     space::horizontal(),
                     button("Close")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Close),
                 ],
             ]
@@ -175,7 +177,7 @@ impl State {
 /// `label` as a link to `url`, in the line's text size.
 fn link(label: &'static str, url: &'static str) -> impl Widget<Message> {
     button(text(label).size(13))
-        .style(button::text)
+        .style(style::quiet)
         .padding(0)
         .on_press(Message::OpenLink(url))
 }

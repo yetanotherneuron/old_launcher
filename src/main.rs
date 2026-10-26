@@ -38,6 +38,7 @@ pub fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
+        .fonts(old_launcher::fonts())
         .subscription(App::subscription)
         .window(window)
         .centered()

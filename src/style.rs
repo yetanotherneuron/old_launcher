@@ -1,75 +1,278 @@
-//! The launcher's look: a dark theme with the gold of the WotLK interface,
-//! and the few components every screen shares.
+//! The launcher's look: the game's login screens', as far as their colors,
+//! type and shapes go (`docs/plans/wotlk-look.md` says what is taken and
+//! what can't be), and the few components every screen shares.
+//!
+//! The colors are read off the game's own textures and `GlueXML`: dark
+//! frames edged in grey metal with a knob at each corner, blue bevelled
+//! buttons (red for what deletes, as the game's panel button is), grey
+//! metal checkboxes ticked in yellow, blue-black fields, gold headings.
 
+use iced::gradient::Linear;
 use iced::theme::palette;
-use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
-use iced::{Border, Color, Fit, Font, Theme, Widget, border, color, font};
+use iced::widget::overlay::menu;
+use iced::widget::{
+    button, center, checkbox, container, mouse_area, opaque, pick_list, progress_bar, scrollable,
+    stack, svg, text, text_input, tooltip,
+};
+use iced::{
+    Background, Bottom, Color, Degrees, Fill, Fit, Font, Left, Right, Shadow, Theme, Top, Vector,
+    Widget, border, font,
+};
+
+use std::sync::OnceLock;
 
 use crate::backdrop::backdrop;
 
+/// An icon or ornament the launcher brings as an SVG. Its handle is made
+/// once: the renderer caches the drawing by the handle's id, a hash of the
+/// file, which making a handle each frame would hash again each frame.
+pub struct Art {
+    bytes: &'static [u8],
+    handle: OnceLock<svg::Handle>,
+}
+
+impl Art {
+    const fn new(bytes: &'static [u8]) -> Self {
+        Self {
+            bytes,
+            handle: OnceLock::new(),
+        }
+    }
+
+    /// The handle to draw it by.
+    fn handle(&self) -> svg::Handle {
+        self.handle
+            .get_or_init(|| svg::Handle::from_memory(self.bytes))
+            .clone()
+    }
+}
+
+/// The knob at a frame's corner, drawn in the spirit of the game's dialog
+/// frames (a diamond of dark metal where the edge's rods meet), which
+/// [`ornamented`] lays on the corners of a dialog. Symmetric, so one
+/// drawing serves all four (the screenshots' renderer doesn't turn an
+/// SVG anyway).
+static KNOB: Art = Art::new(include_bytes!("../assets/knob.svg"));
+
+/// The size the knob is drawn at: the one it is designed at.
+const KNOB_SIZE: f32 = 16.0;
+
 /// A trash can, drawn in black like every icon: the buttons tint them.
-pub const TRASH: &[u8] = include_bytes!("../assets/trash.svg");
+pub static TRASH: Art = Art::new(include_bytes!("../assets/trash.svg"));
 
 /// A plus sign, for adding.
-pub const PLUS: &[u8] = include_bytes!("../assets/plus.svg");
+pub static PLUS: Art = Art::new(include_bytes!("../assets/plus.svg"));
 
 /// A pen, for editing.
-pub const PEN: &[u8] = include_bytes!("../assets/pen.svg");
+pub static PEN: Art = Art::new(include_bytes!("../assets/pen.svg"));
 
 /// A cog, for the settings.
-pub const COG: &[u8] = include_bytes!("../assets/cog.svg");
+pub static COG: Art = Art::new(include_bytes!("../assets/cog.svg"));
 
 /// The size the icons are designed at: there, their lines fall on whole
 /// pixels, which any smaller size smears across two or three.
 const ICON: f32 = 24.0;
 
-/// The default font in bold, for titles.
+/// Cinzel, under the SIL Open Font License (`assets/fonts/Cinzel-OFL.txt`):
+/// capitals cut the way the game's headings are. The game's own fonts are
+/// licensed, and stay its.
+const CINZEL: &[u8] = include_bytes!("../assets/fonts/Cinzel-Regular.ttf");
+const CINZEL_BOLD: &[u8] = include_bytes!("../assets/fonts/Cinzel-Bold.ttf");
+
+/// The fonts the launcher brings, loaded before anything is drawn (and by
+/// the screenshots): iced's own Fira Sans for the body, these for titles.
+pub fn fonts() -> [&'static [u8]; 2] {
+    [CINZEL, CINZEL_BOLD]
+}
+
+/// The default font in bold, for names and whatever stands out in a line.
 pub const BOLD: Font = Font {
     weight: font::Weight::Bold,
     ..Font::DEFAULT
 };
 
-/// The palette a [`badge`] takes its color from.
+/// The font of titles and headings: Cinzel, bold, whose lowercase is small
+/// capitals.
+pub const TITLE: Font = Font {
+    family: font::Family::Name("Cinzel"),
+    weight: font::Weight::Bold,
+    ..Font::DEFAULT
+};
+
+/// The colors of the game's login screens, read off its `GlueXML` and the
+/// textures it draws them with, and the item qualities, which the badges
+/// take.
+pub mod wotlk {
+    use iced::{Color, color};
+
+    /// `GlueFontNormal`: headings, labels, buttons' text. (In play the
+    /// game's gold is a shade lighter, `#ffd100`.)
+    pub const GOLD: Color = color!(0xffc700);
+    /// `GlueFontHighlight`: the text itself.
+    pub const WHITE: Color = color!(0xf5f5f5);
+    /// `GlueFontDisable`: disabled, and what is said in passing.
+    pub const GREY: Color = color!(0x808080);
+    /// `GlueFontRed`: errors.
+    pub const RED: Color = color!(0xff1919);
+    /// The near-black navy the window is filled with, over which the text
+    /// is read: there is no world behind the launcher.
+    pub const NAVY: Color = color!(0x0b0b14);
+    /// The dialogs' fill (`UI-DialogBox-Background`): black, six tenths
+    /// through, which over the window comes to this.
+    pub const FRAME: Color = color!(0x050508);
+    /// The boxes inset in a frame, below it.
+    pub const INSET: Color = color!(0x030305);
+    /// The fields' fill (`Glues-EditBox-Background`): blue-black.
+    pub const FIELD: Color = color!(0x0a0e14);
+    /// The fields' rim, and lit.
+    pub const FIELD_EDGE: Color = color!(0x5c6a70);
+    pub const FIELD_EDGE_LIT: Color = color!(0xa8b8c0);
+    /// The dialogs' edge (`UI-DialogBox-Border`): a rod of grey metal, its
+    /// lit side, its shadow and its outline.
+    pub const METAL: Color = color!(0x686460);
+    pub const METAL_SHADOW: Color = color!(0x353230);
+    pub const METAL_DARK: Color = color!(0x1a1918);
+    /// The light rim of the headers and tooltips.
+    pub const METAL_LIGHT: Color = color!(0x989490);
+    /// The login screens' button (`Glue-Panel-Button-Up-Blue`): blue,
+    /// dark at the top, bright through the middle, dark at the bottom.
+    pub const BLUE_TOP: Color = color!(0x15406d);
+    pub const BLUE: Color = color!(0x12558d);
+    pub const BLUE_BOTTOM: Color = color!(0x184070);
+    /// The blue glow a checkbox has under the mouse
+    /// (`UI-CheckBox-Highlight`).
+    pub const BLUE_GLOW: Color = color!(0x2a4a90);
+    /// The panel button of the game's dialogs (`UI-Panel-Button-Up`):
+    /// crimson, lit through the middle.
+    pub const CRIMSON_TOP: Color = color!(0x500000);
+    pub const CRIMSON: Color = color!(0x680808);
+    pub const CRIMSON_BOTTOM: Color = color!(0x400000);
+    /// A button that does nothing (`Glue-Panel-Button-Disabled`), and the
+    /// steel of the lesser buttons.
+    pub const DISABLED: Color = color!(0x202020);
+    pub const STEEL_TOP: Color = color!(0x323236);
+    pub const STEEL_BOTTOM: Color = color!(0x1c1c20);
+    /// The checkbox's tick (`UI-CheckBox-Check`): yellow.
+    pub const TICK: Color = color!(0xf8f020);
+    /// The dropdown's arrow (`UI-ChatIcon-ScrollDown-Up`): dim gold.
+    pub const ARROW: Color = color!(0xd0c050);
+    /// The scrollbar's knob (`UI-ScrollBar-Knob`): brown-grey metal.
+    pub const KNOB: Color = color!(0x504840);
+    /// A tooltip's fill and edge: blue-black, with a thin light rim.
+    pub const TOOLTIP: Color = color!(0x0a0a1e);
+    pub const TOOLTIP_EDGE: Color = color!(0x8c8c8c);
+
+    /// Item quality: poor.
+    pub const POOR: Color = color!(0x9d9d9d);
+    /// Item quality: uncommon.
+    pub const UNCOMMON: Color = color!(0x1eff00);
+    /// Item quality: rare.
+    pub const RARE: Color = color!(0x0070dd);
+    /// Item quality: legendary.
+    pub const LEGENDARY: Color = color!(0xff8000);
+}
+
+/// The palette a [`badge`] takes its color from: the game's item qualities,
+/// for what they mean here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
-    /// Gold: facts about the addon.
+    /// Gold: facts about the addon, and the launcher's own.
     Primary,
-    /// Green: all good.
+    /// Uncommon green: all good.
     Success,
-    /// Amber: works, but worth a look.
+    /// Legendary orange: works, but worth a look.
     Warning,
     /// Red: the client will not load it.
     Danger,
+    /// Rare blue: something newer is to be had.
+    Rare,
+    /// Poor grey: no longer to be had.
+    Poor,
 }
 
-/// A dark, warm theme with gold as the primary color.
+/// The game's theme: white text on near-black navy, gold first.
 pub fn theme() -> Theme {
     Theme::custom(
         "Old Launcher",
         palette::Seed {
-            background: color!(0x16141a),
-            text: color!(0xe9e3d3),
-            primary: color!(0xd4a64a),
-            success: color!(0x5fb971),
-            warning: color!(0xe3a33b),
-            danger: color!(0xd65a52),
+            background: wotlk::NAVY,
+            text: wotlk::WHITE,
+            primary: wotlk::GOLD,
+            success: wotlk::UNCOMMON,
+            warning: wotlk::LEGENDARY,
+            danger: wotlk::RED,
         },
     )
 }
 
-/// A raised, rounded panel for list items and dialogs.
-pub fn card(theme: &Theme) -> container::Style {
-    let palette = theme.palette();
+/// A title or heading, in the game's gold capitals, `size` tall.
+pub fn heading<'a>(label: impl text::IntoFragment<'a>, size: f32) -> iced::widget::Text<'a> {
+    text(label).size(size).font(TITLE).style(gold)
+}
 
+/// Text in the game's gold: headings and labels.
+pub fn gold(_theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(wotlk::GOLD),
+        ..text::Style::default()
+    }
+}
+
+/// A frame, as the game draws its dialogs: filled near black, with a
+/// square edge of grey metal. For list items and dialogs; a dialog gets
+/// its corners from [`ornamented`].
+pub fn card(_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(palette.background.weakest.color.into()),
-        border: Border {
-            color: palette.background.weak.color,
-            width: 1.0,
-            radius: 6.0.into(),
-        },
+        background: Some(wotlk::FRAME.into()),
+        border: border::rounded(0).color(wotlk::METAL).width(2),
         ..container::Style::default()
     }
+}
+
+/// A box inset in a frame, sunk below it: a list, an error, what a dialog
+/// is about.
+pub fn inset(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(wotlk::INSET.into()),
+        border: border::rounded(0).color(wotlk::METAL_DARK).width(1),
+        ..container::Style::default()
+    }
+}
+
+/// A tooltip's box: the game's, blue-black with a thin light rim.
+pub fn tooltip_box(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(
+            Color {
+                a: 0.96,
+                ..wotlk::TOOLTIP
+            }
+            .into(),
+        ),
+        border: border::rounded(0).color(wotlk::TOOLTIP_EDGE).width(1),
+        ..container::Style::default()
+    }
+}
+
+/// `frame`, a [`card`], with the game's knobs on its corners: a dialog.
+/// The knobs sit centered on the corners, so the frame is padded by half
+/// a knob for them to overhang into; the stack takes that size.
+pub fn ornamented<'a, Message: 'a>(frame: impl Widget<Message> + 'a) -> impl Widget<Message> + 'a {
+    let knob = |x, y| {
+        container(svg(KNOB.handle()).width(KNOB_SIZE).height(KNOB_SIZE))
+            .width(Fill)
+            .height(Fill)
+            .align_x(x)
+            .align_y(y)
+    };
+
+    stack![
+        container(frame).padding(KNOB_SIZE / 2.0),
+        knob(Left, Top),
+        knob(Right, Top),
+        knob(Right, Bottom),
+        knob(Left, Bottom),
+    ]
 }
 
 /// `content`, explained by `hint` in a box below it on hover.
@@ -82,9 +285,289 @@ pub fn tip<'a, Message: 'a>(
         container(text(hint).size(13))
             .padding([6, 10])
             .width(Fit.max(360))
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
+}
+
+/// A gradient from `top` to `bottom`, as the game shades its bars.
+fn shaded(top: Color, bottom: Color) -> Background {
+    Background::Gradient(
+        Linear::new(Degrees(180.0))
+            .add_stop(0.0, top)
+            .add_stop(1.0, bottom)
+            .into(),
+    )
+}
+
+/// A gradient dark at the `top`, bright through the `middle` and dark at
+/// the `bottom`: the glass of the game's buttons.
+fn glossy(top: Color, middle: Color, bottom: Color) -> Background {
+    Background::Gradient(
+        Linear::new(Degrees(180.0))
+            .add_stop(0.0, top)
+            .add_stop(0.45, middle)
+            .add_stop(1.0, bottom)
+            .into(),
+    )
+}
+
+/// `color`, a little brighter: a button under the mouse.
+fn lit(color: Color) -> Color {
+    Color {
+        r: (color.r + 0.12).min(1.0),
+        g: (color.g + 0.12).min(1.0),
+        b: (color.b + 0.12).min(1.0),
+        a: color.a,
+    }
+}
+
+/// `color`, a little darker: a button held down.
+fn dimmed(color: Color) -> Color {
+    Color {
+        r: color.r * 0.8,
+        g: color.g * 0.8,
+        b: color.b * 0.8,
+        a: color.a,
+    }
+}
+
+/// A button as the game draws them (`Glue-Panel-Button`): a glass of
+/// `top`, `middle` and `bottom` in a bevel of grey metal with gold text,
+/// lit under the mouse, darker held down, and flat dark grey with grey
+/// text when it does nothing.
+fn panel(status: button::Status, top: Color, middle: Color, bottom: Color) -> button::Style {
+    let (face, edge, text) = match status {
+        button::Status::Active => (glossy(top, middle, bottom), wotlk::METAL, wotlk::GOLD),
+        button::Status::Hovered => (
+            glossy(lit(top), lit(middle), lit(bottom)),
+            lit(wotlk::METAL),
+            lit(wotlk::GOLD),
+        ),
+        button::Status::Pressed => (
+            glossy(dimmed(top), dimmed(middle), dimmed(bottom)),
+            wotlk::METAL_SHADOW,
+            wotlk::GOLD,
+        ),
+        button::Status::Disabled => (
+            Background::Color(wotlk::DISABLED),
+            wotlk::METAL_SHADOW,
+            wotlk::GREY,
+        ),
+    };
+
+    button::Style {
+        background: Some(face),
+        text_color: text,
+        border: border::rounded(0).color(edge).width(1),
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
+/// The login screen's blue button: what a dialog is for, and Play.
+pub fn primary(_theme: &Theme, status: button::Status) -> button::Style {
+    panel(status, wotlk::BLUE_TOP, wotlk::BLUE, wotlk::BLUE_BOTTOM)
+}
+
+/// A steel button: the other things to do.
+pub fn secondary(_theme: &Theme, status: button::Status) -> button::Style {
+    panel(
+        status,
+        wotlk::STEEL_BOTTOM,
+        wotlk::STEEL_TOP,
+        wotlk::STEEL_BOTTOM,
+    )
+}
+
+/// The game's crimson panel button: what deletes.
+pub fn danger(_theme: &Theme, status: button::Status) -> button::Style {
+    panel(
+        status,
+        wotlk::CRIMSON_TOP,
+        wotlk::CRIMSON,
+        wotlk::CRIMSON_BOTTOM,
+    )
+}
+
+/// A button that is only its gold text, lit under the mouse: closing,
+/// dismissing, links.
+pub fn quiet(_theme: &Theme, status: button::Status) -> button::Style {
+    let (fill, text) = match status {
+        button::Status::Active => (None, wotlk::GOLD),
+        button::Status::Hovered => (
+            Some(Color {
+                a: 0.12,
+                ..wotlk::GOLD
+            }),
+            lit(wotlk::GOLD),
+        ),
+        button::Status::Pressed => (
+            Some(Color {
+                a: 0.2,
+                ..wotlk::GOLD
+            }),
+            wotlk::GOLD,
+        ),
+        button::Status::Disabled => (None, wotlk::GREY),
+    };
+
+    button::Style {
+        background: fill.map(Background::Color),
+        text_color: text,
+        border: border::rounded(0),
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
+/// The game's checkbox (`UI-CheckBox`): a dark square in grey metal,
+/// ticked in yellow, glowing blue under the mouse.
+pub fn check(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+    let (edge, tick, text) = match status {
+        checkbox::Status::Active { .. } => (wotlk::METAL, wotlk::TICK, None),
+        checkbox::Status::Hovered { .. } => (wotlk::BLUE_GLOW, lit(wotlk::TICK), None),
+        checkbox::Status::Disabled { .. } => (wotlk::METAL_SHADOW, wotlk::GREY, Some(wotlk::GREY)),
+    };
+
+    checkbox::Style {
+        background: wotlk::FRAME.into(),
+        icon_color: tick,
+        border: border::rounded(2).color(edge).width(1),
+        text_color: text,
+    }
+}
+
+/// The game's dropdown: a dark box in grey metal with a dim gold arrow,
+/// its edge lit under the mouse.
+pub fn picker(_theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let edge = match status {
+        pick_list::Status::Active => wotlk::METAL_SHADOW,
+        pick_list::Status::Hovered | pick_list::Status::Opened { .. } => wotlk::METAL,
+        pick_list::Status::Disabled => wotlk::METAL_DARK,
+    };
+    let (text, handle) = match status {
+        pick_list::Status::Disabled => (wotlk::GREY, wotlk::GREY),
+        _ => (wotlk::WHITE, wotlk::ARROW),
+    };
+
+    pick_list::Style {
+        text_color: text,
+        placeholder_color: wotlk::GREY,
+        handle_color: handle,
+        background: wotlk::FRAME.into(),
+        border: border::rounded(0).color(edge).width(1),
+    }
+}
+
+/// What a dropdown opens: a dialog's box, the choice under the mouse lit
+/// blue, as the game's dropdowns light theirs.
+pub fn choices(_theme: &Theme) -> menu::Style {
+    menu::Style {
+        background: wotlk::FRAME.into(),
+        border: border::rounded(0).color(wotlk::METAL).width(1),
+        text_color: wotlk::WHITE,
+        selected_text_color: wotlk::GOLD,
+        selected_background: Color {
+            a: 0.6,
+            ..wotlk::BLUE_GLOW
+        }
+        .into(),
+        shadow: Shadow::default(),
+    }
+}
+
+/// The login screen's text field: blue-black, with a light rim while it
+/// has the focus.
+pub fn field(_theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let edge = match status {
+        text_input::Status::Active => wotlk::FIELD_EDGE,
+        text_input::Status::Disabled => wotlk::METAL_SHADOW,
+        text_input::Status::Hovered => lit(wotlk::FIELD_EDGE),
+        text_input::Status::Focused { .. } => wotlk::FIELD_EDGE_LIT,
+    };
+    let value = match status {
+        text_input::Status::Disabled => wotlk::GREY,
+        _ => wotlk::WHITE,
+    };
+
+    text_input::Style {
+        background: wotlk::FIELD.into(),
+        border: border::rounded(0).color(edge).width(1),
+        placeholder: wotlk::GREY,
+        value,
+        selection: Color {
+            a: 0.5,
+            ..wotlk::BLUE
+        },
+    }
+}
+
+/// The game's scrollbar: a thin dark rail with a knob of brown-grey
+/// metal, lit under the mouse.
+pub fn scroll(_theme: &Theme, status: scrollable::Status) -> scrollable::Style {
+    let rail = |knob: Color| scrollable::Rail {
+        background: Some(wotlk::INSET.into()),
+        border: border::rounded(0).color(wotlk::METAL_DARK).width(1),
+        scroller: scrollable::Scroller {
+            background: knob.into(),
+            border: border::rounded(2).color(wotlk::METAL_DARK).width(1),
+        },
+    };
+    let (vertical, horizontal) = match status {
+        scrollable::Status::Active { .. } => (rail(wotlk::KNOB), rail(wotlk::KNOB)),
+        scrollable::Status::Hovered {
+            is_vertical_scrollbar_hovered,
+            is_horizontal_scrollbar_hovered,
+            ..
+        } => (
+            rail(if is_vertical_scrollbar_hovered {
+                wotlk::METAL
+            } else {
+                wotlk::KNOB
+            }),
+            rail(if is_horizontal_scrollbar_hovered {
+                wotlk::METAL
+            } else {
+                wotlk::KNOB
+            }),
+        ),
+        scrollable::Status::Dragged { .. } => (rail(wotlk::METAL_LIGHT), rail(wotlk::METAL_LIGHT)),
+    };
+
+    scrollable::Style {
+        container: container::Style::default(),
+        vertical_rail: vertical,
+        horizontal_rail: horizontal,
+        gap: None,
+        auto_scroll: scrollable::AutoScroll {
+            background: Color {
+                a: 0.9,
+                ..wotlk::NAVY
+            }
+            .into(),
+            border: border::rounded(u32::MAX).width(1).color(wotlk::METAL),
+            shadow: Shadow {
+                color: Color {
+                    a: 0.7,
+                    ..Color::BLACK
+                },
+                offset: Vector::ZERO,
+                blur_radius: 2.0,
+            },
+            icon: wotlk::GOLD,
+        },
+    }
+}
+
+/// The login screen's loading bar: a sunk track in grey metal, filled in
+/// shaded blue (what its glow is).
+pub fn bar(_theme: &Theme) -> progress_bar::Style {
+    progress_bar::Style {
+        background: wotlk::INSET.into(),
+        bar: shaded(lit(wotlk::BLUE), wotlk::BLUE_BOTTOM),
+        border: border::rounded(0).color(wotlk::METAL_SHADOW).width(1),
+    }
 }
 
 /// A full-width notice tinted with `tone`, whose text takes the tone's color.
@@ -95,7 +578,7 @@ pub fn banner(tone: Tone) -> impl Fn(&Theme) -> container::Style {
         container::Style {
             background: Some(Color { a: 0.12, ..color }.into()),
             text_color: Some(color),
-            border: border::rounded(6).color(Color { a: 0.5, ..color }).width(1),
+            border: border::rounded(0).color(Color { a: 0.5, ..color }).width(1),
             ..container::Style::default()
         }
     }
@@ -111,6 +594,8 @@ impl Tone {
             Self::Success => palette.success.base.color,
             Self::Warning => palette.warning.base.color,
             Self::Danger => palette.danger.base.color,
+            Self::Rare => wotlk::RARE,
+            Self::Poor => wotlk::POOR,
         }
     }
 }
@@ -128,7 +613,7 @@ pub fn badge<'a, Message: 'a>(
             container::Style {
                 background: Some(Color { a: 0.12, ..color }.into()),
                 text_color: Some(color),
-                border: border::rounded(4).color(Color { a: 0.6, ..color }).width(1),
+                border: border::rounded(0).color(Color { a: 0.6, ..color }).width(1),
                 ..container::Style::default()
             }
         })
@@ -154,7 +639,7 @@ pub fn link_badge<'a, Message: Clone + 'a>(
             button::Style {
                 background: Some(Color { a: fill, ..color }.into()),
                 text_color: color,
-                border: border::rounded(4).color(Color { a: 0.6, ..color }).width(1),
+                border: border::rounded(0).color(Color { a: 0.6, ..color }).width(1),
                 ..button::Style::default()
             }
         });
@@ -163,7 +648,7 @@ pub fn link_badge<'a, Message: Clone + 'a>(
         badge,
         container(text(url).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
@@ -176,7 +661,7 @@ pub fn delete_button<'a, Message: Clone + 'a>(
 ) -> impl Widget<Message> + 'a {
     let enabled = on_press.is_some();
 
-    let icon = svg(svg::Handle::from_memory(TRASH))
+    let icon = svg(TRASH.handle())
         .width(18)
         .height(18)
         .style(move |theme: &Theme, status| {
@@ -215,7 +700,7 @@ pub fn delete_button<'a, Message: Clone + 'a>(
         button,
         container(text(label).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
@@ -229,7 +714,7 @@ pub fn delete_button<'a, Message: Clone + 'a>(
 /// buttons with room for it; smaller buttons draw it at half their size.
 pub fn icon_button<'a, Message: Clone + 'a>(
     id: &'static str,
-    icon: &'static [u8],
+    icon: &'static Art,
     size: f32,
     style: fn(&Theme, button::Status) -> button::Style,
     hint: &'a str,
@@ -243,12 +728,11 @@ pub fn icon_button<'a, Message: Clone + 'a>(
 
     let icon_size = if size >= ICON * 1.5 { ICON } else { size / 2.0 };
 
-    let icon = svg(svg::Handle::from_memory(icon))
-        .width(icon_size)
-        .height(icon_size)
-        .style(move |theme: &Theme, _status| svg::Style {
+    let icon = svg(icon.handle()).width(icon_size).height(icon_size).style(
+        move |theme: &Theme, _status| svg::Style {
             color: Some(style(theme, status).text_color),
-        });
+        },
+    );
 
     tooltip(
         button(center(icon).id(id))
@@ -259,14 +743,15 @@ pub fn icon_button<'a, Message: Clone + 'a>(
             .on_press_maybe(on_press),
         container(text(hint).size(12))
             .padding([4, 8])
-            .style(container::rounded_box),
+            .style(tooltip_box),
         tooltip::Position::Bottom,
     )
 }
 
-/// Shows `dialog`, if any, centered over a dimmed `base`; clicking outside it
-/// sends `on_blur`. While it shows, the mouse doesn't reach `base`: neither
-/// its clicks nor its wheel.
+/// Shows `dialog`, if any, with the game's corners (see [`ornamented`]),
+/// centered over a dimmed `base`; clicking outside it sends `on_blur`.
+/// While it shows, the mouse doesn't reach `base`: neither its clicks nor
+/// its wheel.
 ///
 /// `base` sits in the same place whether a dialog is open or not, so it keeps
 /// its widget state (scroll positions, focus) while dialogs come and go.
@@ -279,7 +764,7 @@ pub fn modal<'a, Message: Clone + 'a>(
         base,
         dialog.map(|dialog| {
             backdrop(
-                mouse_area(center(opaque(dialog)).style(|_theme| {
+                mouse_area(center(opaque(ornamented(dialog))).style(|_theme| {
                     container::Style {
                         background: Some(
                             Color {

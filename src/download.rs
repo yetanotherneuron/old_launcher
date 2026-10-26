@@ -1091,7 +1091,7 @@ impl State {
         let hidden = self.job.as_ref().filter(|job| job.hidden).map(|job| {
             banner(
                 job.summary(),
-                row![button("Show").style(button::text).on_press(Message::Show)],
+                row![button("Show").style(style::quiet).on_press(Message::Show)],
                 style::Tone::Primary,
             )
         });
@@ -1116,10 +1116,10 @@ impl State {
                         ),
                         row![
                             button("Keep it")
-                                .style(button::text)
+                                .style(style::quiet)
                                 .on_press(Message::KeepDownload),
                             button("Delete")
-                                .style(button::danger)
+                                .style(style::danger)
                                 .on_press(Message::ConfirmDiscard(hash.clone())),
                         ],
                         style::Tone::Danger,
@@ -1130,10 +1130,10 @@ impl State {
                     format!("{} is not fully downloaded yet.", saved.name),
                     row![
                         button("Discard")
-                            .style(button::text)
+                            .style(style::quiet)
                             .on_press(Message::Discard(hash.clone())),
                         button("Resume download")
-                            .style(button::primary)
+                            .style(style::primary)
                             .on_press_maybe(
                                 (!self.is_running()).then(|| Message::Resume(hash.clone())),
                             ),
@@ -1152,10 +1152,10 @@ impl State {
         let job = self.job.as_ref().filter(|job| !job.hidden)?;
         let found = job.found.as_ref();
 
-        let hide = button("Hide").style(button::text).on_press(Message::Hide);
+        let hide = button("Hide").style(style::quiet).on_press(Message::Hide);
         let stop = |label: &'static str| {
             button(label)
-                .style(button::secondary)
+                .style(style::secondary)
                 .on_press(Message::Stop)
         };
 
@@ -1200,7 +1200,7 @@ impl State {
                         row![
                             stop("Cancel"),
                             button(text(format!("Download {}", size(bytes))))
-                                .style(button::primary)
+                                .style(style::primary)
                                 .on_press(Message::Download),
                         ],
                     )
@@ -1220,7 +1220,7 @@ impl State {
                     row![stop("Close")],
                 ),
                 Stage::Outdated(check) => {
-                    let update = button("Update").style(button::primary);
+                    let update = button("Update").style(style::primary);
                     let update: Element<'_, Message> = if playing {
                         style::tip(update, CLOSE_THE_GAME).boxed()
                     } else {
@@ -1257,7 +1257,7 @@ impl State {
         Some(
             container(
                 column![
-                    text(job.title()).size(20).font(style::BOLD),
+                    style::heading(job.title(), 20.0),
                     body,
                     row![space::horizontal(), buttons.spacing(8)].align_y(Center),
                 ]
@@ -1840,7 +1840,7 @@ fn bar(progress: &Progress) -> Row<Element<'_, Message>> {
     };
 
     row![
-        progress_bar(0.0..=1.0, fraction).girth(8),
+        progress_bar(0.0..=1.0, fraction).girth(8).style(style::bar),
         text(percent(progress)).size(14).width(48),
     ]
     .spacing(10)
@@ -1943,7 +1943,7 @@ fn outdated<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messa
         container(column(named.chain(more)).spacing(2))
             .padding(10)
             .width(Fill)
-            .style(container::rounded_box),
+            .style(style::inset),
         text("Your settings, addons and realmlist stay as they are.")
             .size(13)
             .style(text::secondary),

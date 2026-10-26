@@ -72,7 +72,7 @@ impl State {
                 if let Some(update) = update {
                     badges = badges.push(
                         style::tip(
-                            style::badge("Update available", Tone::Warning),
+                            style::badge("Update available", Tone::Rare),
                             update_hint(update, main, entry, catalog),
                         )
                         .boxed(),
@@ -93,7 +93,7 @@ impl State {
                             .boxed(),
                             None => style::badge(marker.source.clone(), Tone::Primary).boxed(),
                         })
-                        .push(style::badge("No longer available", Tone::Warning).boxed());
+                        .push(style::badge("No longer available", Tone::Poor).boxed());
                     let changed = group.changed();
                     if !changed.is_empty() {
                         badges = badges.push(
@@ -203,6 +203,8 @@ impl State {
                     Choice::Auto => format!("Auto ({auto})"),
                     Choice::Source(id) => name(id),
                 })
+                .style(style::picker)
+                .menu_style(style::choices)
                 .on_select(move |choice| Message::SourceSelected(key.clone(), choice)),
                 "Where it installs from: the newest, or the source picked. Nothing else is \
                  tried when that fails.",
@@ -229,12 +231,15 @@ impl State {
 
                     row![
                         column![
-                            progress_bar(0.0..=1.0, fraction).length(140).girth(6),
+                            progress_bar(0.0..=1.0, fraction)
+                                .length(140)
+                                .girth(6)
+                                .style(style::bar),
                             text(progress).size(12).style(text::secondary),
                         ]
                         .spacing(4),
                         button("Cancel")
-                            .style(button::text)
+                            .style(style::quiet)
                             .on_press(Message::Stop(key)),
                     ]
                     .spacing(8)
@@ -251,9 +256,9 @@ impl State {
                     };
                     let install = button(text(label))
                         .style(if group.is_some() && update.is_none() {
-                            button::secondary
+                            style::secondary
                         } else {
-                            button::primary
+                            style::primary
                         })
                         .on_press_maybe(can_install.then_some(Message::Install(key)));
 
@@ -269,14 +274,14 @@ impl State {
             .and_then(|entry| entry.preferred()?.changes.as_deref())
             .map(|url| {
                 button(text("Changes ↗").size(13))
-                    .style(button::text)
+                    .style(style::quiet)
                     .padding(0)
                     .on_press(Message::OpenLink(url.to_owned()))
             });
 
         let repair = broken.first().map(|addon| {
             button("Repair")
-                .style(button::primary)
+                .style(style::primary)
                 .on_press_maybe(self.working.is_none().then(|| {
                     Message::Ask(Confirm::Repair {
                         folder: addon.name.clone(),
@@ -313,16 +318,14 @@ impl State {
                 confirm::data_summary(&data)
             };
 
-            let clean = button("Clean data")
-                .style(button::secondary)
-                .on_press_maybe(
-                    (!data.is_empty() && self.working.is_none() && !playing).then(|| {
-                        Message::Ask(Confirm::Clean {
-                            title: title.clone(),
-                            files: data.clone(),
-                        })
-                    }),
-                );
+            let clean = button("Clean data").style(style::secondary).on_press_maybe(
+                (!data.is_empty() && self.working.is_none() && !playing).then(|| {
+                    Message::Ask(Confirm::Clean {
+                        title: title.clone(),
+                        files: data.clone(),
+                    })
+                }),
+            );
 
             let uninstall = style::delete_button(
                 "Uninstall",
@@ -471,7 +474,7 @@ impl State {
                     })
                     .map(|link| {
                         button(text(format!("{} ↗", link.label)).size(13))
-                            .style(button::text)
+                            .style(style::quiet)
                             .padding(0)
                             .on_press(Message::OpenLink(link.url.clone()))
                             .boxed()
@@ -495,7 +498,7 @@ impl State {
             None => toc.filter(|toc| !toc.websites.is_empty()).map(|toc| {
                 row(toc.websites.iter().map(|url| {
                     button(text(format!("{} ↗", address(url))).size(13))
-                        .style(button::text)
+                        .style(style::quiet)
                         .padding(0)
                         .on_press(Message::OpenLink(url.clone()))
                 }))
@@ -551,7 +554,7 @@ impl State {
                             let installing = self.jobs.contains_key(&key);
 
                             button(text(format!("Install {dependency}")).size(12))
-                                .style(button::secondary)
+                                .style(style::secondary)
                                 .padding([2, 8])
                                 .on_press_maybe(
                                     (can_install && !installing).then_some(Message::Install(key)),
@@ -605,7 +608,7 @@ fn folder_list(folders: &[String]) -> impl Widget<Message> + use<> {
         container(text(list).size(12))
             .padding([4, 8])
             .width(Fit.max(480))
-            .style(container::rounded_box),
+            .style(style::tooltip_box),
         tooltip::Position::Bottom,
     )
 }

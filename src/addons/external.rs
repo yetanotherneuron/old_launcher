@@ -89,10 +89,10 @@ impl External {
 
         let choose = row![
             button("Choose a file…")
-                .style(button::secondary)
+                .style(style::secondary)
                 .on_press_maybe((!busy).then_some(Message::PickArchive)),
             button("Choose a folder…")
-                .style(button::secondary)
+                .style(style::secondary)
                 .on_press_maybe((!busy).then_some(Message::PickFolder)),
         ]
         .spacing(8);
@@ -125,7 +125,7 @@ impl External {
 
         container(
             column![
-                text("Install an addon").size(20).font(style::BOLD),
+                style::heading("Install an addon", 20.0),
                 text(
                     "From an archive (zip, 7z or rar) or a folder that holds it. It shows as \
                      installed manually: to update it, install a newer version the same way."
@@ -136,11 +136,11 @@ impl External {
                 outcome,
                 row![
                     space::horizontal(),
-                    button("Cancel").style(button::text).on_press_maybe(
+                    button("Cancel").style(style::quiet).on_press_maybe(
                         (!matches!(self, Self::Installing(_))).then_some(Message::Cancel)
                     ),
                     button("Install")
-                        .style(button::primary)
+                        .style(style::primary)
                         .on_press_maybe(installable.then_some(Message::InstallPicked)),
                 ]
                 .spacing(8),
@@ -183,6 +183,7 @@ fn review<'a>(
 
         row![
             checkbox(chosen.contains(&folder.name))
+                .style(style::check)
                 .label(folder.name.as_str())
                 .on_toggle(Message::Choose.with(folder.name.clone())),
             text(details.join(" · ")).size(13).style(text::secondary),
@@ -195,10 +196,15 @@ fn review<'a>(
 
     column![
         text("Choose the folders to install into Interface/AddOns:"),
-        container(scrollable(folders).height(Fit.max(200)).width(Fill))
-            .padding(10)
-            .width(Fill)
-            .style(container::rounded_box),
+        container(
+            scrollable(folders)
+                .height(Fit.max(200))
+                .width(Fill)
+                .style(style::scroll),
+        )
+        .padding(10)
+        .width(Fill)
+        .style(style::inset),
         column(
             warnings(found, chosen, snapshot, catalog)
                 .into_iter()

@@ -341,11 +341,16 @@ impl State {
         Some(
             container(
                 column![
-                    text(format!("Import {file}?")).size(20).font(style::BOLD),
-                    container(scrollable(sections).height(Fit.max(320)).width(Fill))
-                        .padding(10)
-                        .width(Fill)
-                        .style(container::rounded_box),
+                    style::heading(format!("Import {file}?"), 20.0),
+                    container(
+                        scrollable(sections)
+                            .height(Fit.max(320))
+                            .width(Fill)
+                            .style(style::scroll),
+                    )
+                    .padding(10)
+                    .width(Fill)
+                    .style(style::inset),
                     column![
                         text(restores),
                         replaces,
@@ -355,10 +360,10 @@ impl State {
                     row![
                         space::horizontal(),
                         button("Cancel")
-                            .style(button::text)
+                            .style(style::quiet)
                             .on_press(Message::Cancel),
                         button("Import")
-                            .style(button::primary)
+                            .style(style::primary)
                             .on_press_maybe((!blocked).then_some(Message::Confirm)),
                     ]
                     .spacing(8),
@@ -429,9 +434,7 @@ fn files<'a, Message: 'a>(
 
 /// A section's title, with how many items it lists.
 fn heading<'a>(title: &str, count: usize) -> iced::widget::Text<'a> {
-    text(format!("{title} ({count})"))
-        .size(14)
-        .font(style::BOLD)
+    style::heading(format!("{title} ({count})"), 14.0)
 }
 
 #[cfg(test)]

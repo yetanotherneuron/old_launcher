@@ -151,10 +151,20 @@ fn screenshots() {
         installation: installation.clone(),
         snapshot: Some(snapshot),
     };
+    // Its mods looked at, none there: the game may start.
+    let _ = app.update(Message::Clients(clients::Message::Mods(
+        clients::mods::Message::Found(
+            installation.root().to_path_buf(),
+            clients::mods::Seen::default(),
+        ),
+    )));
 
     let shoot = |app: &App, name: &str| {
         let mut ui = iced_test::simulator::Simulator::with_size(
-            iced::Settings::default(),
+            iced::Settings {
+                fonts: style::fonts().into_iter().map(Into::into).collect(),
+                ..iced::Settings::default()
+            },
             (1200.0, 780.0),
             app.view(),
         );

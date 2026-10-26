@@ -179,11 +179,11 @@ impl State {
                 row![
                     text(proposal).width(Fill),
                     button("Details")
-                        .style(button::secondary)
+                        .style(style::secondary)
                         .on_press(Message::Show),
                     self.accept(),
                     button("Not now")
-                        .style(button::text)
+                        .style(style::quiet)
                         .on_press_maybe((!self.working).then_some(Message::Decline)),
                 ]
                 .spacing(8)
@@ -224,7 +224,7 @@ impl State {
         Some(
             container(
                 column![
-                    text("Addons to recognize").size(20).font(style::BOLD),
+                    style::heading("Addons to recognize", 20.0),
                     text(
                         "These folders in Interface/AddOns are exactly what one of the addons \
                          available here installs. Recognizing them lists them as installed \
@@ -236,14 +236,15 @@ impl State {
                     container(
                         scrollable(column(addons).spacing(10).padding(padding::right(14)))
                             .height(Fit.max(360))
+                            .style(style::scroll)
                             .width(Fill)
                     )
                     .padding(10)
                     .width(Fill)
-                    .style(container::rounded_box),
+                    .style(style::inset),
                     row![
                         space::horizontal(),
-                        button("Close").style(button::text).on_press(Message::Close),
+                        button("Close").style(style::quiet).on_press(Message::Close),
                         self.accept(),
                     ]
                     .spacing(8),
@@ -263,7 +264,7 @@ impl State {
         } else {
             "Recognize"
         })
-        .style(button::primary)
+        .style(style::primary)
         .on_press_maybe((!self.working).then_some(Message::Accept))
     }
 }

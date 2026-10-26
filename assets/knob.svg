@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- The knob at a frame's corner, in the spirit of the game's dialog
+       frames: a diamond of dark metal with a lit rim, where the rods of
+       the edge meet. Symmetric, so the one drawing serves all four
+       corners. -->
+  <path d="M8 0.5L15.5 8 8 15.5 0.5 8z" fill="#1a1918"/>
+  <path d="M8 2L14 8 8 14 2 8z" fill="#8a8680"/>
+  <path d="M8 3.5L12.5 8 8 12.5 3.5 8z" fill="#353230"/>
+  <path d="M8 5.5L10.5 8 8 10.5 5.5 8z" fill="#686460"/>
+</svg>
