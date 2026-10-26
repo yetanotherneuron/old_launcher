@@ -187,7 +187,11 @@ as the indexer orders them, unless the user picked a source on the card.
 The pick is saved in the settings file (`sources`, by the entry's key: its
 folders, lowercase, sorted and joined by `/`) and applied to every catalog
 loaded: that source's download is the one installed and what updates are
-measured against. Installing never falls back to another source, picked or
+measured against. Sorted by date, the pick can move the card, since the
+date is the source's: once the list is drawn again, the card is brought
+back into view if it left it (`addons::Locate`, an operation that finds
+the card as drawn, then a scroll to its top), and left alone otherwise.
+Installing never falls back to another source, picked or
 not: what the card says is what gets installed, and a failed download is
 reported in the banner with the source named.
 

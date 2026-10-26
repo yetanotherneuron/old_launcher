@@ -997,6 +997,70 @@ fn dialogs_keep_the_list_scrolled_where_it_was() {
 }
 
 #[test]
+fn a_card_out_of_view_is_found_to_scroll_to() {
+    use iced::advanced::widget::operation::black_box;
+
+    // More entries than fit in the window.
+    let entries: Vec<String> = (0..30)
+        .map(|index| {
+            format!(
+                r#"{{ "name": "Addon{index:02}", "description": "One of many.",
+                      "downloads": [{{ "source": "test", "name": "Addon{index:02}",
+                                      "url": "https://example.com/Addon{index:02}.zip",
+                                      "folders": [{{ "name": "Addon{index:02}" }}] }}] }}"#
+            )
+        })
+        .collect();
+    let catalog = Catalog::parse(
+        format!(
+            r#"{{ "version": 2,
+                  "sources": [{{ "id": "test", "name": "Test Source", "homepage": "https://example.com" }}],
+                  "entries": [{}] }}"#,
+            entries.join(",")
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    let state = State::new();
+    let mut ui = simulator::Simulator::with_size(
+        iced::Settings::default(),
+        (1000.0, 500.0),
+        state.view(&catalog, None, None, catalog::Refresh::Idle, false),
+    );
+    let locate = |ui: &mut simulator::Simulator<'_, Message>, name: &str| -> Option<f32> {
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap();
+        let mut locate = Locate::new(card::id(&Key::of(entry)));
+        // The list says how far it is scrolled as last drawn.
+        ui.draw(&style::theme());
+        ui.operate(&mut black_box(&mut locate));
+        match locate.finish() {
+            Outcome::Some(top) => top,
+            _ => panic!("no outcome"),
+        }
+    };
+
+    assert_eq!(locate(&mut ui, "Addon00"), None, "in view");
+    let last = locate(&mut ui, "Addon29").expect("out of view");
+    assert!(last > 500.0, "{last}");
+
+    // Scrolled there, it is in view, and the first card isn't.
+    ui.point_at(iced::Point::new(500.0, 300.0));
+    let _ = ui.scroll(iced::mouse::ScrollDelta::Pixels { x: 0.0, y: -last });
+    assert_eq!(locate(&mut ui, "Addon29"), None);
+    let first = locate(&mut ui, "Addon00").expect("scrolled past");
+    assert!(first < 100.0, "{first}");
+    assert_eq!(
+        Locate::new(card::id(&Key::of(&catalog.entries[0]))).top(),
+        None,
+        "nothing found yet, nothing to scroll to"
+    );
+}
+
+#[test]
 fn a_failed_repair_keeps_the_list_scrolled_where_it_was() {
     let mut tocs: Vec<String> = (0..30)
         .map(|index| format!("Interface/AddOns/Addon{index:02}/Addon{index:02}.toc"))

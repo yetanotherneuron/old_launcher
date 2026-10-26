@@ -13,14 +13,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use iced::advanced::widget::operation::{Outcome, Scrollable};
+use iced::advanced::widget::{Id, Operation};
 use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
 use iced::widget::operation::Animation;
-use iced::widget::operation::scrollable::{RelativeOffset, snap_to};
+use iced::widget::operation::scrollable::{AbsoluteOffset, RelativeOffset, scroll_to, snap_to};
 use iced::widget::{
     Button, button, center, column, container, pick_list, row, scrollable, space, text, text_input,
 };
-use iced::{Center, Element, Fill, FillPortion, Function, Task, Widget, padding};
+use iced::{
+    Center, Element, Fill, FillPortion, Function, Rectangle, Size, Task, Vector, Widget, padding,
+};
 
 use crate::action::Action;
 use crate::catalog::{self, Catalog, Entry};
@@ -131,6 +135,9 @@ pub enum Message {
     OrderSelected(Order),
     /// Install an entry from this source first, from now on.
     SourceSelected(Key, Choice),
+    /// The source of this entry changed: bring its card back into view if
+    /// the order by date moved it out.
+    Follow(Key),
     /// Show everything again.
     ClearFilters,
     /// Fetch the published catalog again.
@@ -302,6 +309,7 @@ impl State {
 
                 Action::instruction(Instruction::Prefer { key, source })
             }
+            Message::Follow(key) => Action::task(into_view(card::id(&key))),
             Message::ClearFilters => {
                 self.query.clear();
                 self.filter = Filter::default();
@@ -933,6 +941,90 @@ fn pick(folder: bool) -> Task<Message> {
 /// Scrolls the list back to the top, for a list that changed contents.
 fn to_top() -> Task<Message> {
     snap_to(LIST, RelativeOffset::START, Animation::Instant)
+}
+
+/// Scrolls the list to the card with `id`, if it isn't wholly in view: the
+/// card of an addon whose source changed, which the order by date may have
+/// moved out of it. Where the card is, the list says once drawn.
+fn into_view(id: String) -> Task<Message> {
+    iced::advanced::widget::operate(Locate::new(id)).then(|top| match top {
+        Some(y) => scroll_to(
+            LIST,
+            AbsoluteOffset {
+                x: None,
+                y: Some(y),
+            },
+            Animation::Smooth,
+        ),
+        None => Task::none(),
+    })
+}
+
+/// Finds a card in the list as drawn: whether it is wholly in view, and
+/// where its top is within the list's contents otherwise, which is where
+/// to scroll the list to (as far as it scrolls). Nothing when the card
+/// isn't there, or is in view.
+struct Locate {
+    card: Id,
+    /// The list's bounds, how far it is scrolled, and the size of its
+    /// contents.
+    list: Option<(Rectangle, Vector, Size)>,
+    /// Where the list's contents start, unscrolled.
+    contents: Option<f32>,
+    found: Option<Rectangle>,
+}
+
+impl Locate {
+    fn new(card: String) -> Self {
+        Self {
+            card: Id::from(card),
+            list: None,
+            contents: None,
+            found: None,
+        }
+    }
+
+    /// Where to scroll to, if anywhere, from what was found.
+    fn top(&self) -> Option<f32> {
+        let (bounds, scrolled, contents) = self.list?;
+        let card = self.found?;
+        let top = card.y - self.contents?;
+        let in_view = top >= scrolled.y && top + card.height <= scrolled.y + bounds.height;
+
+        (!in_view).then(|| top.min((contents.height - bounds.height).max(0.0)))
+    }
+}
+
+impl Operation<Option<f32>> for Locate {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Option<f32>>)) {
+        operate(self);
+    }
+
+    fn scrollable(
+        &mut self,
+        id: Option<&Id>,
+        bounds: Rectangle,
+        contents: Size,
+        translation: Vector,
+        _state: &mut dyn Scrollable,
+    ) {
+        if id == Some(&Id::new(LIST)) {
+            self.list = Some((bounds, translation, contents));
+        }
+    }
+
+    fn container(&mut self, id: Option<&Id>, bounds: Rectangle, _viewport: &Rectangle) {
+        // The list reports its contents' bounds as a container of its own.
+        if id == Some(&Id::new(LIST)) {
+            self.contents = Some(bounds.y);
+        } else if id == Some(&self.card) {
+            self.found = Some(bounds);
+        }
+    }
+
+    fn finish(&self) -> Outcome<Option<f32>> {
+        Outcome::Some(self.top())
+    }
 }
 
 /// Installs `download`, from the source named `source`, into

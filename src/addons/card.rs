@@ -33,6 +33,7 @@ impl State {
         let group = library.installed(item);
         let title = library.name(item).to_owned();
         let key = entry.map(Key::of);
+        let card_id = key.as_ref().map(id);
         let job = key.as_ref().and_then(|key| self.jobs.get(key));
         let update = library.update(item);
 
@@ -574,7 +575,7 @@ impl State {
                 .vertical_spacing(6)
         });
 
-        container(
+        let card = container(
             column![
                 heading,
                 description,
@@ -589,8 +590,19 @@ impl State {
         )
         .padding(14)
         .width(Fill)
-        .style(style::card)
+        .style(style::card);
+
+        // The list finds the card by its id, to scroll to it.
+        match card_id {
+            Some(id) => card.id(id),
+            None => card,
+        }
     }
+}
+
+/// The id of the card of the entry with `key`.
+pub fn id(key: &Key) -> String {
+    format!("card {}", key.as_str())
 }
 
 /// The `folders` an addon installs, on one line; all of them on hover, when

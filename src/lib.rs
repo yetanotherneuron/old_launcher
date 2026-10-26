@@ -488,7 +488,13 @@ impl App {
                         );
                         self.config.set_source(key.as_str(), source);
                         self.catalog.prefer(&self.config.sources);
-                        Task::batch([task, self.save()])
+                        // Once the list is drawn in its new order, its card
+                        // is brought back into view if that moved it out.
+                        Task::batch([
+                            task,
+                            self.save(),
+                            Task::done(Message::Addons(addons::Message::Follow(key))),
+                        ])
                     }
                     Some(addons::Instruction::Installed { folders, from }) => {
                         let from = from.file_name().map_or_else(
