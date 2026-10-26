@@ -205,6 +205,20 @@ mod tests {
         }
     }
 
+    /// Writes `contents` over the file at `path` as an edit does: a second
+    /// after it was last changed, since file times may be coarser than a
+    /// test is quick, and a same-length edit within a tick passes for none.
+    fn edited(path: &Path, contents: &[u8]) {
+        let modified = fs::metadata(path).unwrap().modified().unwrap();
+        fs::write(path, contents).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(modified + std::time::Duration::from_secs(1))
+            .unwrap();
+    }
+
     #[test]
     fn a_written_marker_reads_back_identically() {
         let folder = tempfile::tempdir().unwrap();
@@ -241,7 +255,7 @@ mod tests {
         assert_eq!(changed(root), Vec::<String>::new());
 
         // Changed, added, and gone.
-        fs::write(root.join("ACP.lua"), "print(2)\n").unwrap();
+        edited(&root.join("ACP.lua"), b"print(2)\n");
         fs::write(root.join("modules/new.lua"), "new\n").unwrap();
         fs::remove_file(root.join("modules/bars.lua")).unwrap();
         fs::write(root.join(".git"), "gitdir: elsewhere\n").unwrap();
@@ -256,7 +270,7 @@ mod tests {
         );
 
         // The same bytes back: as installed again.
-        fs::write(root.join("ACP.lua"), "print(1)\n").unwrap();
+        edited(&root.join("ACP.lua"), b"print(1)\n");
         fs::write(root.join("modules/bars.lua"), "bars\n").unwrap();
         fs::remove_file(root.join("modules/new.lua")).unwrap();
         assert_eq!(changed(root), Vec::<String>::new());
