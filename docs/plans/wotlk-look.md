@@ -1,10 +1,14 @@
 # A look like the game's
 
-Status: built on 2026-10-26, after 0.11.0, as planned below, with these
-calls made: Cinzel for titles and Fira Sans for the body; the badges in
-the item-quality colors; square corners with ornaments; all four phases.
-The screenshots' renderer (tiny-skia) doesn't turn an SVG, so each corner
-is its own file. DEVELOPMENT.md ("The look") says how it is.
+Status: built on 2026-10-26, after 0.11.0, with these calls made: Cinzel
+for titles and Fira Sans for the body; the badges in the item-quality
+colors; square corners with ornaments; all four phases. First built from
+memory and the `FrameXML` constants, which got the buttons and frames
+wrong (gold edges and red buttons: a loot window); then corrected against
+the game's own textures, read from a client's locale archives, and its
+`GlueXML`, to the login screens' look, which is where the launcher sits.
+The table below says what the textures show. DEVELOPMENT.md ("The look")
+says how it is.
 
 ## The ask
 
@@ -16,31 +20,39 @@ flows.
 
 ## What the game's interface is made of
 
-Taken from the 3.3.5a `FrameXML`, which names every color, and from what
-the frames look like in play. Nothing of it can be copied (below), but all
-of it can be drawn in the same spirit.
+Read off the 3.3.5a textures (`Interface\Glues\Common`,
+`Interface\DialogFrame`, `Interface\Buttons` in the locale archives) and
+the `GlueXML` that uses them on the login, realm and character screens.
+Nothing of it can be copied (below), but all of it can be drawn in the
+same spirit.
 
-**Colors** (`FrameXML/FontStyles.xml`, `Fonts.xml`, the `*_FONT_COLOR`
-globals):
+**Colors** (`GlueXML/GlueFontStyles.xml` for the text; the rest sampled
+from the textures):
 
 | Role | The game's | Where it goes here |
 |---|---|---|
-| Headings, labels, "normal" text | gold `#ffd100` | titles, section headings, facts' labels, button text |
+| Headings, labels, "normal" text | gold `#ffc700` (`GlueFontNormal`; in play `#ffd100`) | titles, section headings, facts' labels, button text |
 | Body, highlighted text | white `#ffffff` | the rest of the text |
 | Disabled, secondary | grey `#808080` | secondary text, disabled buttons |
 | Errors | red `#ff1919` | the danger tone |
 | Good | green `#19ff19` | the success tone |
-| Frame backgrounds | near-black navy, see-through (`0.05 0.05 0.1` at 0.8–0.9) | cards, dialogs, the window |
-| Tooltip background | dark blue `#0a0a1e` at 0.9, with a steel-blue border `#4c4c73` | tooltips |
-| Frame borders | gold-bronze, beveled (`UI-DialogBox-Border`) | cards, dialogs |
-| Buttons (`UIPanelButtonTemplate`) | dark red-brown, gold text and edge; brighter on hover; grey text disabled | primary and secondary buttons |
-| Status bars | a green-to-yellow gradient on a dark track | progress bars |
-| Item quality, for badges | poor `#9d9d9d`, common `#ffffff`, uncommon `#1eff00`, rare `#0070dd`, epic `#a335ee`, legendary `#ff8000` | the badge tones, if wanted: "Installed" uncommon green, "Update available" rare blue, "Modified" legendary orange, "No longer available" poor grey |
+| Dialog backgrounds | black at 0.6 (`UI-DialogBox-Background`) over the world | cards, dialogs |
+| Dialog borders | a rod of grey metal (`#686460` lit, `#353230` in shadow, `#1a1918` outline), with a diamond knob at each corner (`UI-DialogBox-Border`) | cards' edges; the knobs on dialogs |
+| Buttons on the login screens (`GlueButtonTemplateBlue`) | blue glass, dark at the top (`#15406d`), bright through the middle (`#12558d`), dark at the bottom (`#184070`), in a grey-metal bevel; brighter hovered; flat `#202020` with grey text disabled | primary buttons, Play |
+| Buttons in the game's dialogs (`UI-Panel-Button-Up`) | crimson glass (`#680808`) in the same bevel, gold text | the danger buttons |
+| Checkboxes (`UI-CheckBox-Up`) | a dark square in grey metal, a yellow tick (`#f8f020`), a blue glow hovered | checkboxes |
+| Fields (`Glues-EditBox-Background`) | blue-black (`#0a0e14`) with a grey-blue rim (`#7d8a90`, `#a8b8c0` lit) | text fields |
+| Dropdowns | a dark box in grey metal with a dim gold arrow (`#d0c050`) | pick lists |
+| Scrollbars | a thin dark rail, a brown-grey metal knob (`#504840`) | scrollbars |
+| Tooltip background | black at 0.67 tinted blue by the code, with a thin light-grey rim | tooltips |
+| Loading bar | its fill isn't in the locale archives; its glow is blue | progress bars, in the buttons' blue |
+| Gold frames (`UI-DialogBox-Gold-*`) | the loot window's and the dragon-headed panels' only | nowhere: gold is for text and the tick |
+| Item quality, for badges | poor `#9d9d9d`, common `#ffffff`, uncommon `#1eff00`, rare `#0070dd`, epic `#a335ee`, legendary `#ff8000` | the badge tones: "Installed" uncommon green, "Update available" rare blue, "Modified" legendary orange, "No longer available" poor grey |
 
-**Shapes:** frames are square-cornered with a beveled gold edge and small
-ornaments at the corners; buttons are wide and short, with a gold frame;
-checkboxes are gold squares with a gold check; dropdowns are dark with a
-gold arrow; scrollbars thin, with a gold knob.
+**Shapes:** frames are square-cornered with a beveled metal edge and a
+knob at each corner; buttons are wide and short glass in a metal bevel;
+checkboxes are metal squares with a yellow check; dropdowns are dark with
+a gold arrow; scrollbars thin, with a metal knob.
 
 **Type:** titles and most of the interface in Friz Quadrata (flared
 serifs), quest text in Morpheus, chat in Arial Narrow, damage in Skurri.
