@@ -1,9 +1,10 @@
-//! The launcher's look: a dark theme with the gold of the WotLK interface,
-//! and the few components every screen shares.
+//! The launcher's look: the game's own, as far as its colors, type and
+//! shapes go (`docs/plans/wotlk-look.md` says what is taken and what can't
+//! be), and the few components every screen shares.
 
 use iced::theme::palette;
 use iced::widget::{button, center, container, mouse_area, opaque, stack, svg, text, tooltip};
-use iced::{Border, Color, Fit, Font, Theme, Widget, border, color, font};
+use iced::{Border, Color, Fit, Font, Theme, Widget, border, font};
 
 use crate::backdrop::backdrop;
 
@@ -23,38 +24,101 @@ pub const COG: &[u8] = include_bytes!("../assets/cog.svg");
 /// pixels, which any smaller size smears across two or three.
 const ICON: f32 = 24.0;
 
-/// The default font in bold, for titles.
+/// Cinzel, under the SIL Open Font License (`assets/fonts/Cinzel-OFL.txt`):
+/// capitals cut the way the game's headings are. The game's own fonts are
+/// licensed, and stay its.
+const CINZEL: &[u8] = include_bytes!("../assets/fonts/Cinzel-Regular.ttf");
+const CINZEL_BOLD: &[u8] = include_bytes!("../assets/fonts/Cinzel-Bold.ttf");
+
+/// The fonts the launcher brings, loaded before anything is drawn (and by
+/// the screenshots): iced's own Fira Sans for the body, these for titles.
+pub fn fonts() -> [&'static [u8]; 2] {
+    [CINZEL, CINZEL_BOLD]
+}
+
+/// The default font in bold, for names and whatever stands out in a line.
 pub const BOLD: Font = Font {
     weight: font::Weight::Bold,
     ..Font::DEFAULT
 };
 
-/// The palette a [`badge`] takes its color from.
+/// The font of titles and headings: Cinzel, bold, whose lowercase is small
+/// capitals.
+pub const TITLE: Font = Font {
+    family: font::Family::Name("Cinzel"),
+    weight: font::Weight::Bold,
+    ..Font::DEFAULT
+};
+
+/// The colors of the game's interface, as its `FrameXML` names them: the
+/// text colors, and the item qualities, which the badges take.
+pub mod wotlk {
+    use iced::{Color, color};
+
+    /// `NORMAL_FONT_COLOR`: headings, labels, buttons.
+    pub const GOLD: Color = color!(0xffd100);
+    /// `HIGHLIGHT_FONT_COLOR`: the text itself.
+    pub const WHITE: Color = color!(0xf5f5f5);
+    /// `RED_FONT_COLOR`: errors.
+    pub const RED: Color = color!(0xff1919);
+    /// The near-black navy the frames are filled with, over which the text
+    /// is read.
+    pub const NAVY: Color = color!(0x0b0b14);
+
+    /// Item quality: poor.
+    pub const POOR: Color = color!(0x9d9d9d);
+    /// Item quality: uncommon.
+    pub const UNCOMMON: Color = color!(0x1eff00);
+    /// Item quality: rare.
+    pub const RARE: Color = color!(0x0070dd);
+    /// Item quality: legendary.
+    pub const LEGENDARY: Color = color!(0xff8000);
+}
+
+/// The palette a [`badge`] takes its color from: the game's item qualities,
+/// for what they mean here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
-    /// Gold: facts about the addon.
+    /// Gold: facts about the addon, and the launcher's own.
     Primary,
-    /// Green: all good.
+    /// Uncommon green: all good.
     Success,
-    /// Amber: works, but worth a look.
+    /// Legendary orange: works, but worth a look.
     Warning,
     /// Red: the client will not load it.
     Danger,
+    /// Rare blue: something newer is to be had.
+    Rare,
+    /// Poor grey: no longer to be had.
+    Poor,
 }
 
-/// A dark, warm theme with gold as the primary color.
+/// The game's theme: white text on near-black navy, gold first.
 pub fn theme() -> Theme {
     Theme::custom(
         "Old Launcher",
         palette::Seed {
-            background: color!(0x16141a),
-            text: color!(0xe9e3d3),
-            primary: color!(0xd4a64a),
-            success: color!(0x5fb971),
-            warning: color!(0xe3a33b),
-            danger: color!(0xd65a52),
+            background: wotlk::NAVY,
+            text: wotlk::WHITE,
+            primary: wotlk::GOLD,
+            success: wotlk::UNCOMMON,
+            warning: wotlk::LEGENDARY,
+            danger: wotlk::RED,
         },
     )
+}
+
+/// A title or heading, in the game's gold capitals, `size` tall.
+pub fn heading<'a>(label: impl text::IntoFragment<'a>, size: f32) -> iced::widget::Text<'a> {
+    text(label).size(size).font(TITLE).style(gold)
+}
+
+/// Text in the game's gold: headings and labels.
+pub fn gold(_theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(wotlk::GOLD),
+        ..text::Style::default()
+    }
 }
 
 /// A raised, rounded panel for list items and dialogs.
@@ -111,6 +175,8 @@ impl Tone {
             Self::Success => palette.success.base.color,
             Self::Warning => palette.warning.base.color,
             Self::Danger => palette.danger.base.color,
+            Self::Rare => wotlk::RARE,
+            Self::Poor => wotlk::POOR,
         }
     }
 }

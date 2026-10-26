@@ -224,7 +224,7 @@ impl State {
         Some(
             container(
                 column![
-                    text("Addons to recognize").size(20).font(style::BOLD),
+                    style::heading("Addons to recognize", 20.0),
                     text(
                         "These folders in Interface/AddOns are exactly what one of the addons \
                          available here installs. Recognizing them lists them as installed \

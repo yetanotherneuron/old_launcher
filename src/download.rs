@@ -1257,7 +1257,7 @@ impl State {
         Some(
             container(
                 column![
-                    text(job.title()).size(20).font(style::BOLD),
+                    style::heading(job.title(), 20.0),
                     body,
                     row![space::horizontal(), buttons.spacing(8)].align_y(Center),
                 ]

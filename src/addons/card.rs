@@ -72,7 +72,7 @@ impl State {
                 if let Some(update) = update {
                     badges = badges.push(
                         style::tip(
-                            style::badge("Update available", Tone::Warning),
+                            style::badge("Update available", Tone::Rare),
                             update_hint(update, main, entry, catalog),
                         )
                         .boxed(),
@@ -93,7 +93,7 @@ impl State {
                             .boxed(),
                             None => style::badge(marker.source.clone(), Tone::Primary).boxed(),
                         })
-                        .push(style::badge("No longer available", Tone::Warning).boxed());
+                        .push(style::badge("No longer available", Tone::Poor).boxed());
                     let changed = group.changed();
                     if !changed.is_empty() {
                         badges = badges.push(

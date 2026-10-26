@@ -154,7 +154,10 @@ fn screenshots() {
 
     let shoot = |app: &App, name: &str| {
         let mut ui = iced_test::simulator::Simulator::with_size(
-            iced::Settings::default(),
+            iced::Settings {
+                fonts: style::fonts().into_iter().map(Into::into).collect(),
+                ..iced::Settings::default()
+            },
             (1200.0, 780.0),
             app.view(),
         );

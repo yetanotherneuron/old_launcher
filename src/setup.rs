@@ -334,7 +334,7 @@ impl State {
 
         container(
             column![
-                text("Add a WoW 3.3.5a client").size(22).font(style::BOLD),
+                style::heading("Add a WoW 3.3.5a client", 22.0),
                 modes,
                 fields,
                 error,

@@ -71,6 +71,12 @@ pub fn icon() -> Option<iced::window::Icon> {
     iced::window::icon::from_rgba(ICON.to_vec(), ICON_WIDTH, ICON_HEIGHT).ok()
 }
 
+/// The fonts the launcher brings, for the window to load before drawing
+/// (see [`style::fonts`]).
+pub fn fonts() -> [&'static [u8]; 2] {
+    style::fonts()
+}
+
 /// The launcher.
 pub struct App {
     config_path: PathBuf,
@@ -1088,7 +1094,7 @@ impl App {
             .boxed();
         }
 
-        let title = button(text("Old Launcher").size(24).font(style::BOLD))
+        let title = button(style::heading("Old Launcher", 24.0))
             .padding(0)
             .on_press(Message::OpenRepository)
             .style(|theme: &Theme, status| {
@@ -1573,7 +1579,7 @@ fn quit_dialog<'a>(under_way: Vec<String>) -> impl Widget<Message> + 'a {
 
     container(
         column![
-            text("Quit now?").size(20).font(style::BOLD),
+            style::heading("Quit now?", 20.0),
             (!finished).then(|| {
                 container(column(under_way.into_iter().map(|line| text(line).size(13))).spacing(2))
                     .padding(10)

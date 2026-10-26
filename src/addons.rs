@@ -817,7 +817,7 @@ impl State {
         let header =
             row![
                 column![
-                    text("Leftover data").size(17).font(style::BOLD),
+                    style::heading("Leftover data", 17.0),
                     text("Saved settings of addons that are no longer installed.")
                         .size(13)
                         .style(text::secondary),

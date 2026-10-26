@@ -125,7 +125,7 @@ impl External {
 
         container(
             column![
-                text("Install an addon").size(20).font(style::BOLD),
+                style::heading("Install an addon", 20.0),
                 text(
                     "From an archive (zip, 7z or rar) or a folder that holds it. It shows as \
                      installed manually: to update it, install a newer version the same way."

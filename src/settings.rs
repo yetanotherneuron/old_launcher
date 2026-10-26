@@ -104,9 +104,9 @@ impl State {
 
         container(
             column![
-                text("Settings").size(20).font(style::BOLD),
+                style::heading("Settings", 20.0),
                 column![
-                    text("GitHub").size(16).font(style::BOLD),
+                    style::heading("GitHub", 16.0),
                     text(
                         "Many addons download from GitHub, which limits downloads made without \
                          an account. Signed in, the limits are far higher."
@@ -134,7 +134,7 @@ impl State {
                 ]
                 .spacing(4),
                 column![
-                    text("Discord").size(16).font(style::BOLD),
+                    style::heading("Discord", 16.0),
                     text(ON_DISCORD).size(13).style(text::secondary),
                 ]
                 .spacing(4),

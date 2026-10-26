@@ -551,7 +551,7 @@ impl State {
         downloading: bool,
     ) -> impl Widget<Message> + 'a {
         let title = row![
-            text("Clients").size(20).font(style::BOLD),
+            style::heading("Clients", 20.0),
             space::horizontal(),
             button("Close").style(button::text).on_press(Message::Close),
         ]
@@ -723,7 +723,7 @@ impl State {
             .spacing(2);
 
             column![
-                text("Starting the game").size(16).font(style::BOLD),
+                style::heading("Starting the game", 16.0),
                 column![
                     field(
                         "Environment variables",

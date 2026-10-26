@@ -131,9 +131,7 @@ impl State {
 
         container(
             column![
-                text("The settings file can't be read")
-                    .size(22)
-                    .font(style::BOLD),
+                style::heading("The settings file can't be read", 22.0),
                 text(
                     "It lists the client folders you added to the launcher. Nothing was \
                      changed: the launcher stopped before using or saving it."

@@ -722,7 +722,7 @@ impl State {
         });
 
         column![
-            text("Mods").size(16).font(style::BOLD),
+            style::heading("Mods", 16.0),
             unlisted,
             column(
                 self.list

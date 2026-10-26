@@ -246,7 +246,7 @@ impl Confirm {
 
         container(
             column![
-                text(title).size(20).font(style::BOLD),
+                style::heading(title, 20.0),
                 text(explanation).style(text::secondary),
                 warnings,
                 container(
