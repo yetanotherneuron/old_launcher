@@ -26,7 +26,7 @@ It's a portable program: nothing to install, just run it.
 - **Install** or reinstall with one click, from the freshest source or the one you pick.
 - **Update** addons that have a newer version available, and the launcher itself.
 - **Manage** addons: uninstall, clean saved settings, repair broken folders.
-- **Recognizes** the addons you installed before the launcher.
+- **Recognizes** the addons you installed before the launcher, and tells when you changed one it installed.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
 - **Download a client** from a torrent, and check any client for updates against one.

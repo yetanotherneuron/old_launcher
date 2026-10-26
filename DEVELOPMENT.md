@@ -138,9 +138,16 @@ There is no database. Everything is read from the client folder itself:
 - **Installed addons**: every folder in `Interface/AddOns` and its `.toc`.
 - **Where an addon came from**: installing drops a small
   `.old_launcher.toml` marker (source, catalog entry, URL) into each folder
-  it creates. The client ignores it. Folders without a marker show as
-  installed manually, one card per folder, with links to the web pages
-  their `.toc` names (`X-Website`, `URL`, `X-Repository` and the like).
+  it creates, with every file it put there (SHA-256, length and time). The
+  client ignores it. Folders without a marker show as installed manually,
+  one card per folder, with links to the web pages their `.toc` names
+  (`X-Website`, `URL`, `X-Repository` and the like).
+- **Addons changed by hand since**: each scan compares a marked folder's
+  files with the marker's record, by length and time first and by hash
+  only for those that differ there, so an addon the player edits or copies
+  a build of over shows a Modified badge naming the files; Reinstall puts
+  the installed version back. A marker from before files were recorded
+  gets them at the next scan, from the folder as it is.
 - **Addons installed before the launcher**: after each scan, unmarked folders
   that exactly match a catalog entry (every folder it installs is present)
   get that entry's marker. Bundles are matched before entries shipping one of

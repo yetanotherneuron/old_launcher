@@ -388,6 +388,7 @@ mod tests {
             name: "Skada".into(),
             toc: None,
             marker: Some(entry.downloads[1].marker()),
+            changed: Vec::new(),
         };
         let manual = Addon {
             marker: None,

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::io_at;
-use crate::{Error, Marker, Toc};
+use crate::{Error, Marker, Toc, marker};
 
 /// A folder under `Interface/AddOns`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +16,10 @@ pub struct Addon {
     pub toc: Option<Toc>,
     /// Which catalog entry installed it, when the launcher did.
     pub marker: Option<Marker>,
+    /// The files that changed since the launcher installed it, by path
+    /// within the folder (see [`marker::changed`]): none when it is as
+    /// installed, or installed by hand.
+    pub changed: Vec<String>,
 }
 
 impl Addon {
@@ -53,8 +57,16 @@ impl Addon {
                 .and_then(|file| fs::read(file.path()).ok())
                 .map(|bytes| Toc::parse(&bytes));
 
+            let marker = Marker::read(&path);
+            let changed = if marker.is_some() {
+                marker::changed(&path)
+            } else {
+                Vec::new()
+            };
+
             addons.push(Self {
-                marker: Marker::read(&path),
+                marker,
+                changed,
                 name,
                 toc,
             });
@@ -97,6 +109,12 @@ mod tests {
         assert_eq!(scanned.len(), 1);
         assert_eq!(scanned[0].title(), "ACP");
         assert_eq!(scanned[0].marker, Some(marker));
+        assert_eq!(scanned[0].changed, Vec::<String>::new());
+
+        // Changed by hand since: the scan says which files.
+        fs::write(acp.join("acp.toc"), "## Title: ACP\n## Version: dev\n").unwrap();
+        let scanned = Addon::scan(addons.path()).unwrap();
+        assert_eq!(scanned[0].changed, ["acp.toc"]);
     }
 
     #[test]

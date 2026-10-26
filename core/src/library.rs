@@ -419,6 +419,7 @@ mod tests {
             name: name.into(),
             toc: Some(Toc::default()),
             marker: marker.map(|entry| entry.downloads[0].marker()),
+            changed: Vec::new(),
         }
     }
 

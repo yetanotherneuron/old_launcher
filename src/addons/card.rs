@@ -56,8 +56,18 @@ impl State {
             .align_y(Center);
 
         match (entry, group) {
-            (Some(entry), Some(_)) => {
+            (Some(entry), Some(group)) => {
                 badges = badges.push(style::badge("Installed", Tone::Success).boxed());
+                let changed = group.changed();
+                if !changed.is_empty() {
+                    badges = badges.push(
+                        style::tip(
+                            style::badge("Modified", Tone::Warning),
+                            changed_hint(&changed, true),
+                        )
+                        .boxed(),
+                    );
+                }
 
                 if let Some(update) = update {
                     badges = badges.push(
@@ -84,6 +94,16 @@ impl State {
                             None => style::badge(marker.source.clone(), Tone::Primary).boxed(),
                         })
                         .push(style::badge("No longer available", Tone::Warning).boxed());
+                    let changed = group.changed();
+                    if !changed.is_empty() {
+                        badges = badges.push(
+                            style::tip(
+                                style::badge("Modified", Tone::Warning),
+                                changed_hint(&changed, false),
+                            )
+                            .boxed(),
+                        );
+                    }
                 }
                 None => {
                     badges = badges.push(style::badge("Installed manually", Tone::Primary).boxed());
@@ -602,6 +622,30 @@ fn address(url: &str) -> &str {
 /// What an "Update available" badge means: the version installed against
 /// the one the catalog offers, and where that one comes from. The folder is
 /// named when it isn't `main`, the one the card describes.
+/// What the "Modified" badge says on hover: the files that `changed` since
+/// the launcher installed the addon, and the way back when a `reinstall` is
+/// offered.
+fn changed_hint(changed: &[String], reinstall: bool) -> String {
+    const NAMED: usize = 6;
+
+    let mut files = changed
+        .iter()
+        .take(NAMED)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if changed.len() > NAMED {
+        files.push_str(&format!(" and {} more", changed.len() - NAMED));
+    }
+    let back = if reinstall {
+        " Reinstall puts the installed version back."
+    } else {
+        ""
+    };
+
+    format!("Changed since it was installed: {files}.{back}")
+}
+
 fn update_hint(
     update: Versions<'_>,
     main: Option<&Addon>,

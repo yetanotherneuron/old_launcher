@@ -39,6 +39,20 @@ impl Group<'_> {
         self.addons.iter().map(|addon| addon.name.clone()).collect()
     }
 
+    /// The files of its folders that changed since the launcher installed
+    /// them (see [`crate::marker::changed`]), as `folder/path`.
+    pub fn changed(&self) -> Vec<String> {
+        self.addons
+            .iter()
+            .flat_map(|addon| {
+                addon
+                    .changed
+                    .iter()
+                    .map(move |path| format!("{}/{path}", addon.name))
+            })
+            .collect()
+    }
+
     /// The titles of the other `groups` with a folder whose `.toc` requires
     /// one of this group's folders, in the order of `groups`.
     pub fn required_by<'b>(&self, groups: &'b [Group<'_>]) -> Vec<&'b str> {
@@ -190,6 +204,7 @@ mod tests {
                 ..Toc::default()
             }),
             marker,
+            changed: Vec::new(),
         }
     }
 

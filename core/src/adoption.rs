@@ -135,6 +135,7 @@ mod tests {
                 ..Toc::default()
             }),
             marker: None,
+            changed: Vec::new(),
         }
     }
 

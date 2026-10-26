@@ -191,6 +191,54 @@ fn cards_show_every_source_the_date_folders_and_foreign_interfaces() {
 }
 
 #[test]
+fn an_addon_changed_since_it_was_installed_says_so_on_hover() {
+    let catalog = catalog();
+    let (_root, installation) = client_with_skada(&catalog);
+    let state = State::new();
+    let snapshot = installation.scan().unwrap();
+    assert!(
+        open(&state, &catalog, &installation, &snapshot)
+            .find("Modified")
+            .is_err(),
+        "as installed"
+    );
+
+    // A file edited, and one added, by hand.
+    let skada = installation.addons_directory().join("Skada");
+    std::fs::write(
+        skada.join("Skada.toc"),
+        "## Title: Skada\n## Version: dev\n",
+    )
+    .unwrap();
+    std::fs::write(skada.join("Extra.lua"), "").unwrap();
+    let snapshot = installation.scan().unwrap();
+    let changed = snapshot
+        .addons
+        .iter()
+        .find(|addon| addon.name == "Skada")
+        .map(|addon| addon.changed.clone());
+    assert_eq!(
+        changed.as_deref(),
+        Some(&["Extra.lua".to_owned(), "Skada.toc".to_owned()][..])
+    );
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    let badge = ui.find("Modified").unwrap().bounds().center();
+    ui.point_at(badge);
+    let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+        position: badge,
+    })]);
+    assert!(
+        ui.find(
+            "Changed since it was installed: Skada/Extra.lua, Skada/Skada.toc. Reinstall puts \
+             the installed version back."
+        )
+        .is_ok()
+    );
+    assert!(ui.find("Reinstall").is_ok());
+}
+
+#[test]
 fn addons_made_for_other_versions_explain_the_risk_on_hover() {
     let catalog = catalog();
     let state = State::new();
@@ -248,6 +296,7 @@ fn entries_installed_from_any_source_offer_a_reinstall() {
             name: "Skada".into(),
             toc: None,
             marker: Some(catalog.entries[1].downloads[1].marker()),
+            changed: Vec::new(),
         }],
         ..Snapshot::default()
     };
@@ -1018,7 +1067,8 @@ fn folders_the_client_cannot_load_offer_a_repair() {
         [Addon {
             name: "Foo-master".into(),
             toc: None,
-            marker: None
+            marker: None,
+            changed: Vec::new(),
         }]
     );
     let mut state = State::new();
