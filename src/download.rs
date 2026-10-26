@@ -6,8 +6,8 @@
 //! Downloads go into a staging folder, `.download`, in the folder
 //! their files go in, so they need room on that disk alone, and the files
 //! move into place once complete, with no copying: a new client is added
-//! then. The launcher keeps a copy of each client's `.torrent`, named after
-//! its info hash, to check the client against later, and the client folder
+//! then. The launcher keeps a copy of each client's `.torrent` in its cache,
+//! named after its info hash, to check the client against later, and the client folder
 //! notes where the torrent comes from, a `.torrent` file given as its magnet
 //! link: with the copy gone, or the client added back, it is found again.
 //! Any client can be given a torrent to update from, the same way.
@@ -1763,6 +1763,64 @@ fn kept_in(store: &Path, info_hash: &str) -> PathBuf {
     store.join(format!("{info_hash}.torrent"))
 }
 
+/// Where the copies of the clients' torrents are kept: in the cache, since
+/// a copy gone is fetched again from the peers sharing it. Builds before
+/// 1.1.1 kept them with the data: those are moved over once, here.
+pub fn store() -> PathBuf {
+    let store = dirs::cache_dir()
+        .unwrap_or_default()
+        .join("old_launcher")
+        .join("torrents");
+    let old = dirs::data_dir()
+        .unwrap_or_default()
+        .join("old_launcher")
+        .join("torrents");
+    relocate(&old, &store);
+
+    store
+}
+
+/// Moves the `.torrent` copies kept in `old` to `store`, one the latter
+/// has already being deleted, and removes `old` and the folder it is in
+/// when that leaves them empty. What can't be moved is left, and fetched
+/// again when needed.
+fn relocate(old: &Path, store: &Path) {
+    let Ok(entries) = fs::read_dir(old) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let from = entry.path();
+        if from
+            .extension()
+            .is_none_or(|extension| extension != "torrent")
+        {
+            continue;
+        }
+        let Some(name) = from.file_name() else {
+            continue;
+        };
+        let to = store.join(name);
+        let moved = if to.exists() {
+            fs::remove_file(&from)
+        } else {
+            fs::create_dir_all(store).and_then(|()| {
+                fs::rename(&from, &to)
+                    .or_else(|_| fs::copy(&from, &to).and_then(|_| fs::remove_file(&from)))
+            })
+        };
+        match moved {
+            Ok(()) => log::info!("Moved {} to the cache, {}", from.display(), store.display()),
+            Err(error) => log::warn!("Could not move {} to the cache: {error}", from.display()),
+        }
+    }
+
+    let _ = fs::remove_dir(old);
+    if let Some(parent) = old.parent() {
+        let _ = fs::remove_dir(parent);
+    }
+}
+
 /// Keeps a copy of a torrent's `bytes` at `path`.
 async fn keep_copy(path: PathBuf, bytes: Arc<Vec<u8>>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
@@ -3230,6 +3288,41 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(state.kept_unless_shared(&shared, "c0ffee"), None);
+    }
+
+    #[test]
+    fn copies_kept_with_the_data_by_earlier_builds_move_to_the_cache() {
+        let (data, cache) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let old = data.path().join("old_launcher/torrents");
+        let store = cache.path().join("old_launcher/torrents");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("c0ffee.torrent"), b"old").unwrap();
+        fs::write(old.join("decaf.torrent"), b"old too").unwrap();
+        fs::write(old.join("notes.txt"), b"something else").unwrap();
+        fs::create_dir_all(&store).unwrap();
+        fs::write(store.join("decaf.torrent"), b"cached").unwrap();
+
+        relocate(&old, &store);
+
+        assert_eq!(fs::read(store.join("c0ffee.torrent")).unwrap(), b"old");
+        assert_eq!(
+            fs::read(store.join("decaf.torrent")).unwrap(),
+            b"cached",
+            "the cache's copy stays"
+        );
+        assert!(!old.join("decaf.torrent").exists(), "the old one goes");
+        assert!(old.join("notes.txt").exists(), "only torrents move");
+        assert!(old.exists(), "not empty, so kept");
+
+        fs::remove_file(old.join("notes.txt")).unwrap();
+        relocate(&old, &store);
+        assert!(!data.path().join("old_launcher").exists(), "empty, gone");
+
+        relocate(&old, &store);
+        assert!(
+            store.join("c0ffee.torrent").is_file(),
+            "nothing to do, nothing done"
+        );
     }
 
     #[test]

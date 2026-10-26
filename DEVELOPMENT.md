@@ -28,10 +28,10 @@ While working on it, these point it elsewhere:
 | `GH_TOKEN` / `GITHUB_TOKEN` | a GitHub login for downloads (never stored) |
 
 Its own files, outside the clients: the settings
-(`~/.config/old_launcher/config.toml`, `%APPDATA%\old_launcher\config.toml`),
-the catalogs cached (`~/.cache/old_launcher`, `%LOCALAPPDATA%\old_launcher`)
-and the copies of the clients' torrents
-(`~/.local/share/old_launcher/torrents`, `%APPDATA%\old_launcher\torrents`).
+(`~/.config/old_launcher/config.toml`, `%APPDATA%\old_launcher\config.toml`)
+and a cache (`~/.cache/old_launcher`, `%LOCALAPPDATA%\old_launcher`) of the
+catalogs and of the clients' `.torrent` files, by info hash, which the
+launcher gets again from the peers when a copy is missing.
 
 ## Layout
 

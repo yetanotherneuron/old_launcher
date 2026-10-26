@@ -336,12 +336,7 @@ impl App {
             recognize: recognize::State::default(),
             transfer: transfer::State::default(),
             clients: clients::State::default(),
-            download: download::State::new(
-                dirs::data_dir()
-                    .unwrap_or_default()
-                    .join("old_launcher")
-                    .join("torrents"),
-            ),
+            download: download::State::new(download::store()),
             game: game::State::default(),
             latest: None,
             quitting: false,

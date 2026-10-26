@@ -72,12 +72,11 @@ or on [Discord](https://discord.gg/tS35paspnf).
 
 - Outside your client folders, the launcher writes only its settings file,
   `~/.config/old_launcher/config.toml` on Linux and
-  `%APPDATA%\old_launcher\config.toml` on Windows, a copy of the addon
-  list in `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`, so the
-  list doesn't need to be downloaded every time you open the launcher, and
-  a copy of each client's torrent, in
-  `~/.local/share/old_launcher/torrents` or
-  `%APPDATA%\old_launcher\torrents`.
+  `%APPDATA%\old_launcher\config.toml` on Windows, and a cache in
+  `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`: a copy of the
+  addon list, so it doesn't need to be downloaded every time you open the
+  launcher, and a copy of each client's torrent, fetched again from its
+  peers if missing.
 - A client downloading from a torrent goes into a `.download` folder
   inside the folder you chose, its files into place once complete.
   It is shared with the others downloading it, as BitTorrent works, until
