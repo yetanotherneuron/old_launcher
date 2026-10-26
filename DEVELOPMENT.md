@@ -285,9 +285,14 @@ launcher's log), and records in the marker that it ran to the end. It is
 the same runner, with the same environment variables (`WINEPREFIX`
 among them), or none: a command that can't run another program fails the
 setup rather than fall back to plain `wine`, which would update the prefix
-to its own Wine. A `gamemoderun` the command starts with is left out,
-though: GameMode is for the game, and a setup run under it lost its
-output to the launcher. Off
+to its own Wine. Two differences from the game: the program goes as a
+Windows path, relative to the client folder with backslashes
+(`Lumenveil\lamp_extract.exe`), because given a Unix path Proton hands it
+to a Windows wrapper of its (`start /unix`, `umu.exe`) that opens a
+console program in a console window of its own and returns at once,
+leaving the launcher nothing to show and nothing to wait for, while a
+Windows path it runs itself; and a `gamemoderun` the command starts with
+is left out, GameMode being for the game. Off
 Windows, Wine loads its own copy of DLLs such as
 `version.dll` unless told otherwise, so the game starts with `name=n,b` in
 `WINEDLLOVERRIDES` for each DLL the mods there put beside `Wow.exe`, while

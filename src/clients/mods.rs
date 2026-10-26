@@ -1725,7 +1725,7 @@ mod tests {
         assert_eq!(said[0], None, "the step starts");
         assert!(
             said[1].as_ref().is_some_and(|said| {
-                said.starts_with("tool ") && said.ends_with("Glow/setup.exe --locale esES")
+                said.starts_with("tool ") && said.ends_with("Glow\\setup.exe --locale esES")
             }),
             "{said:?}"
         );

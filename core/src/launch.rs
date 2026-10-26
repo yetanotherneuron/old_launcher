@@ -185,33 +185,46 @@ impl Launch {
     ///
     /// Nothing else is quoted, so `~` and `$HOME` expand as in a terminal.
     pub fn line(&self, defaults: &Defaults, executable: &Path) -> Result<String, Error> {
-        self.line_running(defaults, executable, &[], true)
+        self.line_running(defaults, &quoted(executable)?, &[], true)
     }
 
     /// The shell command line that runs another Windows program of the
-    /// client, `program` with `arguments`, the way [`Launch::line`] starts
-    /// the game: in place of [`PLACEHOLDER`], all of them quoted, with the
+    /// client, `program` (a path relative to the client folder, which the
+    /// line runs in) with `arguments`, the way [`Launch::line`] starts the
+    /// game: in place of [`PLACEHOLDER`], all of them quoted, with the
     /// game's runner and prefix. Plain `wine` is no stand-in for it: a Wine
-    /// other than the game's updates the prefix to its own version. GameMode
-    /// is left out, though: it is for the game, and a mod's setup under it
-    /// lost its output to the launcher.
+    /// other than the game's updates the prefix to its own version.
+    ///
+    /// Unlike the game, the program goes as a Windows path, relative, with
+    /// backslashes: given a Unix path, Proton hands a program to a Windows
+    /// wrapper of its (`start /unix`, `umu.exe`) that opens a console
+    /// program in a console window of its own and returns at once, so the
+    /// launcher saw nothing of a mod's setup and waited for nothing. Given a
+    /// Windows path, it runs the program itself, whose output then reaches
+    /// the launcher. GameMode is left out too: it is for the game.
     pub fn tool_line(
         &self,
         defaults: &Defaults,
-        program: &Path,
+        program: &str,
         arguments: &[String],
     ) -> Result<String, Error> {
-        self.line_running(defaults, program, arguments, false)
+        let program = program.replace('/', "\\");
+        let program = shlex::try_quote(&program).map_err(|error| Error::Launch {
+            setting: "command",
+            problem: error.to_string(),
+        })?;
+
+        self.line_running(defaults, &program, arguments, false)
     }
 
-    /// The shell command line of the command with `program` and `arguments`,
-    /// quoted, in place of [`PLACEHOLDER`], after the environment variables,
-    /// which `defaults`' come before; `gamemode` says whether the command
-    /// keeps the [`GAMEMODE`] it may start with.
+    /// The shell command line of the command with `program` (quoted already)
+    /// and `arguments`, quoted, in place of [`PLACEHOLDER`], after the
+    /// environment variables, which `defaults`' come before; `gamemode` says
+    /// whether the command keeps the [`GAMEMODE`] it may start with.
     fn line_running(
         &self,
         defaults: &Defaults,
-        program: &Path,
+        program: &str,
         arguments: &[String],
         gamemode: bool,
     ) -> Result<String, Error> {
@@ -227,7 +240,7 @@ impl Launch {
         }
 
         let added = defaults.env()?;
-        let words = std::iter::once(Ok(quoted(program)?))
+        let words = std::iter::once(Ok(program.into()))
             .chain(arguments.iter().map(|argument| shlex::try_quote(argument)))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| Error::Launch {
@@ -359,17 +372,15 @@ pub fn tool(
     program: &str,
     arguments: &[String],
 ) -> Result<Command, Error> {
-    let program = installation.root().join(program);
-
     let mut command = if cfg!(windows) {
-        let mut tool = Command::new(&program);
+        let mut tool = Command::new(installation.root().join(program));
         let _ = tool.args(arguments);
         tool
     } else {
         let mut shell = Command::new("sh");
         let _ = shell.arg("-c").arg(launch.tool_line(
             &Defaults::of(installation.root()),
-            &program,
+            program,
             arguments,
         )?);
         shell
@@ -779,7 +790,7 @@ mod tests {
     #[test]
     fn a_tool_runs_the_way_the_game_does_with_its_arguments() {
         let arguments = ["--data".to_owned(), "Data".to_owned(), "a b".to_owned()];
-        let tool = Path::new("/games/World of Warcraft/Lumenveil/lamp_extract.exe");
+        let tool = "Lumenveil/lamp_extract.exe";
         let defaults = wine("/games/World of Warcraft");
 
         assert_eq!(
@@ -787,7 +798,8 @@ mod tests {
                 .tool_line(&defaults, tool, &arguments)
                 .unwrap(),
             "WINEPREFIX='/games/World of Warcraft/.prefix' WINEPREFIX=~/wow; export WINEPREFIX; \
-             wine '/games/World of Warcraft/Lumenveil/lamp_extract.exe' --data Data 'a b'"
+             wine \"Lumenveil\\\\lamp_extract.exe\" --data Data 'a b'",
+            "the program as a Windows path, which Proton runs itself"
         );
         assert!(matches!(
             launch("", "lutris lutris:rungameid/3").tool_line(&defaults, tool, &arguments),
@@ -800,7 +812,7 @@ mod tests {
 
     #[test]
     fn a_tool_runs_without_gamemode_which_the_game_keeps() {
-        let tool = Path::new("/games/wow/Lumenveil/lamp_extract.exe");
+        let tool = "Lumenveil/lamp_extract.exe";
         let game = Path::new("/games/wow/Wow.exe");
         let gaming = Defaults {
             command: "gamemoderun umu-run %command%",
@@ -810,7 +822,7 @@ mod tests {
         assert_eq!(
             launch("", "").tool_line(&gaming, tool, &[]).unwrap(),
             "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; \
-             umu-run /games/wow/Lumenveil/lamp_extract.exe",
+             umu-run \"Lumenveil\\\\lamp_extract.exe\"",
             "the default's"
         );
         assert_eq!(
@@ -822,7 +834,7 @@ mod tests {
                 .tool_line(&gaming, tool, &[])
                 .unwrap(),
             "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; \
-             wine /games/wow/Lumenveil/lamp_extract.exe",
+             wine \"Lumenveil\\\\lamp_extract.exe\"",
             "the client's own"
         );
         assert_eq!(
