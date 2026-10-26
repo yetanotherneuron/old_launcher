@@ -185,31 +185,35 @@ impl Launch {
     ///
     /// Nothing else is quoted, so `~` and `$HOME` expand as in a terminal.
     pub fn line(&self, defaults: &Defaults, executable: &Path) -> Result<String, Error> {
-        self.line_running(defaults, executable, &[])
+        self.line_running(defaults, executable, &[], true)
     }
 
     /// The shell command line that runs another Windows program of the
     /// client, `program` with `arguments`, the way [`Launch::line`] starts
     /// the game: in place of [`PLACEHOLDER`], all of them quoted, with the
     /// game's runner and prefix. Plain `wine` is no stand-in for it: a Wine
-    /// other than the game's updates the prefix to its own version.
+    /// other than the game's updates the prefix to its own version. GameMode
+    /// is left out, though: it is for the game, and a mod's setup under it
+    /// lost its output to the launcher.
     pub fn tool_line(
         &self,
         defaults: &Defaults,
         program: &Path,
         arguments: &[String],
     ) -> Result<String, Error> {
-        self.line_running(defaults, program, arguments)
+        self.line_running(defaults, program, arguments, false)
     }
 
     /// The shell command line of the command with `program` and `arguments`,
     /// quoted, in place of [`PLACEHOLDER`], after the environment variables,
-    /// which `defaults`' come before.
+    /// which `defaults`' come before; `gamemode` says whether the command
+    /// keeps the [`GAMEMODE`] it may start with.
     fn line_running(
         &self,
         defaults: &Defaults,
         program: &Path,
         arguments: &[String],
+        gamemode: bool,
     ) -> Result<String, Error> {
         let names = self.names().map_err(|problem| Error::Launch {
             setting: "environment variables",
@@ -235,6 +239,11 @@ impl Launch {
         let command = match self.command.trim() {
             "" => defaults.command,
             command => command,
+        };
+        let command = if gamemode {
+            command
+        } else {
+            without_gamemode(command)
         }
         .replace(PLACEHOLDER, &words);
 
@@ -260,6 +269,16 @@ impl Launch {
         // reach its first part (`A=1 cp … && printenv A` prints nothing).
         Ok(format!("{env}; export {}; {command}", exported.join(" ")))
     }
+}
+
+/// `command` without the [`GAMEMODE`] it starts with, if it does: the rest
+/// of the line, which runs the program on its own.
+fn without_gamemode(command: &str) -> &str {
+    command
+        .strip_prefix(GAMEMODE)
+        .filter(|rest| rest.starts_with(char::is_whitespace))
+        .map(str::trim_start)
+        .unwrap_or(command)
 }
 
 /// The variable that tells Wine which DLLs to load from a program's folder
@@ -777,6 +796,40 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn a_tool_runs_without_gamemode_which_the_game_keeps() {
+        let tool = Path::new("/games/wow/Lumenveil/lamp_extract.exe");
+        let game = Path::new("/games/wow/Wow.exe");
+        let gaming = Defaults {
+            command: "gamemoderun umu-run %command%",
+            ..wine("/games/wow")
+        };
+
+        assert_eq!(
+            launch("", "").tool_line(&gaming, tool, &[]).unwrap(),
+            "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; \
+             umu-run /games/wow/Lumenveil/lamp_extract.exe",
+            "the default's"
+        );
+        assert_eq!(
+            launch("", "").line(&gaming, game).unwrap(),
+            "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; gamemoderun umu-run /games/wow/Wow.exe"
+        );
+        assert_eq!(
+            launch("", "  gamemoderun  wine %command%")
+                .tool_line(&gaming, tool, &[])
+                .unwrap(),
+            "WINEPREFIX=/games/wow/.prefix; export WINEPREFIX; \
+             wine /games/wow/Lumenveil/lamp_extract.exe",
+            "the client's own"
+        );
+        assert_eq!(
+            without_gamemode("gamemoderun-ish %command%"),
+            "gamemoderun-ish %command%",
+            "only the word"
+        );
     }
 
     #[test]

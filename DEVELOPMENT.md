@@ -285,7 +285,9 @@ launcher's log), and records in the marker that it ran to the end. It is
 the same runner, with the same environment variables (`WINEPREFIX`
 among them), or none: a command that can't run another program fails the
 setup rather than fall back to plain `wine`, which would update the prefix
-to its own Wine. Off
+to its own Wine. A `gamemoderun` the command starts with is left out,
+though: GameMode is for the game, and a setup run under it lost its
+output to the launcher. Off
 Windows, Wine loads its own copy of DLLs such as
 `version.dll` unless told otherwise, so the game starts with `name=n,b` in
 `WINEDLLOVERRIDES` for each DLL the mods there put beside `Wow.exe`, while
