@@ -24,12 +24,21 @@ fn screenshots() {
     let root = PathBuf::from(std::env::var("SCREENSHOT_CLIENT").unwrap());
     let out = std::env::var("SCREENSHOT_OUT").unwrap();
     let catalog = catalog::repository();
-    let entry = |name: &str| {
+    // Picked by the first folder they install, which their archive fixes,
+    // not by the name their source gives them, which it may reword (Omen's
+    // did): the first in the catalog's order, where several bring it.
+    let entry = |first: &str| {
         catalog
             .entries
             .iter()
-            .find(|entry| entry.name == name)
-            .unwrap_or_else(|| panic!("{name}"))
+            .find(|entry| {
+                entry
+                    .downloads
+                    .first()
+                    .and_then(|download| download.folders.first())
+                    .is_some_and(|folder| folder.name == first)
+            })
+            .unwrap_or_else(|| panic!("{first}"))
             .clone()
     };
     let write = |path: &Path, text: &str| {
@@ -78,20 +87,20 @@ fn screenshots() {
     }
     let addons = root.join("Interface/AddOns");
 
-    for name in [
+    for first in [
         "Bartender4",
         "Details",
-        "Questie",
+        "Questie-335",
         "WeakAuras",
-        "Omen Thread Meter",
-        "Prat",
+        "Omen",
+        "Prat-3.0",
     ] {
-        let entry = entry(name);
+        let entry = entry(first);
         let download = &entry.downloads[0];
         for folder in &download.folders {
-            let version = match name {
+            let version = match first {
                 // Behind the catalog, so its card offers an update.
-                "Questie" => "9.8.0-335".to_owned(),
+                "Questie-335" => "9.8.0-335".to_owned(),
                 _ => folder.version.clone().unwrap_or_else(|| "1.0".into()),
             };
             let toc = format!(
@@ -192,16 +201,12 @@ fn screenshots() {
             .collect(),
     };
     let plan = Plan {
-        install: [
-            "DBM Deadly Boss Mods Warmane",
-            "AtlasLoot Enhanced",
-            "Postal+",
-            "Recount",
-            "Grid2",
-        ]
-        .into_iter()
-        .map(entry)
-        .collect(),
+        // By their first folder too: DBM, AtlasLoot, Postal+, Recount and
+        // Grid2.
+        install: ["DBM-AQ20", "AtlasLoot", "Postal", "Recount", "Grid2"]
+            .into_iter()
+            .map(entry)
+            .collect(),
         present: vec![listed("Bartender4"), listed("Details"), listed("Questie")],
         unavailable: Vec::new(),
         manual: vec![listed("MyTweaks")],
