@@ -71,6 +71,10 @@ pub struct ClientTorrent {
         deserialize_with = "crate::locale::lenient::list"
     )]
     pub languages: Vec<Locale>,
+    /// Whether the launcher made the folder the client downloads into, so
+    /// discarding the download removes it only then.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub made: bool,
 }
 
 impl Config {
@@ -284,6 +288,7 @@ mod tests {
                     source: "magnet:?xt=urn:btih:c0ffee".into(),
                     folder: "/games/wotlk".into(),
                     languages: Vec::new(),
+                    made: false,
                 },
             )]),
             downloads: vec![ClientTorrent {
@@ -292,6 +297,7 @@ mod tests {
                 source: "/home/player/Downloads/hd.torrent".into(),
                 folder: "/games/HD".into(),
                 languages: vec![Locale::EsEs],
+                made: true,
             }],
         };
         config.set_launch(
@@ -367,6 +373,7 @@ mod tests {
                     source: "https://example.com/wotlk.torrent".into(),
                     folder: "/games".into(),
                     languages: Vec::new(),
+                    made: false,
                 },
             )]),
             downloads: Vec::new(),

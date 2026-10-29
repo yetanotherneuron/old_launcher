@@ -31,6 +31,7 @@ use iced::{Center, Element, Fill, Function, Subscription, Task, Widget};
 use crate::action::Action;
 use crate::activity::activity;
 use crate::core::config::ClientTorrent;
+use crate::core::mods::Mods;
 use crate::core::torrent::{Check, Torrent, client_in, folder_of_client, keep_origin, origin};
 use crate::core::{Config, Installation, Locale};
 use crate::errors::Errors;
@@ -68,24 +69,38 @@ pub struct State {
     peers: Vec<SocketAddr>,
     /// What the last check of each client folder found, this run.
     checked: BTreeMap<PathBuf, Integrity>,
+    /// The mods there are: a check leaves alone the files those installed
+    /// in a client own.
+    mods: Mods,
 }
 
 /// What a check found of a client's files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Integrity {
     /// Every file is as its torrent has it.
-    Intact,
+    Intact {
+        /// How many that mods replaced were left alone.
+        spared: usize,
+    },
     /// This many are missing or changed.
-    Damaged(usize),
+    Damaged {
+        /// How many files.
+        files: usize,
+        /// How many that mods replaced were left alone.
+        spared: usize,
+    },
     /// Those were downloaded again: every file is as its torrent has it.
-    Repaired,
+    Repaired {
+        /// How many that mods replaced were left alone.
+        spared: usize,
+    },
 }
 
 /// What the launcher is asked to do.
 #[derive(Debug, Clone)]
 pub enum Request {
-    /// Download the client of the torrent of `source`, into a folder named
-    /// after the torrent in `into`.
+    /// Download the client of the torrent of `source` into `into` itself if
+    /// that is empty, or into a folder named after the torrent in it.
     New { source: Source, into: PathBuf },
     /// Download the rest of the client being downloaded with this info hash.
     Resume(String),
@@ -170,8 +185,9 @@ enum Stage {
         read: Arc<AtomicU64>,
         stop: Arc<AtomicBool>,
     },
-    /// Every file of the client is as its torrent has it.
-    Intact,
+    /// Every file of the client is as its torrent has it: the check, which
+    /// may list files that are not its torrent's.
+    Intact(Check),
     /// Files of the client are missing, or differ from its torrent's.
     Damaged(Check),
     /// Showing the client's languages, those it `has`, which it can delete
@@ -206,6 +222,9 @@ pub struct Found {
     torrent: Arc<Torrent>,
     /// The folder its files go in once downloaded.
     folder: PathBuf,
+    /// Whether the launcher made that folder, rather than the player
+    /// choosing it.
+    made: bool,
     /// The engine, if finding the torrent took starting it.
     engine: Option<Engine>,
     /// What the launcher keeps of the client's torrent now, when that
@@ -304,8 +323,22 @@ pub enum Instruction {
 enum After {
     Nothing,
     /// Remove what was downloaded, in this staging folder, and the folder
-    /// it is in if that leaves it empty.
-    Remove(PathBuf),
+    /// it is in if the launcher `made` it and that leaves it empty: a
+    /// folder the player chose stays.
+    Remove {
+        staging: PathBuf,
+        made: bool,
+    },
+}
+
+/// What discarding the download `pending` removes: what it downloaded, and
+/// its folder only if the launcher made it; a folder the player chose is
+/// left, even empty.
+fn discarding(pending: &ClientTorrent) -> After {
+    After::Remove {
+        staging: pending.folder.join(STAGING),
+        made: pending.made,
+    }
 }
 
 impl State {
@@ -319,6 +352,7 @@ impl State {
             discarding: None,
             peers: Vec::new(),
             checked: BTreeMap::new(),
+            mods: Mods::default(),
         }
     }
 
@@ -461,7 +495,7 @@ impl State {
         let Some(job) = self.job.take() else {
             return;
         };
-        let After::Remove(staging) = job.after() else {
+        let After::Remove { staging, made } = job.after() else {
             return;
         };
 
@@ -476,7 +510,7 @@ impl State {
             _ => {}
         }
         // The folder made for it, if nothing else is there.
-        if let Some(folder) = staging.parent() {
+        if let Some(folder) = staging.parent().filter(|_| made) {
             let _ = fs::remove_dir(folder);
         }
     }
@@ -503,7 +537,7 @@ impl State {
     pub fn is_running(&self) -> bool {
         self.job
             .as_ref()
-            .is_some_and(|job| !matches!(job.stage, Stage::Intact | Stage::Failed(_)))
+            .is_some_and(|job| !matches!(job.stage, Stage::Intact(_) | Stage::Failed(_)))
     }
 
     /// Whether the dialog shows.
@@ -541,12 +575,32 @@ impl State {
             }
         }
 
-        self.checked.get(root).map(|integrity| match integrity {
-            Integrity::Intact => "Every file is intact.".to_owned(),
-            Integrity::Damaged(1) => "1 file is missing or changed.".to_owned(),
-            Integrity::Damaged(files) => format!("{files} files are missing or changed."),
-            Integrity::Repaired => "Repaired: every file is intact.".to_owned(),
+        self.checked.get(root).map(|integrity| match *integrity {
+            Integrity::Intact { spared } => {
+                format!("Every file is intact{}.", left_alone(spared, "; "))
+            }
+            Integrity::Damaged { files: 1, spared } => {
+                format!("1 file is missing or changed{}.", left_alone(spared, "; "))
+            }
+            Integrity::Damaged { files, spared } => {
+                format!(
+                    "{files} files are missing or changed{}.",
+                    left_alone(spared, "; ")
+                )
+            }
+            Integrity::Repaired { spared } => {
+                format!(
+                    "Repaired: every file is intact{}.",
+                    left_alone(spared, "; ")
+                )
+            }
         })
+    }
+
+    /// Takes note of the current list of mods: the files of those installed
+    /// are left alone by a check and a repair.
+    pub fn mods(&mut self, list: Mods) {
+        self.mods = list;
     }
 
     /// Whether starting the game of the client at `root` waits for its
@@ -667,16 +721,24 @@ impl State {
                             read: read.clone(),
                             stop: stop.clone(),
                         };
+                        let mods = self.mods.clone();
                         Task::perform(
                             blocking(move || {
-                                crate::core::torrent::check(&folder, &torrent, &mut |bytes| {
-                                    read.store(bytes, Ordering::Relaxed);
-                                    if stop.load(Ordering::Relaxed) {
-                                        ControlFlow::Break(())
-                                    } else {
-                                        ControlFlow::Continue(())
-                                    }
-                                })
+                                // What the mods installed own is theirs.
+                                let owned = mods.owned(&torrent.root(&folder));
+                                crate::core::torrent::check(
+                                    &folder,
+                                    &torrent,
+                                    &owned,
+                                    &mut |bytes| {
+                                        read.store(bytes, Ordering::Relaxed);
+                                        if stop.load(Ordering::Relaxed) {
+                                            ControlFlow::Break(())
+                                        } else {
+                                            ControlFlow::Continue(())
+                                        }
+                                    },
+                                )
                             }),
                             Message::Checked.with(id),
                         )
@@ -851,6 +913,7 @@ impl State {
                     source: kept_source(source, &torrent),
                     folder: found.folder.clone(),
                     languages: languages.clone(),
+                    made: found.made,
                 };
                 log::info!(
                     "Downloading {}, {}{}, for {}",
@@ -925,14 +988,24 @@ impl State {
                     }
                     Ok(Some(check)) if check.is_current() => {
                         log::info!("{} is as its torrent has it", job.name());
-                        job.stage = Stage::Intact;
+                        let spared = check.spared.len();
+                        job.stage = Stage::Intact(check);
                         if let Some(root) = &job.root {
-                            let _ = self.checked.insert(root.clone(), Integrity::Intact);
+                            let _ = self
+                                .checked
+                                .insert(root.clone(), Integrity::Intact { spared });
                         }
                         // What a repair cut short downloaded is of no use.
                         let left = job.staging.clone();
                         Action::task(left.map_or_else(Task::none, |staging| {
-                            clean_up(None, None, After::Remove(staging))
+                            clean_up(
+                                None,
+                                None,
+                                After::Remove {
+                                    staging,
+                                    made: false,
+                                },
+                            )
                         }))
                     }
                     Ok(Some(check)) => {
@@ -943,7 +1016,10 @@ impl State {
                             counted(check.different.len(), "file")
                         );
                         if let Some(root) = &job.root {
-                            let damaged = Integrity::Damaged(check.files().len());
+                            let damaged = Integrity::Damaged {
+                                files: check.files().len(),
+                                spared: check.spared.len(),
+                            };
                             let _ = self.checked.insert(root.clone(), damaged);
                         }
                         job.stage = Stage::Damaged(check);
@@ -1153,7 +1229,14 @@ impl State {
                                 counted(job.files.len(), "file")
                             );
                             log::info!("{notice}");
-                            let _ = self.checked.insert(root.clone(), Integrity::Repaired);
+                            // What the check that led to it left alone.
+                            let spared = match self.checked.get(&root) {
+                                Some(Integrity::Damaged { spared, .. }) => *spared,
+                                _ => 0,
+                            };
+                            let _ = self
+                                .checked
+                                .insert(root.clone(), Integrity::Repaired { spared });
                             Action::instruction(Instruction::Repaired { root, notice })
                         }
                     },
@@ -1197,13 +1280,13 @@ impl State {
                 }
                 log::info!("Discarding the download of {}", pending.name);
 
-                let staging = pending.folder.join(STAGING);
+                let after = discarding(pending);
                 let kept = self.kept_unless_shared(config, &info_hash);
                 Action::new(
                     Instruction::Discarded(info_hash),
                     Task::perform(
                         async move {
-                            tidy(None, None, After::Remove(staging)).await?;
+                            tidy(None, None, after).await?;
                             let Some(kept) = kept else {
                                 return Ok(());
                             };
@@ -1275,7 +1358,7 @@ impl State {
             | Stage::Identifying
             | Stage::Downloading { .. }
             | Stage::Confirming { .. }
-            | Stage::Intact
+            | Stage::Intact(_)
             | Stage::Damaged(_)
             | Stage::Failed(_) => false,
         };
@@ -1294,7 +1377,7 @@ impl State {
         };
         if !matches!(
             job.stage,
-            Stage::Intact | Stage::Failed(_) | Stage::Languages { .. }
+            Stage::Intact(_) | Stage::Failed(_) | Stage::Languages { .. }
         ) {
             log::info!("Stopped {}", job.name());
         }
@@ -1514,9 +1597,13 @@ impl State {
                     .boxed(),
                     row![hide, stop("Stop")],
                 ),
-                Stage::Intact => (
-                    text("Every file is as its torrent has it: there is nothing to repair.")
-                        .boxed(),
+                Stage::Intact(check) => (
+                    column![text(
+                        "Every file is as its torrent has it: there is nothing to repair."
+                    )]
+                    .extend(unexpected(check))
+                    .spacing(10)
+                    .boxed(),
                     row![stop("Close")],
                 ),
                 Stage::Damaged(check) => {
@@ -1672,7 +1759,7 @@ impl Job {
                 self.name(),
                 percent(&self.progress)
             ),
-            Stage::Intact => format!("Every file of {} is intact.", self.name()),
+            Stage::Intact(_) => format!("Every file of {} is intact.", self.name()),
             Stage::Damaged(_) => format!("Files of {} are missing or changed.", self.name()),
             Stage::Languages { .. } => format!("The languages of {}.", self.name()),
             Stage::Staging | Stage::Beginning => format!("{} {}…", self.verb(), self.name()),
@@ -1700,7 +1787,10 @@ impl Job {
 
         match self.kind {
             // Turned down before it was kept.
-            Kind::New { .. } if self.saved.is_none() => After::Remove(staging.clone()),
+            Kind::New { .. } if self.saved.is_none() => After::Remove {
+                staging: staging.clone(),
+                made: self.found.as_ref().is_some_and(|found| found.made),
+            },
             // A client being downloaded resumes later, and so does a
             // repair or a language: what it downloaded is there for the
             // next.
@@ -1816,20 +1906,36 @@ async fn find_new(
         .map_err(|error| format!("Could not get the torrent: {error}"))?;
     let torrent = holding_a_client(&bytes)?;
 
-    let folder = into.join(folder_name(&torrent.name, &torrent.info_hash));
-    let taken = {
-        let folder = folder.clone();
-        tokio::task::spawn_blocking(move || {
-            fs::read_dir(&folder).is_ok_and(|mut entries| {
-                entries.any(|entry| entry.is_ok_and(|entry| entry.file_name() != STAGING))
-            })
+    // Anything but a download cut short counts as something in it, hidden
+    // or not; one missing is made.
+    let holds = |folder: PathBuf| async move {
+        tokio::task::spawn_blocking(move || match fs::read_dir(&folder) {
+            Ok(mut entries) => {
+                Ok(entries.any(|entry| entry.map_or(true, |entry| entry.file_name() != STAGING)))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(format!("{}: {error}", folder.display())),
         })
         .await
-        .unwrap_or(false)
+        .unwrap_or(Ok(false))
     };
+    // An empty folder takes the client itself.
+    if !holds(into.clone()).await? {
+        let made = !into.exists();
+        return Ok(Found {
+            bytes: Arc::new(bytes),
+            torrent: Arc::new(torrent),
+            folder: into,
+            made,
+            engine,
+            saved: None,
+        });
+    }
+
+    let folder = into.join(folder_name(&torrent.name, &torrent.info_hash));
     // One that holds something is someone else's; a download of it cut
     // short resumes.
-    if taken {
+    if holds(folder.clone()).await? {
         return Err(format!(
             "{} is there already: choose another folder to download into.",
             folder.display()
@@ -1840,6 +1946,7 @@ async fn find_new(
         bytes: Arc::new(bytes),
         torrent: Arc::new(torrent),
         folder,
+        made: true,
         engine,
         saved: None,
     })
@@ -1871,6 +1978,7 @@ async fn find_kept(
         bytes: Arc::new(bytes),
         torrent: Arc::new(torrent),
         folder: saved.folder,
+        made: false,
         engine,
         saved: None,
     })
@@ -1915,6 +2023,7 @@ async fn find_given(
         source: kept_source(&source, &torrent),
         folder: folder.clone(),
         languages: Vec::new(),
+        made: false,
     };
     let bytes = Arc::new(bytes);
     keep_copy(kept_in(&store, &torrent.info_hash), bytes.clone()).await?;
@@ -1924,6 +2033,7 @@ async fn find_given(
         bytes,
         torrent: Arc::new(torrent),
         folder,
+        made: false,
         engine,
         saved: Some(saved),
     })
@@ -1998,6 +2108,7 @@ async fn find_again(
         source: kept_source(&source, &torrent),
         folder: saved.folder.clone(),
         languages: saved.languages.clone(),
+        made: saved.made,
     };
     note_origin(root, now.clone()).await;
 
@@ -2005,6 +2116,7 @@ async fn find_again(
         bytes: Arc::new(bytes),
         torrent: Arc::new(torrent),
         folder: saved.folder.clone(),
+        made: false,
         engine,
         saved: (now != saved).then_some(now),
     })
@@ -2229,6 +2341,7 @@ async fn begin(
 /// to be 3.3.5a's; and notes them there as the torrent has them. For a new
 /// client, `new` is what the launcher keeps of its torrent, which the
 /// client folder notes too, and the client is opened.
+#[allow(clippy::too_many_arguments)]
 async fn finish(
     engine: Engine,
     download: Download,
@@ -2290,7 +2403,7 @@ async fn tidy(
     };
     let after = match after {
         After::Nothing => Ok(()),
-        After::Remove(staging) => tokio::task::spawn_blocking(move || {
+        After::Remove { staging, made } => tokio::task::spawn_blocking(move || {
             match fs::remove_dir_all(&staging) {
                 Err(error) if error.kind() != io::ErrorKind::NotFound => {
                     return Err(format!("{}: {error}", staging.display()));
@@ -2298,7 +2411,7 @@ async fn tidy(
                 _ => {}
             }
             // The folder it was made in, if there is nothing else there.
-            if let Some(folder) = staging.parent() {
+            if let Some(folder) = staging.parent().filter(|_| made) {
                 let _ = fs::remove_dir(folder);
             }
             Ok(())
@@ -2413,6 +2526,16 @@ fn transfer(job: &Job, pieces: Option<usize>) -> Element<'_, Message> {
     .boxed()
 }
 
+/// What a check says of the `spared` files that mods replaced, after
+/// `lead`: nothing when there are none.
+fn left_alone(spared: usize, lead: &str) -> String {
+    match spared {
+        0 => String::new(),
+        1 => format!("{lead}1 that a mod replaced is left alone"),
+        _ => format!("{lead}{spared} that mods replaced are left alone"),
+    }
+}
+
 /// What a repair downloads: how much, and which files.
 fn damaged<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Message> {
     let Some(torrent) = found.map(|found| &*found.torrent) else {
@@ -2458,8 +2581,49 @@ fn damaged<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messag
             .size(13)
             .style(text::secondary),
     ]
+    .extend((!check.spared.is_empty()).then(|| -> Element<'a, Message> {
+        text(match check.spared.len() {
+            1 => "1 file that a mod replaced is left alone.".to_owned(),
+            spared => format!("{spared} files that mods replaced are left alone."),
+        })
+        .size(13)
+        .style(text::secondary)
+        .boxed()
+    }))
+    .extend(unexpected(check))
     .spacing(10)
     .boxed()
+}
+
+/// What a check says of the client's files that are not its torrent's, which
+/// a repair leaves as they are: the first few, then how many more. Nothing
+/// when there are none.
+fn unexpected<'a>(check: &Check) -> Option<Element<'a, Message>> {
+    if check.unexpected.is_empty() {
+        return None;
+    }
+    let mut names = check
+        .unexpected
+        .iter()
+        .take(NAMED)
+        .cloned()
+        .collect::<Vec<_>>();
+    let rest = check.unexpected.len().saturating_sub(NAMED);
+    let list = if rest > 0 {
+        names.push(format!("… and {rest} more"));
+        names.join(", ")
+    } else {
+        names.join(", ")
+    };
+
+    Some(
+        text(format!(
+            "Not from the torrent, and left as they are: {list}."
+        ))
+        .size(13)
+        .style(text::secondary)
+        .boxed(),
+    )
 }
 
 /// The languages of `job`'s client: those it `has`, each with a button
@@ -2933,11 +3097,9 @@ mod tests {
 
         // Checked against its torrent later, nothing is missing.
         let check =
-            crate::core::torrent::check(
-                &found.folder,
-                &torrent,
-                &mut |_| ControlFlow::Continue(()),
-            )
+            crate::core::torrent::check(&found.folder, &torrent, &BTreeMap::new(), &mut |_| {
+                ControlFlow::Continue(())
+            })
             .unwrap()
             .unwrap();
         assert!(check.is_current(), "{check:?}");
@@ -2987,7 +3149,8 @@ mod tests {
         confirming(&mut state, &path, into.path()).await;
         let found = job(&state).found.clone().unwrap();
         let staging = job(&state).staging.clone().unwrap();
-        assert_eq!(found.folder, into.path().join("WotLK"));
+        assert_eq!(found.folder, into.path(), "the empty folder chosen");
+        assert!(!found.made);
         assert_eq!(staging, found.folder.join(".download"));
         assert_eq!(
             listed(&found.folder),
@@ -3092,15 +3255,31 @@ mod tests {
 
         // What stopping cleans up, done as its task does it.
         let (after, download) = (job(&state).after(), job(&state).download.clone());
-        assert!(matches!(&after, After::Remove(removed) if *removed == staging));
+        assert!(
+            matches!(&after, After::Remove { staging: removed, made: false } if *removed == staging)
+        );
         let _ = update(&mut state, Message::Stop, &Config::default(), false);
         assert!(state.job.is_none());
         tidy(state.engine.clone(), download, after).await.unwrap();
         assert!(!staging.exists());
-        assert!(listed(into.path()).is_empty(), "nor the folder made for it");
+        assert!(into.path().is_dir(), "the folder chosen stays");
+        assert!(listed(into.path()).is_empty());
+
+        // A folder holding something gets one for the client, which goes
+        // with it.
+        fs::write(into.path().join("games.txt"), b"mine").unwrap();
+        let folder = into.path().join("WotLK");
+        let mut state = downloading_from(&seeder, &cache).await;
+        confirming(&mut state, &path, into.path()).await;
+        let staging = job(&state).staging.clone().unwrap();
+        assert_eq!(staging, folder.join(".download"));
+        let (after, download) = (job(&state).after(), job(&state).download.clone());
+        assert!(matches!(&after, After::Remove { made: true, .. }));
+        let _ = update(&mut state, Message::Stop, &Config::default(), false);
+        tidy(state.engine.clone(), download, after).await.unwrap();
+        assert_eq!(listed(into.path()), ["games.txt"], "nor the folder made");
 
         // A folder holding a download of it cut short is its own.
-        let folder = into.path().join("WotLK");
         fs::create_dir_all(folder.join(".download")).unwrap();
         let again = || {
             find_new(
@@ -3118,6 +3297,137 @@ mod tests {
             again()
                 .await
                 .is_err_and(|error| error.contains("is there already"))
+        );
+    }
+
+    #[test]
+    fn what_a_check_leaves_alone_is_told_in_words() {
+        let root = Path::new("client");
+        let mut state = State::new(PathBuf::new());
+        for (integrity, said) in [
+            (Integrity::Intact { spared: 0 }, "Every file is intact."),
+            (
+                Integrity::Intact { spared: 1 },
+                "Every file is intact; 1 that a mod replaced is left alone.",
+            ),
+            (
+                Integrity::Intact { spared: 2 },
+                "Every file is intact; 2 that mods replaced are left alone.",
+            ),
+            (
+                Integrity::Damaged {
+                    files: 1,
+                    spared: 0,
+                },
+                "1 file is missing or changed.",
+            ),
+            (
+                Integrity::Damaged {
+                    files: 3,
+                    spared: 2,
+                },
+                "3 files are missing or changed; 2 that mods replaced are left alone.",
+            ),
+            (
+                Integrity::Repaired { spared: 2 },
+                "Repaired: every file is intact; 2 that mods replaced are left alone.",
+            ),
+        ] {
+            let _ = state.checked.insert(root.to_path_buf(), integrity);
+            assert_eq!(state.integrity(root).as_deref(), Some(said));
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_files_of_an_installed_mod_are_left_alone_by_a_check_and_a_repair() {
+        let files = files();
+        let (bytes, _seeding, seeder) = seeded(&files).await;
+        let torrent = Torrent::parse(&bytes).unwrap();
+        let cache = Cache::new();
+        fs::write(
+            cache
+                .store
+                .path()
+                .join(format!("{}.torrent", torrent.info_hash)),
+            &bytes,
+        )
+        .unwrap();
+
+        // A mod replaced a game file, and the client notes it installed it.
+        let client = tempfile::tempdir().unwrap();
+        let root = client.path().to_path_buf();
+        write(&root, &files);
+        fs::write(root.join("Data/common.MPQ"), vec![8; 40_000]).unwrap();
+        fs::write(
+            root.join(".old_launcher.toml"),
+            "[mods.maps]\nversion = \"1.0\"\nurl = \"https://example.com/maps.zip\"\nset_up = true\n",
+        )
+        .unwrap();
+        let list = Mods::parse(
+            format!(
+                r#"{{"version":{},"mods":[{{"id":"maps","name":"Maps",
+                "source":{{"name":"x","page":"https://example.com"}},
+                "releases":[{{"version":"1.0","url":"https://example.com/maps.zip",
+                "files":[["data/COMMON.mpq","{}"]]}}]}}]}}"#,
+                Mods::VERSION,
+                "0".repeat(64)
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let saved = ClientTorrent {
+            name: "WotLK".into(),
+            info_hash: torrent.info_hash.clone(),
+            source: format!("magnet:?xt=urn:btih:{}", torrent.info_hash),
+            folder: root.clone(),
+            languages: Vec::new(),
+            made: false,
+        };
+        let config = Config {
+            installations: vec![root.clone()],
+            torrents: BTreeMap::from([(root.clone(), saved.clone())]),
+            ..Config::default()
+        };
+        let mut state = downloading_from(&seeder, &cache).await;
+        state.mods(list.clone());
+
+        let _ = state.start(Request::Check(root.clone()), &config, Err("offline"));
+        let found = find_again(
+            saved,
+            root.clone(),
+            cache.store.path().to_path_buf(),
+            state.engine.clone(),
+            Err("offline".to_owned()),
+            Vec::new(),
+        )
+        .await;
+        let _ = update(&mut state, Message::Found(1, found), &config, false);
+
+        let owned = list.owned(&root);
+        assert_eq!(owned.keys().collect::<Vec<_>>(), ["data/common.mpq"]);
+        let checked =
+            crate::core::torrent::check(
+                &root,
+                &torrent,
+                &owned,
+                &mut |_| ControlFlow::Continue(()),
+            )
+            .map_err(|error| describe(&error));
+        let _ = update(&mut state, Message::Checked(1, checked), &config, false);
+
+        assert!(
+            matches!(job(&state).stage, Stage::Intact(_)),
+            "nothing to repair"
+        );
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("Every file is intact; 1 that a mod replaced is left alone.")
+        );
+        assert_eq!(
+            fs::read(root.join("Data/common.MPQ")).unwrap(),
+            vec![8; 40_000],
+            "the mod's file stays"
         );
     }
 
@@ -3148,6 +3458,7 @@ mod tests {
             source: format!("magnet:?xt=urn:btih:{}", torrent.info_hash),
             folder: root.clone(),
             languages: Vec::new(),
+            made: false,
         };
         let config = Config {
             installations: vec![root.clone()],
@@ -3180,9 +3491,10 @@ mod tests {
             "a client from before it was noted is now"
         );
 
-        let checked =
-            crate::core::torrent::check(&root, &torrent, &mut |_| ControlFlow::Continue(()))
-                .map_err(|error| describe(&error));
+        let checked = crate::core::torrent::check(&root, &torrent, &BTreeMap::new(), &mut |_| {
+            ControlFlow::Continue(())
+        })
+        .map_err(|error| describe(&error));
         let _ = update(&mut state, Message::Checked(1, checked), &config, false);
         assert!(matches!(job(&state).stage, Stage::Damaged(_)));
         assert_eq!(
@@ -3202,6 +3514,89 @@ mod tests {
             let _ = ui.click("Repair");
             assert!(ui.into_messages().next().is_none(), "not while playing");
         }
+
+        // Files that are not the torrent's are named, a few, in either
+        // dialog, and a repair has nothing to do with them.
+        let Stage::Damaged(real) = &job(&state).stage else {
+            panic!("damaged");
+        };
+        let real = real.clone();
+        let lead = "Not from the torrent, and left as they are: ";
+        let extra = |count: usize| Check {
+            unexpected: (0..count).map(|n| format!("Data/patch-{n}.mpq")).collect(),
+            ..real.clone()
+        };
+        let _ = update(
+            &mut state,
+            Message::Checked(1, Ok(Some(extra(10)))),
+            &config,
+            false,
+        );
+        let Stage::Damaged(check) = &job(&state).stage else {
+            panic!("damaged");
+        };
+        assert_eq!(check.files(), real.files(), "only these are repaired");
+        let sentence = format!(
+            "{lead}{}, … and 2 more.",
+            (0..8)
+                .map(|n| format!("Data/patch-{n}.mpq"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        assert!(
+            simulator(state.dialog(true).unwrap())
+                .find(sentence)
+                .is_ok()
+        );
+
+        let _ = update(
+            &mut state,
+            Message::Checked(1, Ok(Some(Check::default()))),
+            &config,
+            false,
+        );
+        assert!(matches!(job(&state).stage, Stage::Intact(_)));
+        assert!(
+            simulator(state.dialog(true).unwrap())
+                .find("Every file is as its torrent has it: there is nothing to repair.")
+                .is_ok()
+        );
+        let _ = update(
+            &mut state,
+            Message::Checked(1, Ok(Some(extra(2)))),
+            &config,
+            false,
+        );
+        let _ = update(
+            &mut state,
+            Message::Checked(
+                1,
+                Ok(Some(Check {
+                    missing: Vec::new(),
+                    different: Vec::new(),
+                    ..extra(2)
+                })),
+            ),
+            &config,
+            false,
+        );
+        assert!(matches!(job(&state).stage, Stage::Intact(_)));
+        assert!(
+            simulator(state.dialog(true).unwrap())
+                .find(format!("{lead}Data/patch-0.mpq, Data/patch-1.mpq."))
+                .is_ok()
+        );
+        let _ = update(
+            &mut state,
+            Message::Checked(1, Ok(Some(real))),
+            &config,
+            false,
+        );
+        let Stage::Damaged(check) = &job(&state).stage else {
+            panic!("damaged");
+        };
+        assert!(check.unexpected.is_empty(), "nothing to say");
+        assert!(unexpected(check).is_none());
         let _ = update(&mut state, Message::Repair, &config, true);
         assert!(matches!(job(&state).stage, Stage::Damaged(_)));
 
@@ -3268,10 +3663,11 @@ mod tests {
             b"set realmlist logon.other.org"
         );
         assert!(!staging.exists());
-        let check =
-            crate::core::torrent::check(&root, &torrent, &mut |_| ControlFlow::Continue(()))
-                .unwrap()
-                .unwrap();
+        let check = crate::core::torrent::check(&root, &torrent, &BTreeMap::new(), &mut |_| {
+            ControlFlow::Continue(())
+        })
+        .unwrap()
+        .unwrap();
         assert!(check.is_current(), "{check:?}");
     }
 
@@ -3309,6 +3705,7 @@ mod tests {
             source: format!("magnet:?xt=urn:btih:{}", torrent.info_hash),
             folder: root.clone(),
             languages: Vec::new(),
+            made: false,
         };
         let config = Config {
             installations: vec![root.clone()],
@@ -3524,6 +3921,7 @@ mod tests {
             source: given.display().to_string(),
             folder: client.path().to_path_buf(),
             languages: Vec::new(),
+            made: false,
         };
         let again = || {
             find_again(
@@ -3599,6 +3997,7 @@ mod tests {
                 source,
                 folder: root.clone(),
                 languages: Vec::new(),
+                made: false,
             };
 
             let found = find_again(
@@ -3684,6 +4083,7 @@ mod tests {
                 source: torrent.magnet(),
                 folder: root.clone(),
                 languages: Vec::new(),
+                made: false,
             }
         );
         assert!(saved.source.contains("&tr=udp"), "its trackers find it");
@@ -3763,8 +4163,10 @@ mod tests {
         let _ = update(&mut state, Message::Found(1, found), &config, false);
         let found = job(&state).found.clone().unwrap();
         let checked =
-            crate::core::torrent::check(&root, &found.torrent, &mut |_| ControlFlow::Continue(()))
-                .map_err(|error| describe(&error));
+            crate::core::torrent::check(&root, &found.torrent, &BTreeMap::new(), &mut |_| {
+                ControlFlow::Continue(())
+            })
+            .map_err(|error| describe(&error));
         let _ = update(&mut state, Message::Checked(1, checked), &config, false);
         let Stage::Damaged(check) = &job(&state).stage else {
             panic!("nothing to repair");
@@ -3813,6 +4215,7 @@ mod tests {
                     bytes: Arc::new(bytes),
                     torrent: Arc::new(torrent),
                     folder: "/games/WotLK".into(),
+                    made: true,
                     engine: None,
                     saved: None,
                 }),
@@ -3933,6 +4336,7 @@ mod tests {
             source: "magnet:?xt=urn:btih:c0ffee".into(),
             folder: into.path().join("WotLK"),
             languages: Vec::new(),
+            made: false,
         };
         let config = Config {
             downloads: vec![pending.clone()],
@@ -3977,10 +4381,18 @@ mod tests {
             matches!(action.instruction, Some(Instruction::Discarded(hash)) if hash == "c0ffee")
         );
 
-        // What the task does.
-        tidy(None, None, After::Remove(staging.clone()))
-            .await
-            .unwrap();
+        // What the task does: a folder the player chose stays.
+        tidy(None, None, discarding(&pending)).await.unwrap();
+        assert!(!staging.exists());
+        assert_eq!(listed(into.path()), ["WotLK"], "the folder was not made");
+
+        // The folder the launcher made goes too.
+        fs::create_dir_all(&staging).unwrap();
+        let made = ClientTorrent {
+            made: true,
+            ..pending.clone()
+        };
+        tidy(None, None, discarding(&made)).await.unwrap();
         assert!(listed(into.path()).is_empty(), "nor the folder made for it");
 
         // The copy of its torrent goes with it, unless a client is checked
@@ -4056,6 +4468,34 @@ mod tests {
             !games.path().join("WotLK").exists(),
             "nor the folder made for it"
         );
+
+        // A folder the player chose stays, even empty; one with something
+        // else in it keeps that too.
+        for other in [None, Some("notes.txt")] {
+            let games = tempfile::tempdir().unwrap();
+            let chosen = games.path().join("WotLK");
+            let staging = chosen.join(".download");
+            fs::create_dir_all(staging.join("Data")).unwrap();
+            fs::write(staging.join("Wow.exe"), b"MZ").unwrap();
+            if let Some(other) = other {
+                fs::write(chosen.join(other), b"mine").unwrap();
+            }
+            let source = Source::Magnet("magnet:?xt=urn:btih:c0ffee".to_owned());
+            let mut state = at(
+                Kind::New { source },
+                Stage::Identifying,
+                Progress::default(),
+                false,
+            );
+            let job = state.job.as_mut().unwrap();
+            job.staging = Some(staging.clone());
+            if let Some(found) = job.found.as_mut() {
+                found.made = false;
+            }
+            state.abandon();
+            assert!(!staging.exists(), "what was downloaded goes");
+            assert!(chosen.is_dir(), "the player's folder stays");
+        }
 
         // A client being downloaded, and a repair, resume.
         for kind in [Kind::Resume, Kind::Check] {
@@ -4139,6 +4579,52 @@ mod tests {
         assert_eq!(folder_name("../..", "c0ffee"), ".._");
         assert_eq!(folder_name(" .. ", "c0ffee"), "c0ffee");
         assert_eq!(folder_name("client. ", "c0ffee"), "client");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_empty_folder_chosen_holds_the_client_itself() {
+        let given = tempfile::tempdir().unwrap();
+        let path = given.path().join("client.torrent");
+        let executable = fake_executable(WOTLK);
+        let listed: Vec<(&str, &[u8])> = vec![("Wow.exe", &executable), ("Data/common.MPQ", b"x")];
+        fs::write(&path, torrent_of("WotLK", &listed, 1024 * 1024)).unwrap();
+        let find = |into: &Path| {
+            find_new(
+                Source::File(path.clone()),
+                into.to_path_buf(),
+                None,
+                Err("offline".to_owned()),
+                Vec::new(),
+            )
+        };
+
+        // Empty: the client goes in it.
+        let into = tempfile::tempdir().unwrap();
+        let found = find(into.path()).await.unwrap();
+        assert_eq!(found.folder, into.path());
+        assert!(!found.made);
+
+        // Anything else, hidden or not: a folder for it, made by the launcher.
+        for stray in ["notes.txt", ".hidden"] {
+            let into = tempfile::tempdir().unwrap();
+            fs::write(into.path().join(stray), b"mine").unwrap();
+            let found = find(into.path()).await.unwrap();
+            assert_eq!(found.folder, into.path().join("WotLK"), "{stray}");
+            assert!(found.made, "{stray}");
+        }
+
+        // A download cut short resumes where it is.
+        let into = tempfile::tempdir().unwrap();
+        fs::create_dir(into.path().join(".download")).unwrap();
+        let found = find(into.path()).await.unwrap();
+        assert_eq!(found.folder, into.path());
+        assert!(!found.made);
+
+        // Missing: the launcher makes it.
+        let missing = into.path().join("games");
+        let found = find(&missing).await.unwrap();
+        assert_eq!(found.folder, missing);
+        assert!(found.made);
     }
 
     /// The HTTP client the launcher fetches with, as it starts (see
@@ -4282,7 +4768,9 @@ mod tests {
             let started = std::time::Instant::now();
             let (folder, checked) = (folder.clone(), torrent.clone());
             let check = blocking(move || {
-                crate::core::torrent::check(&folder, &checked, &mut |_| ControlFlow::Continue(()))
+                crate::core::torrent::check(&folder, &checked, &BTreeMap::new(), &mut |_| {
+                    ControlFlow::Continue(())
+                })
             })
             .await
             .unwrap()
@@ -4331,6 +4819,7 @@ mod tests {
             source: real_torrent().to_string(),
             folder: root.clone(),
             languages: Vec::new(),
+            made: false,
         };
         let config = Config {
             installations: vec![root.clone()],
@@ -4351,7 +4840,9 @@ mod tests {
         let _ = update(&mut state, Message::Found(1, found), &config, false);
         let checking = |root: PathBuf, torrent: Arc<Torrent>| {
             blocking(move || {
-                crate::core::torrent::check(&root, &torrent, &mut |_| ControlFlow::Continue(()))
+                crate::core::torrent::check(&root, &torrent, &BTreeMap::new(), &mut |_| {
+                    ControlFlow::Continue(())
+                })
             })
         };
         let started = std::time::Instant::now();

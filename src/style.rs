@@ -66,6 +66,9 @@ pub static PLUS: Art = Art::new(include_bytes!("../assets/plus.svg"));
 /// A pen, for editing.
 pub static PEN: Art = Art::new(include_bytes!("../assets/pen.svg"));
 
+/// Two curved arrows in a circle, for reading again.
+pub static REFRESH: Art = Art::new(include_bytes!("../assets/refresh.svg"));
+
 /// A cog, for the settings.
 pub static COG: Art = Art::new(include_bytes!("../assets/cog.svg"));
 

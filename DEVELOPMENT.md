@@ -72,8 +72,10 @@ launcher gets again from the peers when a copy is missing.
 - **The game's own files are the player's.** `WTF`, `Interface/AddOns`,
   any `realmlist.wtf`, and what the game writes (`Cache`, `Logs`,
   `Screenshots`, `Errors`) are never compared with a torrent nor replaced
-  from one; a mod's `settings` are kept by a reinstall; and while a
-  client's game runs, nothing the game writes back on exit is touched.
+  from one; a mod's `settings` are kept by a reinstall; and the files of a
+  mod installed are the mod's: a repair from a torrent leaves them alone;
+  and while a client's game runs, nothing the game writes back on exit is
+  touched.
 - **No database.** Everything comes from the client folder: addon folders
   and their `.toc`, the `.old_launcher.toml` marker left in each folder the
   launcher installs (`core/src/marker.rs`), and one `.old_launcher.toml`

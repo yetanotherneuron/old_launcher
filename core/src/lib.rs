@@ -36,7 +36,7 @@ pub use adoption::Adoption;
 pub use catalog::Catalog;
 pub use config::Config;
 pub use error::Error;
-pub use installation::{Details, Installation, Realmlist};
+pub use installation::{Details, Installation, Named, Realmlist, Server};
 pub use launch::Launch;
 pub use locale::Locale;
 pub use marker::Marker;

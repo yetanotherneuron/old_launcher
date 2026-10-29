@@ -123,6 +123,8 @@ pub struct App {
     /// Whether quitting was asked for while something it would cut short
     /// is under way, so the launcher asks first (see [`App::under_way`]).
     quitting: bool,
+    /// Whether the window has the focus.
+    focused: bool,
 }
 
 /// The state of the client folder being shown.
@@ -190,8 +192,8 @@ pub enum Message {
     ManageClients,
     /// Start the game.
     Play,
-    /// The launcher's window got the focus back.
-    Focused,
+    /// The launcher's window got the focus, or lost it.
+    Focused(bool),
     /// The selected client folder was checked.
     Opened(PathBuf, Result<Installation, String>),
     /// A client folder was scanned.
@@ -340,9 +342,11 @@ impl App {
             game: game::State::default(),
             latest: None,
             quitting: false,
+            focused: true,
         };
         app.clients.keep_mod_downloads_in(clients::mods::cache());
         // No client is open yet to look at with it.
+        app.download.mods(mods.clone());
         let _ = app.clients.list_mods(mods, None);
 
         let start = if app.recovery.is_some() {
@@ -786,17 +790,20 @@ impl App {
                 .game
                 .update(message, &mut self.errors)
                 .map(Message::Game),
-            // Back from somewhere else, where a game may have started or a
-            // realmlist been edited.
-            Message::Focused => {
+            // Back from somewhere else, where a game may have started. The
+            // window reports the focus more than once per return, so only
+            // the change from lost to gained counts.
+            Message::Focused(focused) => {
+                let regained = focused && !self.focused;
+                self.focused = focused;
+                if !regained {
+                    return Task::none();
+                }
                 log::trace!("The window got the focus back");
                 let (installation, _) = self.selected.open();
                 let selected = installation.map(Installation::root);
 
-                Task::batch([
-                    self.game.watch(selected).map(Message::Game),
-                    self.update(Message::Clients(clients::Message::Focused)),
-                ])
+                self.game.watch(selected).map(Message::Game)
             }
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
@@ -854,6 +861,7 @@ impl App {
                             counted(scanned.saved_variables.iter().count(), "addon")
                         );
                         *snapshot = Some(scanned);
+                        self.addons.rescanned();
                         self.propose();
 
                         // What the folder holds changed with its addons.
@@ -864,6 +872,8 @@ impl App {
                     Err(error) => {
                         self.errors
                             .report(format!("Could not read the client: {error}"));
+                        // The cards must not stay off for good.
+                        self.addons.rescanned();
                         Task::none()
                     }
                 }
@@ -910,6 +920,7 @@ impl App {
                         counted(mods.mods.len(), "mod")
                     );
                     self.mods_tag = tag;
+                    self.download.mods(mods.clone());
                     self.clients
                         .list_mods(mods, self.selected.path())
                         .map(Message::Clients)
@@ -1415,8 +1426,10 @@ impl App {
             keyboard::listen().filter_map(shortcut),
             // Closing the window quits as Ctrl+Q does (see `main`).
             window::close_requests().map(|_| Message::Quit),
-            event::listen_with(|event, _status, _window| {
-                matches!(event, Event::Window(window::Event::Focused)).then_some(Message::Focused)
+            event::listen_with(|event, _status, _window| match event {
+                Event::Window(window::Event::Focused) => Some(Message::Focused(true)),
+                Event::Window(window::Event::Unfocused) => Some(Message::Focused(false)),
+                _ => None,
             }),
             self.game.subscription().map(Message::Game),
             self.download.subscription().map(Message::Download),
@@ -1799,6 +1812,7 @@ mod tests {
             game: game::State::default(),
             latest: None,
             quitting: false,
+            focused: true,
         }
     }
 
@@ -1956,6 +1970,7 @@ mod tests {
             source: format!("magnet:?xt=urn:btih:{info_hash}"),
             folder: folder.to_path_buf(),
             languages: Vec::new(),
+            made: false,
         };
         let _ = app
             .config
@@ -2013,6 +2028,7 @@ mod tests {
             source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
             folder: root.clone(),
             languages: Vec::new(),
+            made: false,
         };
         let details = core::Details {
             torrent: Some(torrent.clone()),
@@ -2395,6 +2411,25 @@ mod tests {
         assert!(app.settings.is_open());
         let mut ui = simulator(app.view());
         assert!(ui.find(settings::USE_CLI).is_ok());
+    }
+
+    #[test]
+    fn focus_gained_twice_watches_once() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let mut app = opened(installation);
+
+        assert_eq!(
+            app.update(Message::Focused(true)).units(),
+            0,
+            "it had the focus already"
+        );
+        assert_eq!(app.update(Message::Focused(false)).units(), 0);
+        assert!(app.update(Message::Focused(true)).units() > 0, "regained");
+        assert_eq!(
+            app.update(Message::Focused(true)).units(),
+            0,
+            "the second report of the same return"
+        );
     }
 
     #[test]

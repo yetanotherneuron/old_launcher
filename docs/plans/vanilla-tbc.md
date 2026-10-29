@@ -90,8 +90,9 @@ locally, and the Windows target through CI.
   `Realmlist::of(root, expansion)`: the client root for Vanilla and TBC,
   `Data/<locale>` for Wrath. `Details::read` reads the executable's version
   itself and stores `expansion: Option<Expansion>` in `Details`, so the
-  clients dialog keeps working on folders that never opened, and the focus
-  re-read in `src/clients.rs` (`Message::Focused`) passes it on.
+  clients dialog keeps working on folders that never opened. Window focus
+  only looks for a running game; the realmlist is read again with its
+  refresh button, which passes the expansion on.
 - `core/src/error.rs`: `UnsupportedVersion` names the three supported
   versions.
 - `core/src/toc.rs`: `WOTLK_INTERFACE` goes. `made_for(interface,

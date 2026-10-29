@@ -332,9 +332,12 @@ impl State {
                     browse("Browse…", idle.then_some(Message::BrowseInto)),
                 ]
                 .spacing(8),
-                text("The client gets a folder of its own there, named after the torrent.")
-                    .size(13)
-                    .style(text::secondary),
+                text(
+                    "An empty folder takes the client itself; one with something in it gets a \
+                     folder for it, named after the torrent."
+                )
+                .size(13)
+                .style(text::secondary),
             ],
         }
         .spacing(10);

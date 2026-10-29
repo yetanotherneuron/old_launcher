@@ -807,12 +807,7 @@
         }
       ],
       "excludes": [
-        "Data/patch-f.mpq",
         "Data/{locale}/patch-{locale}-F.MPQ"
-      ],
-      "conflicts": [
-        "Data/patch-s.mpq",
-        "Data/{locale}/patch-{locale}-S.MPQ"
       ],
       "alternatives": [
         "lau-hd-new-spells",

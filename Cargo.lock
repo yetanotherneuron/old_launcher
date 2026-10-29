@@ -3696,6 +3696,7 @@ dependencies = [
  "dunce",
  "flate2",
  "librqbit-core",
+ "log",
  "rars",
  "serde",
  "serde_json",

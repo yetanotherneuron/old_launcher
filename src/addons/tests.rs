@@ -156,6 +156,38 @@ fn installing_needs_an_open_client() {
 }
 
 #[test]
+fn a_finished_install_stays_disabled_until_the_client_is_read_again() {
+    let catalog = catalog();
+    let (_root, installation) = testing::client(&[]);
+    let snapshot = installation.scan().unwrap();
+    let mut state = State::new();
+    let key = Key::of(&catalog.entries[0]);
+
+    let _ = state.update(
+        Message::Finished(key.clone(), Ok(vec!["Acp".into()])),
+        &catalog,
+        Ok(&client()),
+        Some(&installation),
+        None,
+        false,
+        &mut Errors::default(),
+    );
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    let _ = ui.click("Install");
+    assert_eq!(ui.into_messages().count(), 0);
+
+    state.rescanned();
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    let _ = ui.click("Install").unwrap();
+    assert!(matches!(
+        ui.into_messages().next(),
+        Some(Message::Install(Key(key))) if key == "acp"
+    ));
+}
+
+#[test]
 fn without_a_catalog_the_list_says_what_is_going_on() {
     let state = State::new();
     let catalog = Catalog::default();
@@ -605,6 +637,7 @@ fn failures_go_to_the_banner_saying_what_failed() {
         &mut errors,
     );
     assert!(matches!(finished.instruction, Some(Instruction::Changed)));
+    state.rescanned();
 
     // Stopping a download is asked for; the job stays until it says it
     // stopped, and nothing is reported then.

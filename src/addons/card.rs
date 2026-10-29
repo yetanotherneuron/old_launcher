@@ -35,6 +35,7 @@ impl State {
         let key = entry.map(Key::of);
         let card_id = key.as_ref().map(id);
         let job = key.as_ref().and_then(|key| self.jobs.get(key));
+        let settling = key.as_ref().is_some_and(|key| self.settling.contains(key));
         let update = library.update(item);
 
         let main = group.and_then(|group| group.addons.first().copied());
@@ -261,7 +262,9 @@ impl State {
                         } else {
                             style::primary
                         })
-                        .on_press_maybe(can_install.then_some(Message::Install(key)));
+                        .on_press_maybe(
+                            (can_install && !settling).then_some(Message::Install(key)),
+                        );
 
                     // Where the download comes from.
                     style::tip(install, source_hint(entry, catalog)).boxed()
@@ -330,7 +333,7 @@ impl State {
 
             let uninstall = style::delete_button(
                 "Uninstall",
-                self.working.is_none().then(|| {
+                (self.working.is_none() && !settling).then(|| {
                     Message::Ask(Confirm::Uninstall {
                         title: title.clone(),
                         folders: group.folders(),
@@ -552,7 +555,7 @@ impl State {
                     match provider {
                         Some(provider) => {
                             let key = Key::of(provider);
-                            let installing = self.jobs.contains_key(&key);
+                            let installing = self.busy(&key);
 
                             button(text(format!("Install {dependency}")).size(12))
                                 .style(style::secondary)

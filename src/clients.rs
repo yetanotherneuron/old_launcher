@@ -17,7 +17,7 @@ use crate::action::Action;
 use crate::core::config::ClientTorrent;
 use crate::core::launch;
 use crate::core::mods::Mods;
-use crate::core::{Config, Details, Installation, Locale, Realmlist};
+use crate::core::{Config, Details, Installation, Locale, Named, Realmlist, Server};
 use crate::errors::Errors;
 use crate::torrent::Source;
 use crate::{blocking, game, github, size, style};
@@ -30,6 +30,9 @@ pub const REMOVE: &str = "clients-remove";
 
 /// The id of the button that opens the realmlist in an editor.
 pub const EDIT_REALMLIST: &str = "clients-edit-realmlist";
+
+/// The id of the button that reads the realmlist again.
+pub const REFRESH_REALMLIST: &str = "clients-refresh-realmlist";
 
 /// The id of the environment variables field.
 pub const ENV: &str = "clients-env";
@@ -44,6 +47,11 @@ pub const SOURCE: &str = "clients-source";
 /// `set realmlist` line.
 const NO_SERVER: &str = "The game can't connect without a server: the file needs a line such as \
                          set realmlist logon.example.com";
+
+/// The warning under a realmlist with a line that is only a host name, which
+/// the game skips; `{host}` is that name.
+const BARE_HOST: &str = "The game skips “{host}” in realmlist.wtf: a line sets the server only as \
+                         set realmlist {host}.";
 
 /// The warning under a client that has no realmlist file at all.
 const NO_REALMLIST: &str = "The game can't connect without a realmlist.wtf in the folder of its \
@@ -88,8 +96,8 @@ pub enum Message {
     EditRealmlist(PathBuf),
     /// The realmlist couldn't be opened in an editor: why.
     Unopened(String),
-    /// The launcher's window got the focus back, maybe from the editor.
-    Focused,
+    /// The button beside the realmlist that reads it again was pressed.
+    RereadRealmlist(PathBuf),
     /// The realmlist of a client folder was read again.
     Reread(PathBuf, Result<Option<Realmlist>, String>),
     /// A language was picked for the client shown.
@@ -322,8 +330,8 @@ impl State {
                         details
                             .realmlist
                             .as_ref()
-                            .and_then(|realmlist| realmlist.server.as_deref())
-                            .unwrap_or("no realmlist")
+                            .and_then(|realmlist| realmlist.server.as_ref())
+                            .map_or("no realmlist", |server| server.host.as_str())
                     ),
                     Err(error) => log::warn!("Could not read {}: {error}", path.display()),
                 }
@@ -363,14 +371,7 @@ impl State {
                 errors.report(error);
                 Action::none()
             }
-            Message::Focused => {
-                let Some(root) = current.filter(|root| {
-                    self.open && matches!(self.details.get(*root), Some(Some(Ok(_))))
-                }) else {
-                    return Action::none();
-                };
-                Action::task(reread(root.to_path_buf()))
-            }
+            Message::RereadRealmlist(root) => Action::task(reread(root)),
             Message::Reread(path, Ok(realmlist)) => {
                 if let Some(Some(Ok(details))) = self.details.get_mut(&path) {
                     details.realmlist = realmlist;
@@ -666,12 +667,19 @@ impl State {
                     match &details.realmlist {
                         Some(realmlist) => fact(
                             "Realmlist",
-                            realmlist
-                                .server
-                                .clone()
-                                .unwrap_or_else(|| "Not set".to_owned()),
+                            match &realmlist.server {
+                                Some(Server {
+                                    host,
+                                    from: Named::Realmlist,
+                                }) => host.clone(),
+                                Some(Server {
+                                    host,
+                                    from: Named::Settings,
+                                }) => format!("{host} (from the game's settings)"),
+                                None => "Not set".to_owned(),
+                            },
                         )
-                        .push(
+                        .extend(realmlist.exists.then(|| {
                             style::icon_button(
                                 EDIT_REALMLIST,
                                 &style::PEN,
@@ -680,23 +688,34 @@ impl State {
                                 "Edit realmlist.wtf",
                                 Some(Message::EditRealmlist(realmlist.path.clone())),
                             )
+                            .boxed()
+                        }))
+                        .push(
+                            style::icon_button(
+                                REFRESH_REALMLIST,
+                                &style::REFRESH,
+                                26.0,
+                                style::quiet,
+                                "Read realmlist.wtf again",
+                                Some(Message::RereadRealmlist(root.to_path_buf())),
+                            )
                             .boxed(),
                         )
                         .align_y(Center),
                         None => fact("Realmlist", "No realmlist.wtf".to_owned()),
                     },
                     // Without a server to connect to, the game goes nowhere.
-                    match &details.realmlist {
-                        Some(realmlist) if realmlist.server.is_some() => None,
-                        Some(_) => Some(NO_SERVER),
-                        None => Some(NO_REALMLIST),
-                    }
-                    .map(|warning| {
-                        text(warning)
-                            .size(13)
-                            .style(text::warning)
-                            .wrapping(text::Wrapping::WordOrGlyph)
-                    }),
+                    Some(warnings(details.realmlist.as_ref()))
+                        .filter(|warnings| !warnings.is_empty())
+                        .map(|warnings| {
+                            column(warnings.into_iter().map(|warning| {
+                                text(warning)
+                                    .size(13)
+                                    .style(text::warning)
+                                    .wrapping(text::Wrapping::WordOrGlyph)
+                            }))
+                            .spacing(6)
+                        }),
                     fact("Size", size(details.size)),
                     details
                         .large_address_aware
@@ -880,6 +899,28 @@ fn small(
         .boxed()
 }
 
+/// What is wrong with the realmlist of a client, if anything: no file, a
+/// file that names no server, or a line the game skips. Nothing rewrites the
+/// file.
+fn warnings(realmlist: Option<&Realmlist>) -> Vec<String> {
+    let Some(realmlist) = realmlist else {
+        return vec![NO_REALMLIST.to_owned()];
+    };
+    let mut warnings = Vec::new();
+
+    if !realmlist.exists && realmlist.server.is_none() {
+        warnings.push(NO_REALMLIST.to_owned());
+    }
+    if realmlist.exists && realmlist.server.is_none() && realmlist.bare.is_none() {
+        warnings.push(NO_SERVER.to_owned());
+    }
+    if let Some(host) = &realmlist.bare {
+        warnings.push(BARE_HOST.replace("{host}", host));
+    }
+
+    warnings
+}
+
 /// Reads the realmlist of the client at `root` again.
 fn reread(root: PathBuf) -> Task<Message> {
     log::debug!("Reading the realmlist of {} again", root.display());
@@ -1053,7 +1094,12 @@ mod tests {
     fn realmlist(server: Option<&str>) -> Realmlist {
         Realmlist {
             path: PathBuf::from(WOTLK).join("Data/enUS/realmlist.wtf"),
-            server: server.map(str::to_owned),
+            exists: true,
+            server: server.map(|host| Server {
+                host: host.to_owned(),
+                from: Named::Realmlist,
+            }),
+            bare: None,
         }
     }
 
@@ -1426,7 +1472,48 @@ mod tests {
     }
 
     #[test]
-    fn a_realmlist_is_edited_in_place_and_read_again_on_return() {
+    fn the_realmlist_row_says_where_the_server_comes_from() {
+        let view = |realmlist| {
+            let (state, config) = opened(Some(details(Some(realmlist))));
+            let root = Path::new(WOTLK);
+            let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
+
+            (
+                ui.find("logon.example.com").is_ok(),
+                ui.find("logon.example.com (from the game's settings)")
+                    .is_ok(),
+                ui.find(BARE_HOST.replace("{host}", "logon.example.com"))
+                    .is_ok(),
+                ui.find(NO_SERVER).is_ok(),
+            )
+        };
+        let settings = Realmlist {
+            server: Some(Server {
+                host: "logon.example.com".to_owned(),
+                from: Named::Settings,
+            }),
+            ..realmlist(None)
+        };
+        let bare = Realmlist {
+            bare: Some("logon.example.com".to_owned()),
+            ..realmlist(None)
+        };
+
+        assert_eq!(
+            view(realmlist(Some("logon.example.com"))),
+            (true, false, false, false)
+        );
+        assert_eq!(view(settings), (false, true, false, false));
+        assert_eq!(
+            view(bare),
+            (false, false, true, false),
+            "told apart from a file with nothing in it"
+        );
+        assert_eq!(view(realmlist(None)), (false, false, false, true));
+    }
+
+    #[test]
+    fn a_realmlist_is_read_again_when_asked() {
         let (mut state, mut config) = opened(Some(details(Some(realmlist(None)))));
         let root = Path::new(WOTLK);
 
@@ -1440,7 +1527,11 @@ mod tests {
             Some(Message::EditRealmlist(path)) if path == realmlist(None).path
         ));
 
-        let refresh = update(&mut state, &mut config, Message::Focused);
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
+        let _ = ui.click(selector::id(REFRESH_REALMLIST)).unwrap();
+        let message = ui.into_messages().next().unwrap();
+        assert!(matches!(&message, Message::RereadRealmlist(path) if path == root));
+        let refresh = update(&mut state, &mut config, message);
         assert!(refresh.task.units() > 0, "read again");
         let _ = update(
             &mut state,
@@ -1565,6 +1656,7 @@ mod tests {
             source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
             folder: WOTLK.into(),
             languages: Vec::new(),
+            made: false,
         }
     }
 

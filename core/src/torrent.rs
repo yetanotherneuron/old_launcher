@@ -4,7 +4,12 @@
 //!
 //! The comparison only reads the client: it hashes the folder's files piece
 //! by piece against the torrent, leaving the player's own files alone
-//! (their settings, addons and realmlist, which the torrent may bring too).
+//! (their settings, addons and realmlist, which the torrent may bring too),
+//! and those of the mods installed. A patch the client switches off by
+//! renaming it (`X.mpq` to `X.mpq.disabled`, or back) is still the torrent's
+//! file, read under the name it has. The client's other files, none of
+//! whose kinds the torrent, the player, the launcher or a mod account for,
+//! are listed in the result, and never touched.
 //! What it finds as the torrent has it, it notes by length and modification
 //! time, so the next comparison reads only the files changed since.
 //!
@@ -80,6 +85,13 @@ pub struct Check {
     pub missing: Vec<usize>,
     /// The files whose contents differ, by index.
     pub different: Vec<usize>,
+    /// The files left alone because a mod installed owns them, by index:
+    /// never compared with the torrent, nor replaced from it.
+    pub spared: Vec<usize>,
+    /// The client's files that are none of the torrent's, the player's, the
+    /// launcher's or a mod's, as spelled on disk, with `/` between folders,
+    /// within the client folder: never replaced, nor removed.
+    pub unexpected: Vec<String>,
 }
 
 /// The files of a torrent last found as it has it, by path, as the client
@@ -449,6 +461,7 @@ pub fn origin(root: &Path) -> Option<ClientTorrent> {
         source: origin.source,
         // Which languages it has, its Data folder says.
         languages: Vec::new(),
+        made: false,
     })
 }
 
@@ -544,13 +557,19 @@ enum Found {
 /// by piece, only reading: the files missing, and those whose contents
 /// differ. The player's files and the launcher's own (see
 /// [`Torrent::untouched`]) are neither: a piece shared with one that changed
-/// blames no other file. Nor is the data of a language the client has no
+/// blames no other file. So are the files a mod installed owns, `owned` by
+/// lowercase path within the client folder (see
+/// [`crate::mods::Mods::owned`]): they are listed in [`Check::spared`]. Nor
+/// is the data of a language the client has no
 /// `Data` folder for: it was left out of the download, or deleted, and a
 /// repair brings no language. A piece that differs and is shared by other files
 /// blames them all, unless one of them differs anyway: downloading it
 /// writes the piece whole. `Wow.exe` with the Large Address Aware flag set
 /// otherwise than the torrent's is as released, the flag being the
-/// launcher's to set.
+/// launcher's to set. A file switched off by renaming (`.disabled`, see
+/// [`where_is`]) is read under the name it has: a damaged one is reported
+/// under the torrent's name. The client's files nothing accounts for are
+/// listed in [`Check::unexpected`].
 ///
 /// The files found as the torrent has them are noted in `folder`, for the
 /// next check to read only those changed since: those whose every piece
@@ -562,9 +581,26 @@ enum Found {
 pub fn check(
     folder: &Path,
     torrent: &Torrent,
+    owned: &BTreeMap<String, String>,
     progress: &mut dyn FnMut(u64) -> ControlFlow<()>,
 ) -> Result<Option<Check>, Error> {
-    let untouched = torrent.untouched();
+    let mut untouched = torrent.untouched();
+    // The torrent's paths start with where the client is in it; `owned`
+    // goes by paths within the client, in lowercase.
+    let client = torrent.client().unwrap_or_default();
+    let spared: BTreeSet<usize> = torrent
+        .files
+        .iter()
+        .enumerate()
+        .filter(|(index, file)| !file.padding && !untouched.contains(index))
+        .filter(|(_, file)| {
+            file.path
+                .strip_prefix(&client)
+                .is_some_and(|path| owned.contains_key(&path.to_ascii_lowercase()))
+        })
+        .map(|(index, _)| index)
+        .collect();
+    untouched.extend(&spared);
     let verified = Verified::read(folder, torrent);
     let mut starts = Vec::with_capacity(torrent.files.len());
     let mut total = 0;
@@ -585,8 +621,11 @@ pub fn check(
 
     let mut found = Vec::with_capacity(torrent.files.len());
     let mut stamps = Vec::with_capacity(torrent.files.len());
+    let mut on_disk = Vec::with_capacity(torrent.files.len());
     for (index, file) in torrent.files.iter().enumerate() {
-        let path = folder.join(&file.path);
+        let located = where_is(folder, &file.path);
+        let path = located.clone().unwrap_or_else(|| folder.join(&file.path));
+        on_disk.push(located);
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -621,7 +660,7 @@ pub fn check(
         .filter(|index| matches!(found[*index], Found::Sized | Found::Unchanged))
         .and_then(|index| {
             let mut header = Vec::new();
-            fs::File::open(folder.join(&torrent.files[index].path))
+            fs::File::open(on_disk[index].as_ref()?)
                 .and_then(|file| file.take(4096).read_to_end(&mut header))
                 .ok()?;
             Some(starts[index] + characteristics(&header)? as u64)
@@ -682,7 +721,9 @@ pub fn check(
                 continue;
             }
 
-            let path = folder.join(&torrent.files[*file].path);
+            let path = on_disk[*file]
+                .clone()
+                .unwrap_or_else(|| folder.join(&torrent.files[*file].path));
             let mut opened = fs::File::open(&path).map_err(io_at(&path))?;
             let _ = opened.seek(SeekFrom::Start(from)).map_err(io_at(&path))?;
             let _ = opened
@@ -719,6 +760,8 @@ pub fn check(
         }
     }
 
+    let unexpected = unexpected(&root, torrent, owned);
+
     let mut record = Verified {
         info_hash: torrent.info_hash.clone(),
         files: BTreeMap::new(),
@@ -738,13 +781,114 @@ pub fn check(
     let _ = record.write(folder, torrent);
 
     Ok(Some(Check {
+        unexpected,
         missing: (0..found.len())
             .filter(|file| found[*file] == Found::Missing)
             .collect(),
         different: (0..found.len())
             .filter(|file| found[*file] == Found::Resized || different.contains(file))
             .collect(),
+        spared: spared
+            .into_iter()
+            .filter(|file| found[*file] != Found::Unwanted)
+            .collect(),
     }))
+}
+
+/// Where the file at `path` of a torrent is in `folder`: there, or else
+/// under its toggle twin's name, which a patch menu gives it by renaming
+/// (`X` and `X.disabled` are the same file). `None` when neither exists.
+fn where_is(folder: &Path, path: &str) -> Option<PathBuf> {
+    let there = folder.join(path);
+    if there.exists() {
+        return Some(there);
+    }
+    let twin = folder.join(twin_of(path));
+
+    twin.exists().then_some(twin)
+}
+
+/// The other name a file is known by when a patch menu switches it on or
+/// off: with `.disabled` after it, or without.
+fn twin_of(path: &str) -> String {
+    match path.strip_suffix(".disabled") {
+        Some(enabled) => enabled.to_owned(),
+        None => format!("{path}.disabled"),
+    }
+}
+
+/// The files within `root`, the client folder, that `torrent` has no say
+/// over, nor the player, nor the launcher, nor a mod installed (`owned`, as
+/// for [`check`]), nor a backup the launcher made, nor the system's: by
+/// path as spelled on disk, sorted. A toggle twin (see [`where_is`]) of a
+/// file of the torrent is expected only while the file's own name is absent.
+/// A folder that can't be read is skipped.
+fn unexpected(root: &Path, torrent: &Torrent, owned: &BTreeMap<String, String>) -> Vec<String> {
+    let client = torrent.client().unwrap_or_default();
+    let ours: BTreeSet<String> = torrent
+        .files
+        .iter()
+        .filter(|file| !file.padding)
+        .filter_map(|file| file.path.strip_prefix(&client))
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let mut found = Vec::new();
+    listed(root, "", &mut found);
+    let present: BTreeSet<String> = found.iter().map(|path| path.to_ascii_lowercase()).collect();
+
+    found.retain(|path| {
+        let lower = path.to_ascii_lowercase();
+        let name = lower.rsplit('/').next().unwrap_or_default();
+        let twin = twin_of(&lower);
+        let stands_in = ours.contains(&twin) && !present.contains(&twin);
+
+        !(ours.contains(&lower)
+            || stands_in
+            || owned.contains_key(&lower)
+            || is_players(path)
+            || is_launchers(path)
+            || name.contains(".old_launcher")
+            || is_backup(name)
+            || matches!(name, "desktop.ini" | "thumbs.db" | ".ds_store"))
+    });
+    found.sort();
+
+    found
+}
+
+/// Lists in `found` the files within `folder`, whose path from the client
+/// folder is `prefix` (`""`, or ending with `/`), skipping what is the
+/// player's or the launcher's whole.
+fn listed(folder: &Path, prefix: &str, found: &mut Vec<String>) {
+    let entries = match fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(error) => {
+            log::warn!("Can't list {}: {error}", folder.display());
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path = format!("{prefix}{name}");
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            let staging = prefix.is_empty() && matches!(name.as_str(), ".prefix" | ".download");
+            if !staging && !name.contains(".old_launcher") && !is_players(&format!("{path}/")) {
+                listed(&entry.path(), &format!("{path}/"), found);
+            }
+        } else {
+            found.push(path);
+        }
+    }
+}
+
+/// Whether `name` is of a backup the launcher made of a file it replaced:
+/// `.backup`, or `.backup-` and a number, after the file's name.
+fn is_backup(name: &str) -> bool {
+    name.ends_with(".backup")
+        || name.rsplit_once(".backup-").is_some_and(|(_, number)| {
+            !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 /// Notes the files of `torrent` that a download into `folder` just wrote,
@@ -763,8 +907,8 @@ pub fn record(folder: &Path, torrent: &Torrent, downloaded: &[usize]) -> Result<
         if file.padding || untouched.contains(&index) {
             continue;
         }
-        let Some(stamp) = fs::metadata(folder.join(&file.path))
-            .ok()
+        let Some(stamp) = where_is(folder, &file.path)
+            .and_then(|path| fs::metadata(path).ok())
             .filter(|metadata| metadata.is_file() && metadata.len() == file.length)
             .as_ref()
             .and_then(Stamp::of)
@@ -794,7 +938,8 @@ pub fn stage(
 
     for index in files {
         let path = &torrent.files[*index].path;
-        let (from, to) = (folder.join(path), staging.join(path));
+        let from = where_is(folder, path).unwrap_or_else(|| folder.join(path));
+        let to = staging.join(path);
         if !from.is_file() || to.exists() {
             continue;
         }
@@ -830,7 +975,10 @@ pub fn move_into(
         if file.padding || launchers.contains(index) {
             continue;
         }
-        let (from, to) = (staging.join(&file.path), folder.join(&file.path));
+        // A patch the player switched off stays switched off: the download
+        // goes over the name it has.
+        let from = staging.join(&file.path);
+        let to = where_is(folder, &file.path).unwrap_or_else(|| folder.join(&file.path));
         let flag = if executable == Some(*index) {
             fs::read(&to)
                 .ok()
@@ -922,9 +1070,11 @@ mod tests {
 
     /// Checks `folder` through.
     fn checked(folder: &Path, torrent: &Torrent) -> Check {
-        check(folder, torrent, &mut |_| ControlFlow::Continue(()))
-            .unwrap()
-            .unwrap()
+        check(folder, torrent, &BTreeMap::new(), &mut |_| {
+            ControlFlow::Continue(())
+        })
+        .unwrap()
+        .unwrap()
     }
 
     /// Writes `contents` over the file at `path`, keeping when it was
@@ -1139,6 +1289,7 @@ mod tests {
                 source: format!("magnet:?xt=urn:btih:{hash}"),
                 folder: folder.path().to_path_buf(),
                 languages: Vec::new(),
+                made: false,
             };
             keep_origin(root, &torrent).unwrap();
             assert_eq!(origin(root), Some(torrent), "{client:?}");
@@ -1160,7 +1311,7 @@ mod tests {
         let (folder, torrent) = downloaded(&files());
         let mut read = 0;
 
-        let check = check(folder.path(), &torrent, &mut |bytes| {
+        let check = check(folder.path(), &torrent, &BTreeMap::new(), &mut |bytes| {
             read = bytes;
             ControlFlow::Continue(())
         })
@@ -1176,7 +1327,7 @@ mod tests {
         let (folder, torrent) = downloaded(&files());
         let mut heard = 0;
 
-        let check = check(folder.path(), &torrent, &mut |_| {
+        let check = check(folder.path(), &torrent, &BTreeMap::new(), &mut |_| {
             heard += 1;
             ControlFlow::Break(())
         })
@@ -1215,6 +1366,39 @@ mod tests {
         sneak(&root.join("Data/common.MPQ"), b"the world, in MANY bytes");
         let check = checked(root, &torrent);
         assert_eq!(named(&torrent, &check.different), ["Data/common.MPQ"]);
+    }
+
+    #[test]
+    fn files_a_mod_owns_are_neither_different_nor_repaired() {
+        let (folder, torrent) = downloaded(&files());
+        let root = folder.path();
+        let index = 1;
+        assert_eq!(torrent.files[index].path, "Data/common.MPQ");
+
+        // A mod replaced it.
+        change(&root.join("Data/common.MPQ"), b"the world, in MANY bytes");
+        let before = checked(root, &torrent);
+        assert_eq!(before.different, [index], "not owned: different");
+        assert!(before.spared.is_empty());
+
+        let owned = BTreeMap::from([("data/common.mpq".to_owned(), "a-mod".to_owned())]);
+        let run = |owned: &BTreeMap<String, String>| {
+            check(root, &torrent, owned, &mut |_| ControlFlow::Continue(()))
+                .unwrap()
+                .unwrap()
+        };
+        let check = run(&owned);
+        assert!(check.different.is_empty(), "{check:?}");
+        assert!(check.missing.is_empty(), "{check:?}");
+        assert_eq!(check.spared, [index]);
+        assert!(check.is_current(), "a neighbour in its piece isn't blamed");
+
+        // Gone, it is not missing either.
+        fs::remove_file(root.join("Data/common.MPQ")).unwrap();
+        let check = run(&owned);
+        assert!(check.is_current(), "{check:?}");
+        assert_eq!(check.spared, [index]);
+        assert_eq!(run(&BTreeMap::new()).missing, [index]);
     }
 
     #[test]
@@ -1409,6 +1593,89 @@ mod tests {
         );
         assert_eq!(named(&torrent, &check.different), ["Data/common.MPQ"]);
         assert_eq!(check.bytes(&torrent), 24 + 5);
+    }
+
+    #[test]
+    fn files_the_torrent_doesnt_have_are_listed_but_the_players_the_launchers_and_mods() {
+        let (folder, torrent) = downloaded(&files());
+        let root = folder.path();
+        for path in [
+            "Data/patch-Y.mpq",
+            "Interface/GlueXML/GlueXML.toc",
+            "Interface/AddOns/A/A.toc",
+            ".old_launcher.toml",
+            ".old_launcher-moving",
+            ".prefix/drive_c/x",
+            ".download/y",
+            "Data/x.mpq.backup",
+            "Data/x.mpq.backup-1",
+            "desktop.ini",
+            "Data/Thumbs.db",
+            "Data/mod.mpq",
+        ] {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, b"x").unwrap();
+        }
+        // A file of the torrent, spelled in another case.
+        fs::rename(root.join("Data/common.MPQ"), root.join("Data/COMMON.mpq")).unwrap();
+        let owned = BTreeMap::from([("data/mod.mpq".to_owned(), "a mod".to_owned())]);
+
+        let check = check(root, &torrent, &owned, &mut |_| ControlFlow::Continue(()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            check.unexpected,
+            ["Data/patch-Y.mpq", "Interface/GlueXML/GlueXML.toc"]
+        );
+    }
+
+    #[test]
+    fn a_patch_toggled_by_renaming_is_the_same_file() {
+        let contents = b"a patch, in many bytes".to_vec();
+        for (listed, kept) in [
+            ("data/p.mpq.disabled", "data/p.mpq"),
+            ("data/p.mpq", "data/p.mpq.disabled"),
+        ] {
+            let torrent = Torrent::parse(&torrent_of("T", &[(listed, &contents)], 16)).unwrap();
+            let folder = tempfile::tempdir().unwrap();
+            let (root, twin) = (folder.path(), folder.path().join(kept));
+            fs::create_dir_all(twin.parent().unwrap()).unwrap();
+            fs::write(&twin, &contents).unwrap();
+
+            let check = checked(root, &torrent);
+            assert!(check.missing.is_empty(), "{listed}: {check:?}");
+            assert!(check.different.is_empty(), "{listed}: {check:?}");
+            assert!(check.unexpected.is_empty(), "{listed}: {check:?}");
+
+            // Its contents are the ones checked, and it stays noted.
+            assert!(checked(root, &torrent).is_current());
+            change(&twin, b"a patch, in MANY bytes");
+            let check = checked(root, &torrent);
+            assert!(check.missing.is_empty(), "{listed}: {check:?}");
+            assert_eq!(check.different, [0], "{listed}");
+            assert!(check.unexpected.is_empty(), "{listed}: {check:?}");
+
+            // Both there: the torrent's name is checked, the twin is extra.
+            fs::write(root.join(listed), &contents).unwrap();
+            let check = checked(root, &torrent);
+            assert!(check.missing.is_empty() && check.different.is_empty());
+            assert_eq!(check.unexpected, [kept], "{listed}");
+
+            // A repair of the damaged twin writes over the twin's name.
+            fs::remove_file(root.join(listed)).unwrap();
+            let staging = root.join(".download");
+            stage(&staging, root, &torrent, &[0]).unwrap();
+            assert_eq!(
+                fs::read(staging.join(listed)).unwrap(),
+                b"a patch, in MANY bytes"
+            );
+            fs::write(staging.join(listed), &contents).unwrap();
+            move_into(&staging, root, &torrent, &[0], &mut |_| {}).unwrap();
+            assert!(!root.join(listed).exists(), "{listed}");
+            assert_eq!(fs::read(&twin).unwrap(), contents, "{listed}");
+        }
     }
 
     #[test]
@@ -1612,7 +1879,7 @@ mod tests {
         for pass in ["First", "Second"] {
             let started = std::time::Instant::now();
             let mut read = 0;
-            let check = check(links.path(), &torrent, &mut |bytes| {
+            let check = check(links.path(), &torrent, &BTreeMap::new(), &mut |bytes| {
                 read = bytes;
                 ControlFlow::Continue(())
             })

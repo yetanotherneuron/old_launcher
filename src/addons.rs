@@ -8,7 +8,7 @@ mod external;
 pub use confirm::Confirm;
 use external::External;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,6 +47,9 @@ pub struct State {
     query: String,
     filter: Filter,
     jobs: HashMap<Key, Job>,
+    /// The addons whose install ended and whose folders are not read again
+    /// yet, so their cards still show what they looked like before it.
+    settling: HashSet<Key>,
     confirm: Option<Confirm>,
     /// The confirmed deletion running, if one is, as it describes itself.
     working: Option<String>,
@@ -225,11 +228,24 @@ impl State {
             query: String::new(),
             filter: Filter::default(),
             jobs: HashMap::new(),
+            settling: HashSet::new(),
             confirm: None,
             working: None,
             external: None,
             github: None,
         }
+    }
+
+    /// Lets the cards act again: the client's folders were read after the
+    /// installs that ended.
+    pub fn rescanned(&mut self) {
+        self.settling.clear();
+    }
+
+    /// Whether an install of `key` runs, or ended without the folders being
+    /// read since.
+    fn busy(&self, key: &Key) -> bool {
+        self.jobs.contains_key(key) || self.settling.contains(key)
     }
 
     /// Makes the downloads started from now on sign in to GitHub this way,
@@ -326,7 +342,7 @@ impl State {
                 let Some(entry) = catalog.entries.iter().find(|entry| Key::of(entry) == key) else {
                     return Action::none();
                 };
-                if self.jobs.contains_key(&key) {
+                if self.busy(&key) {
                     return Action::none();
                 }
                 let client = match client {
@@ -426,6 +442,10 @@ impl State {
                         errors.report(format!("Could not install {name}: {error}"));
                     }
                 }
+
+                // Until the rescan says what is installed now, the card
+                // would offer what the install just did.
+                let _ = self.settling.insert(key);
 
                 // Even a failed install may have removed the previous version.
                 Action::instruction(Instruction::Changed)

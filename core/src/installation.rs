@@ -45,14 +45,38 @@ pub struct Details {
     pub torrent: Option<ClientTorrent>,
 }
 
-/// The `realmlist.wtf` of the language a client plays in, which says which
-/// server it connects to; see [`Realmlist::of`].
+/// The server a client connects to and where the game gets it from, the way
+/// the game reads it; see [`Realmlist::of`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Realmlist {
-    /// The file.
+    /// The `realmlist.wtf` the game runs, or the one of the language's
+    /// folder when there is none.
     pub path: PathBuf,
-    /// The server the file sets, if it sets one.
-    pub server: Option<String>,
+    /// Whether that file exists.
+    pub exists: bool,
+    /// The server the game connects to, if anything sets one.
+    pub server: Option<Server>,
+    /// A line of the file that is just a host name, which the game skips
+    /// because only `set realmlist <host>` sets the server.
+    pub bare: Option<String>,
+}
+
+/// A server and the file that sets it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Server {
+    /// The host name.
+    pub host: String,
+    /// Where the game gets it from.
+    pub from: Named,
+}
+
+/// The file a server is named in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Named {
+    /// The `realmlist.wtf` the game runs.
+    Realmlist,
+    /// The game's settings, `WTF/Config.wtf`.
+    Settings,
 }
 
 impl Installation {
@@ -508,20 +532,71 @@ impl Details {
 }
 
 impl Realmlist {
-    /// The realmlist of the client at `root`, in the folder of the language
-    /// it plays in; `None` when there is no such file.
+    /// The server of the client at `root`, found the way the game does: it
+    /// runs the first of `Data/<language>/realmlist.wtf`,
+    /// `WTF/data/<language>/realmlist.wtf`, `realmlist.wtf` in the client
+    /// folder and `WTF/realmlist.wtf` that exists (even an empty one, with no
+    /// fallback), and the last `set realmlist` in it wins. When the file sets
+    /// none, the `SET realmList` of `WTF/Config.wtf` stays in effect.
     ///
-    /// The client runs the file line by line, so when several lines set the
-    /// realmlist, the last one wins; the other lines (`set patchlist`, …)
-    /// are about something else.
+    /// `None` only when the language the client plays in is unknown.
     pub fn of(root: &Path) -> Option<Self> {
-        let path = child(&locale(root)?.folder(root), "realmlist.wtf");
+        let locale = locale(root)?;
+        let code = locale.code();
+        let data = locale.folder(root);
+        let wtf = child(root, "WTF");
+        let candidates = [
+            child(&data, "realmlist.wtf"),
+            child(&child(&child(&wtf, "data"), code), "realmlist.wtf"),
+            child(root, "realmlist.wtf"),
+            child(&wtf, "realmlist.wtf"),
+        ];
+        let found = candidates.iter().find(|path| path.is_file());
+        let (server, bare) = found.map_or((None, None), |path| realmlist_lines(path));
+        let server = server
+            .map(|host| (host, Named::Realmlist))
+            .or_else(|| config_setting(root, "realmlist").map(|host| (host, Named::Settings)))
+            .map(|(host, from)| Server { host, from });
 
-        path.is_file().then(|| Self {
-            server: setting(&path, "realmlist"),
-            path,
+        Some(Self {
+            exists: found.is_some(),
+            path: found.unwrap_or(&candidates[0]).clone(),
+            server,
+            bare,
         })
     }
+}
+
+/// What the `realmlist.wtf` at `path` sets as the server, the last
+/// `set realmlist` winning, and its last line that is only a host name, which
+/// the game skips.
+fn realmlist_lines(path: &Path) -> (Option<String>, Option<String>) {
+    let Ok(bytes) = fs::read(path) else {
+        return (None, None);
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let mut server = None;
+    let mut bare = None;
+
+    for line in text.trim_start_matches('\u{feff}').lines() {
+        if let Some((name, value)) = set_line(line) {
+            if name.eq_ignore_ascii_case("realmlist") && !value.is_empty() {
+                server = Some(value);
+            }
+            continue;
+        }
+
+        let mut words = line.split_whitespace();
+        if let (Some(word), None) = (words.next(), words.next())
+            && word.contains('.')
+            && !word.starts_with('#')
+            && !word.starts_with("//")
+        {
+            bare = Some(word.to_owned());
+        }
+    }
+
+    (server, bare)
 }
 
 /// The flag of a Windows program's headers (`IMAGE_FILE_LARGE_ADDRESS_AWARE`)
@@ -665,12 +740,14 @@ fn setting(path: &Path, name: &str) -> Option<String> {
 }
 
 /// What a `.wtf` line sets, and to what: `set <name> <value>`, in any case,
-/// the value maybe quoted.
+/// the value maybe quoted. Like the game, only a line that starts with `set`
+/// and a space counts: one with spaces or tabs before it is ignored.
 fn set_line(line: &str) -> Option<(&str, String)> {
-    let mut words = line.split_whitespace();
-    if !words.next()?.eq_ignore_ascii_case("set") {
+    let line = line.trim_end_matches(['\r', '\n']);
+    if !line.get(..4)?.eq_ignore_ascii_case("set ") {
         return None;
     }
+    let mut words = line.get(4..)?.split_whitespace();
     let name = words.next()?;
     let value = words.collect::<Vec<_>>().join(" ");
 
@@ -997,7 +1074,9 @@ mod tests {
             details.realmlist,
             Some(Realmlist {
                 path: installation.root().join("Data/enUS/realmlist.wtf"),
+                exists: true,
                 server: None,
+                bare: None,
             })
         );
         assert_eq!(details.large_address_aware, Some(false), "as shipped");
@@ -1066,19 +1145,105 @@ mod tests {
             Realmlist::of(installation.root()),
             Some(Realmlist {
                 path: installation.root().join("Data/esES/realmlist.wtf"),
-                server: Some("logon.example.com".into()),
+                exists: true,
+                server: Some(Server {
+                    host: "logon.example.com".into(),
+                    from: Named::Realmlist,
+                }),
+                bare: None,
             }),
             "the last line setting it"
         );
 
-        // A language the client has no data for doesn't count, and that
-        // one's folder has no realmlist.wtf.
+        // A language the client has no data for doesn't count: the game
+        // plays in the first it has, and that one's folder has no
+        // realmlist.wtf.
         fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"deDE\"\n").unwrap();
         assert_eq!(
             Installation::open(root.path()).unwrap().locale(),
             Some(Locale::EnUs)
         );
-        assert_eq!(Realmlist::of(installation.root()), None);
+        let none = Realmlist::of(installation.root()).unwrap();
+        assert!(!none.exists);
+        assert_eq!(none.server, None);
+    }
+
+    #[test]
+    fn the_realmlist_is_read_the_way_the_game_runs_it() {
+        let (root, _) = client();
+        let data = root.path().join("Data/esES/realmlist.wtf");
+        let config = root.path().join("WTF/Config.wtf");
+        let host = |from| {
+            Realmlist::of(root.path())
+                .and_then(|realmlist| realmlist.server)
+                .map(|server| (server.host, server.from == from))
+        };
+
+        // Nothing anywhere.
+        let nothing = Realmlist::of(root.path()).unwrap();
+        assert_eq!(nothing.server, None);
+        assert!(!nothing.exists);
+        assert_eq!(nothing.path, data);
+
+        // The last line wins, whatever the case and the line endings.
+        fs::write(&data, "set realmlist a\r\nSET realmlist b").unwrap();
+        assert_eq!(host(Named::Realmlist), Some(("b".to_owned(), true)));
+
+        // A line with a space before it is not run; the settings stay.
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(&config, "SET locale \"esES\"\nSET realmList \"d\"\n").unwrap();
+        fs::write(&data, " set realmlist c\nlogon.example.com").unwrap();
+        assert_eq!(host(Named::Settings), Some(("d".to_owned(), true)));
+        let realmlist = Realmlist::of(root.path()).unwrap();
+        assert!(realmlist.exists);
+        assert_eq!(realmlist.bare.as_deref(), Some("logon.example.com"));
+
+        // A comment is not a host.
+        fs::write(&data, "#logon.example.com\n//other.example.com").unwrap();
+        assert_eq!(Realmlist::of(root.path()).unwrap().bare, None);
+
+        // An empty file is run, so the others are not looked at.
+        fs::write(&data, "").unwrap();
+        fs::write(root.path().join("realmlist.wtf"), "set realmlist root").unwrap();
+        let empty = Realmlist::of(root.path()).unwrap();
+        assert_eq!(empty.path, data);
+        assert_eq!(empty.server.map(|server| server.host), Some("d".into()));
+
+        // Without the language's file, the one in the client folder.
+        fs::remove_file(&data).unwrap();
+        let root_file = Realmlist::of(root.path()).unwrap();
+        assert!(root_file.exists);
+        assert_eq!(root_file.path, root.path().join("realmlist.wtf"));
+        assert_eq!(
+            root_file.server,
+            Some(Server {
+                host: "root".into(),
+                from: Named::Realmlist
+            })
+        );
+
+        // A client with lowercase folders, as the HD one.
+        fs::remove_file(root.path().join("realmlist.wtf")).unwrap();
+        fs::rename(root.path().join("Data/esES"), root.path().join("Data/eses")).unwrap();
+        fs::write(
+            root.path().join("Data/eses/realmlist.wtf"),
+            "set realmlist hd",
+        )
+        .unwrap();
+        assert_eq!(host(Named::Realmlist), Some(("hd".to_owned(), true)));
+    }
+
+    #[test]
+    fn a_line_with_spaces_before_set_sets_nothing() {
+        let (root, installation) = client();
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(
+            root.path().join("WTF/Config.wtf"),
+            "SET gxApi \"d3d9\"\n SET gxApi \"opengl\"\n\tSET gxApi \"d3d11\"\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(installation.setting("gxApi").as_deref(), Some("d3d9"));
     }
 
     #[test]
@@ -1118,7 +1283,9 @@ mod tests {
             Some(Locale::EsEs)
         );
         assert_eq!(
-            Realmlist::of(installation.root()).and_then(|realmlist| realmlist.server),
+            Realmlist::of(installation.root())
+                .and_then(|realmlist| realmlist.server)
+                .map(|server| server.host),
             Some("es.example.com".into()),
             "the realmlist follows"
         );

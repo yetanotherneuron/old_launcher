@@ -4,7 +4,9 @@
 //! Patch Y comes in three editions, each a mod of its own: for clients with
 //! an HD model pack (its `patch-f` archives), with the new spell visuals or
 //! the original ones, and for clients without one. A client holds one at
-//! most, so each names the other two as its alternatives.
+//! most, so each names the other two as its alternatives. The pack is known
+//! by its language archive, since `patch-f.mpq` alone may be another creature
+//! pack's, which no edition may back up.
 //!
 //! Each game version is a release tagged `payload-<version>`, whose
 //! `manual-downloads.json` names a zip per edition, published once and never
@@ -50,12 +52,16 @@ const PLACES: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// An HD model pack's archives, which the HD editions are made for.
+/// An HD model pack's archives, which the HD editions are made for. The
+/// pack is known by its language archive: `patch-f.mpq` alone is the name
+/// of any creature pack's, which isn't Lau's to touch.
 const HD_MODELS: [&str; 2] = ["Data/patch-f.mpq", "Data/{locale}/patch-{locale}-F.MPQ"];
 
-/// The new spell visuals' pair, which the editions with the original ones
+/// The new spell visuals' pair, which the HD edition with the original ones
 /// can't be beside: Lau's manual install guide has them moved out of
-/// `Data` for those (the HD client ships a `patch-s.mpq` of its own).
+/// `Data` for it (the HD client ships a `patch-s.mpq` of its own). On a
+/// client without the HD pack a `patch-s.mpq` can't be Lau's pair, so the
+/// other editions leave it be.
 const NEW_SPELLS: [&str; 2] = ["Data/patch-s.mpq", "Data/{locale}/patch-{locale}-S.MPQ"];
 
 /// What every edition is for, which its releases don't change: what each
@@ -151,11 +157,13 @@ struct Destination {
 impl Edition {
     /// The edition as a mod, of `releases`.
     fn game_mod(&self, releases: Vec<Release>) -> Mod {
-        let models: Vec<String> = HD_MODELS.iter().copied().map(str::to_owned).collect();
         let (requires, excludes) = if self.hd {
-            (models, Vec::new())
+            (
+                HD_MODELS.iter().copied().map(str::to_owned).collect(),
+                Vec::new(),
+            )
         } else {
-            (Vec::new(), models)
+            (Vec::new(), vec![HD_MODELS[1].to_owned()])
         };
 
         Mod {
@@ -173,10 +181,10 @@ impl Edition {
             platforms: Vec::new(),
             requires,
             excludes,
-            conflicts: if self.spells {
-                Vec::new()
-            } else {
+            conflicts: if self.hd && !self.spells {
                 NEW_SPELLS.iter().copied().map(str::to_owned).collect()
+            } else {
+                Vec::new()
             },
             alternatives: EDITIONS
                 .iter()
@@ -515,11 +523,14 @@ mod tests {
         );
         assert_eq!(mods[1].requires, HD_MODELS);
         assert!(mods[1].excludes.is_empty());
-        assert_eq!(mods[2].excludes, HD_MODELS);
+        // Only the pack's language archive tells it from another creature
+        // pack's `patch-f.mpq`.
+        assert_eq!(mods[2].excludes, [HD_MODELS[1]]);
         assert!(mods[2].requires.is_empty());
-        // The new spell visuals' pair can't be beside the original ones.
+        // The new spell visuals' pair can't be beside the original ones, on
+        // an HD client.
         assert!(mods[0].conflicts.is_empty());
         assert_eq!(mods[1].conflicts, NEW_SPELLS);
-        assert_eq!(mods[2].conflicts, NEW_SPELLS);
+        assert!(mods[2].conflicts.is_empty());
     }
 }

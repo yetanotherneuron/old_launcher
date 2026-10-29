@@ -275,6 +275,9 @@ fn wait(work: &Work) -> String {
     format!("{}… Wait until it's done.", work.said)
 }
 
+/// What the hint of a button says while the client is being looked at.
+const LOOKING: &str = "Looking at this client… Wait until it's done.";
+
 impl State {
     /// Downloads from GitHub sign in with `github` from now on.
     pub fn sign_in(&mut self, github: Option<github::Signed>) {
@@ -429,50 +432,41 @@ impl State {
         })
     }
 
-    /// The alternative to `listed` the client folder at `root` holds, which
-    /// installing it takes the place of.
-    fn replaced(&self, root: &Path, listed: &Mod) -> Option<&Mod> {
+    /// Why `listed` can't be installed in the client folder at `root`, or
+    /// updated there, if it can't: another mod there it can't be beside, an
+    /// alternative to it or one that uses the same paths.
+    fn blocked(&self, root: &Path, listed: &Mod) -> Option<String> {
         let held = self.found.get(root)?;
+        if held.contains_key(&listed.id) {
+            return None;
+        }
 
-        self.list
+        let alternative = self
+            .list
             .alternatives(listed)
             .into_iter()
-            .find(|other| held.contains_key(&other.id))
-    }
+            .find(|other| held.contains_key(&other.id));
+        if let Some(other) = alternative {
+            return Some(format!(
+                "“{}” is installed, and it conflicts with this one.",
+                other.name
+            ));
+        }
 
-    /// Why `listed` can't be installed in the client folder at `root`, or
-    /// updated there, if it can't: another mod there it can't be beside, but
-    /// its alternatives.
-    fn blocked(&self, root: &Path, listed: &Mod) -> Option<String> {
-        let held = self.found.get(root);
-        let installing = !held.is_some_and(|held| held.contains_key(&listed.id));
-        let alternatives = self.list.alternatives(listed);
-
-        let beside = self
-            .list
+        self.list
             .mods
             .iter()
-            .filter(|other| other.id != listed.id && installing)
-            .filter(|other| {
-                !alternatives
-                    .iter()
-                    .any(|alternative| alternative.id == other.id)
-            })
-            .filter(|other| held.is_some_and(|held| held.contains_key(&other.id)))
+            .filter(|other| other.id != listed.id && held.contains_key(&other.id))
             .find_map(|other| {
                 let shared = mods::conflicts(listed, other);
-                (!shared.is_empty()).then_some((other, shared))
-            });
-        beside.map(|(other, shared)| {
-            format!(
-                "It can't be beside “{}”, which this client holds: both use {}. Uninstall “{}” \
-                 to install “{}”.",
-                other.name,
-                names(&shared),
-                other.name,
-                listed.name,
-            )
-        })
+                (!shared.is_empty()).then(|| {
+                    format!(
+                        "“{}” is installed, and it conflicts with this one: both use {}.",
+                        other.name,
+                        names(&shared),
+                    )
+                })
+            })
     }
 
     /// What is being done to a mod that quitting would cut short, for
@@ -604,12 +598,15 @@ impl State {
                 let (Some(root), Some(listed)) = (current, self.listed(&id)) else {
                     return Action::none();
                 };
-                // As the section says, with no button to press.
-                if self.blocked(root, listed).is_some() {
+                // As the section says, with no button to press: not before
+                // the client is looked at again.
+                if !self.found.contains_key(root) || self.blocked(root, listed).is_some() {
                     return Action::none();
                 }
                 let (foreign, excluded) = self.conflicting(root, listed);
-                if !foreign.is_empty() || !excluded.is_empty() {
+                // A copy installed by hand is overridden, backed up.
+                let manual = self.status(root, &id).is_some() && !self.updating(root, &id);
+                if manual || !foreign.is_empty() || !excluded.is_empty() {
                     self.removing = None;
                     self.confirming = Some((root.to_path_buf(), id));
                     return Action::none();
@@ -752,6 +749,10 @@ impl State {
             }
             Message::Done(root, id, result) => {
                 self.busy = None;
+                // What was known of the client is stale: the rows wait,
+                // their buttons off, for it to be looked at again, which
+                // replaces the rest.
+                let _ = self.found.remove(&root);
                 match result {
                     Ok(said) => {
                         log::info!("{}: {said}", root.display());
@@ -799,21 +800,17 @@ impl State {
             return Action::none();
         };
         let updating = current.is_some_and(|root| self.updating(root, id));
-        let replaced = current.and_then(|root| self.replaced(root, &listed));
         let (name, version) = (&listed.name, &release.version);
-        let (busy, done) = match replaced {
-            _ if updating => (
+        let (busy, done) = if updating {
+            (
                 format!("Updating “{name}” to {version}"),
                 format!("“{name}” is updated to {version}."),
-            ),
-            Some(other) => (
-                format!("Installing “{name}” {version} in place of “{}”", other.name),
-                format!("“{name}” {version} is installed."),
-            ),
-            None => (
+            )
+        } else {
+            (
                 format!("Installing “{name}” {version}"),
                 format!("“{name}” {version} is installed."),
-            ),
+            )
         };
         let instead = current.and_then(|root| self.instead(root, &listed));
 
@@ -1109,19 +1106,21 @@ impl State {
         let blocked = found
             .filter(|_| installable)
             .and_then(|_| self.blocked(root, listed));
-        // The edition there that installing this one takes the place of.
-        let replaced = status
-            .is_none()
-            .then(|| self.replaced(root, listed))
-            .flatten()
-            .filter(|_| blocked.is_none());
+        // Until the folder is known, after it was worked on or while it is
+        // looked at again, nothing is done to it.
+        let looking = found.is_none() || self.finding.contains_key(root);
 
         let state: Element<'a, Message> = match (found, status) {
             (None, _) => text("Looking…").size(14).style(text::secondary).boxed(),
             (Some(_), None) => text("Not installed.").size(14).boxed(),
             (Some(_), Some(status)) => text(match (by_hand, &status.release, newer) {
+                (Some(Some(version)), ..) if listed.release(version).is_some() => {
+                    format!(
+                        "Version {version} installed manually; its files differ from the release."
+                    )
+                }
                 (Some(Some(version)), ..) => format!("Version {version} installed manually."),
-                (Some(None), ..) => "Installed manually.".to_owned(),
+                (Some(None), ..) => "Installed manually, unrecognised version".to_owned(),
                 (None, Some(version), Some(newer)) => {
                     format!("Version {version} installed; {} is out.", newer.version)
                 }
@@ -1141,7 +1140,21 @@ impl State {
             match &self.busy {
                 _ if playing => style::tip(button, CLOSE_THE_GAME).boxed(),
                 Some(work) => style::tip(button, wait(work)).boxed(),
+                None if looking => style::tip(button, LOOKING).boxed(),
                 None => button.on_press(message).boxed(),
+            }
+        };
+        // What installs the newest release, off with the reason it can't.
+        let install = |label: String| -> Element<'a, Message> {
+            match &blocked {
+                Some(why) => style::tip(
+                    button(text(label).size(13))
+                        .style(style::primary)
+                        .padding([4, 12]),
+                    why.clone(),
+                )
+                .boxed(),
+                None => action(label, Message::Install(listed.id.clone()), style::primary),
             }
         };
 
@@ -1158,21 +1171,14 @@ impl State {
             .filter(|_| installable)
             .map_or((&[][..], &[][..]), |_| self.conflicting(root, listed));
         let conflicts: Vec<String> = foreign.iter().chain(excluded).cloned().collect();
+        // A copy installed by hand is overridden, backed up: installing asks.
+        let manual = by_hand.is_some() && found.is_some();
+        let anything = manual || !conflicts.is_empty();
 
         let buttons = match status {
-            None => row![newest.filter(|_| blocked.is_none()).map(|release| action(
-                format!("Install {}", release.version),
-                Message::Install(listed.id.clone()),
-                style::primary,
-            ))],
+            None => row![newest.map(|release| install(format!("Install {}", release.version)))],
             Some(_) => row![
-                offered
-                    .filter(|_| blocked.is_none())
-                    .map(|(label, _)| action(
-                        label,
-                        Message::Install(listed.id.clone()),
-                        style::primary,
-                    )),
+                offered.map(|(label, _)| install(label)),
                 (needed == Some(Need::Repair)).then(|| action(
                     "Repair".to_owned(),
                     Message::Repair(listed.id.clone()),
@@ -1254,7 +1260,7 @@ impl State {
         let confirmation = self
             .confirming
             .as_ref()
-            .filter(|(from, id)| from == root && *id == listed.id && !conflicts.is_empty())
+            .filter(|(from, id)| from == root && *id == listed.id && anything)
             .map(|_| {
                 let (verb, doing) = if self.updating(root, &listed.id) {
                     ("Update", "updating")
@@ -1263,15 +1269,28 @@ impl State {
                 };
                 // Each is backed up, those of something else where it goes
                 // and those it isn't made for alike.
-                let files = conflicts.iter().map(|path| {
-                    text(format!(
-                        "{path} belongs to something else: {doing} “{}” overrides it safely \
-                         (backed up).",
-                        listed.name,
-                    ))
-                    .size(13)
-                    .boxed()
-                });
+                let version =
+                    newest.map_or("the newest release", |release| release.version.as_str());
+                let files = manual
+                    .then(|| {
+                        text(format!(
+                            "“{}” is installed manually: {doing} {version} overrides it safely \
+                             (backed up).",
+                            listed.name,
+                        ))
+                        .size(13)
+                        .boxed()
+                    })
+                    .into_iter()
+                    .chain(conflicts.iter().map(|path| {
+                        text(format!(
+                            "{path} belongs to something else: {doing} “{}” overrides it \
+                             safely (backed up).",
+                            listed.name,
+                        ))
+                        .size(13)
+                        .boxed()
+                    }));
 
                 container(
                     column![
@@ -1320,21 +1339,12 @@ impl State {
                 column![buttons, state].spacing(6).align_x(Right),
             ]
             .spacing(12),
-            blocked.map(|why| text(why).size(13).style(text::warning)),
             (!conflicts.is_empty()).then(|| {
                 text(format!("In conflict with {}.", names(&conflicts)))
                     .size(13)
                     .style(text::warning)
             }),
             self.elsewhere(root, listed, installable && newer.is_none()),
-            replaced.map(|other| {
-                text(format!(
-                    "Installing it takes the place of “{}”, which this client holds.",
-                    other.name
-                ))
-                .size(13)
-                .style(text::secondary)
-            }),
             column(problems).spacing(4),
             note,
             removal,
@@ -2041,13 +2051,18 @@ mod tests {
         let mut state = found(Some(status(Some("2.0"), Vec::new())));
         state.list.mods.push(glare);
 
-        assert!(shows(
-            &state,
-            false,
-            "It can't be beside “Glow”, which this client holds: both use Version.dll. \
-             Uninstall “Glow” to install “Glare”."
-        ));
-        assert!(!shows(&state, false, "Install 0.5"));
+        // The hint can't be hovered here: it is what blocks the button.
+        assert_eq!(
+            state.blocked(Path::new(ROOT), &state.list.mods[1]),
+            Some(
+                "“Glow” is installed, and it conflicts with this one: both use Version.dll."
+                    .to_owned()
+            )
+        );
+        assert!(shows(&state, false, "Install 0.5"));
+        let mut ui = simulator(state.view(Path::new(ROOT), false));
+        let _ = ui.click("Install 0.5").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "the button is off");
         let _ = update(&mut state, Message::Install("glare".to_owned()), None);
         assert!(state.busy.is_none());
     }
@@ -2101,24 +2116,25 @@ mod tests {
     }
 
     #[test]
-    fn an_alternative_takes_the_place_of_the_one_there() {
+    fn an_installed_alternative_keeps_install_disabled() {
         let mut state = found(Some(status(Some("2.0"), Vec::new())));
         state.list.mods.push(glare());
 
         assert!(shows(&state, false, "Install 0.5"));
-        assert!(shows(
-            &state,
-            false,
-            "Installing it takes the place of “Glow”, which this client holds."
-        ));
-        assert!(!shows(&state, false, "It can't be beside “Glow”"));
+        let mut ui = simulator(state.view(Path::new(ROOT), false));
+        let _ = ui.click("Install 0.5").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "the button is off");
         assert_eq!(
-            state
-                .replaced(Path::new(ROOT), &glow())
-                .map(|other| other.id.as_str()),
+            state.blocked(Path::new(ROOT), &glare()),
+            Some("“Glow” is installed, and it conflicts with this one.".to_owned())
+        );
+        assert_eq!(
+            state.blocked(Path::new(ROOT), &glow()),
             None,
             "nothing of Glare there"
         );
+        let _ = update(&mut state, Message::Install("glare".to_owned()), None);
+        assert!(state.busy.is_none());
     }
 
     #[test]
@@ -2319,6 +2335,16 @@ mod tests {
         assert!(shows(&by_hand, false, "Install 2.0"));
         let _ = update(&mut by_hand, Message::Install("glow".to_owned()), None);
         assert!(shows(&by_hand, false, "Install “Glow” anyway?"));
+        assert!(shows(
+            &by_hand,
+            false,
+            "“Glow” is installed manually: installing 2.0 overrides it safely (backed up)."
+        ));
+        assert!(shows(
+            &by_hand,
+            false,
+            "version.dll belongs to something else: installing “Glow” overrides it safely (backed up)."
+        ));
         assert!(!by_hand.updating(Path::new(ROOT), "glow"));
         assert!(older.updating(Path::new(ROOT), "glow"));
 
@@ -2429,7 +2455,7 @@ mod tests {
         assert_eq!(state.natives(&root), ["Glow", "version"]);
         assert!(state.banner(&root, false).is_none());
         let mut ui = simulator(state.view(&root, false));
-        assert!(ui.find("Installed manually.").is_ok());
+        assert!(ui.find("Installed manually, unrecognised version").is_ok());
         assert!(ui.find("Install 2.0").is_ok(), "the newest, in its place");
         assert!(ui.find("Repair").is_err());
         drop(ui);
@@ -2453,6 +2479,51 @@ mod tests {
     }
 
     #[test]
+    fn after_work_is_done_the_row_waits_for_the_next_look() {
+        let mut state = found(Some(status(Some("1.0"), Vec::new())));
+        state.list.mods.push(glare());
+        let root = Path::new(ROOT);
+        assert!(shows(&state, false, "Update to 2.0"));
+        assert!(shows(&state, false, "Glare"), "it suits the client");
+        assert!(!state.holds_back(root));
+
+        let _ = update(
+            &mut state,
+            Message::Done(ROOT.into(), "glow".to_owned(), Ok("Done.".to_owned())),
+            None,
+        );
+        assert!(!state.found.contains_key(root), "what was known is stale");
+        assert!(state.holds_back(root));
+        assert!(shows(&state, false, "Looking…"));
+        assert!(shows(&state, false, "Install 2.0"));
+        assert!(shows(&state, false, "Glare"), "it stays in the list");
+        let _ = update(&mut state, Message::Install("glow".to_owned()), None);
+        assert!(state.busy.is_none(), "nothing starts before the look");
+        let mut ui = simulator(state.view(root, false));
+        let _ = ui.click("Install 2.0").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "off until it is looked at");
+
+        let seen = Seen {
+            held: BTreeMap::from([("glow".to_owned(), status(Some("2.0"), Vec::new()))]),
+            ..Seen::default()
+        };
+        let _ = update(&mut state, Message::Found(ROOT.into(), seen), None);
+        assert!(!state.holds_back(root));
+        let mut ui = simulator(state.view(root, false));
+        let _ = ui.click("Uninstall").unwrap();
+        assert!(matches!(
+            &ui.into_messages().collect::<Vec<_>>()[..],
+            [Message::Remove(id)] if id == "glow"
+        ));
+
+        // Looked at again meanwhile, the buttons wait too.
+        let _ = state.finding.insert(root.to_path_buf(), false);
+        let mut ui = simulator(state.view(root, false));
+        let _ = ui.click("Uninstall").unwrap();
+        assert_eq!(ui.into_messages().count(), 0);
+    }
+
+    #[test]
     fn a_copy_installed_by_hand_says_its_version() {
         let state = found(Some(status(
             None,
@@ -2464,11 +2535,61 @@ mod tests {
 
         assert!(shows(&state, false, "Version 3.0 installed manually."));
         assert!(!state.holds_back(Path::new(ROOT)));
+
+        // A release of the list, its files not as released.
+        let state = found(Some(status(
+            None,
+            vec![Problem::Unknown {
+                version: Some("2.0".to_owned()),
+                natives: Vec::new(),
+            }],
+        )));
+        assert!(shows(
+            &state,
+            false,
+            "Version 2.0 installed manually; its files differ from the release."
+        ));
         assert_eq!(
             target(&glow(), &status(None, Vec::new())).unwrap().version,
             "2.0",
             "the newest goes in its place"
         );
+    }
+
+    #[test]
+    fn installing_over_a_copy_installed_by_hand_asks_first() {
+        let mut state = found(Some(status(
+            None,
+            vec![Problem::Unknown {
+                version: None,
+                natives: Vec::new(),
+            }],
+        )));
+        assert!(shows(
+            &state,
+            false,
+            "Installed manually, unrecognised version"
+        ));
+
+        let mut ui = simulator(state.view(Path::new(ROOT), false));
+        let _ = ui.click("Install 2.0").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        assert!(matches!(&messages[..], [Message::Install(id)] if id == "glow"));
+        let _ = update(&mut state, Message::Install("glow".to_owned()), None);
+        assert!(state.busy.is_none(), "nothing is downloaded yet");
+        assert!(shows(
+            &state,
+            false,
+            "“Glow” is installed manually: installing 2.0 overrides it safely (backed up)."
+        ));
+        assert!(shows(&state, false, "Install “Glow” anyway?"));
+
+        let mut ui = simulator(state.view(Path::new(ROOT), false));
+        let _ = ui.click("Install anyway").unwrap();
+        assert!(matches!(
+            &ui.into_messages().collect::<Vec<_>>()[..],
+            [Message::ConfirmInstall]
+        ));
     }
 
     #[test]

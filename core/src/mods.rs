@@ -6,7 +6,9 @@
 //! `indexer` tool, which hashes every file of every release, and is published
 //! as one JSON document. Which release a client holds is recorded in a marker
 //! in the notes beside `Wow.exe`, written when the launcher installs a
-//! release or recognizes one already there.
+//! release or recognizes one already there, by its files. A copy that
+//! matches no release, with no marker, isn't known to be the mod's:
+//! installing over it backs it up.
 //!
 //! A path in the list may name a language, as [`LOCALE`]: a mod's files can
 //! go in the folder of `Data` of each language the client has, so it plays
@@ -84,12 +86,13 @@ pub struct Mod {
     /// Files of the clients the mod isn't made for: one with all of them
     /// isn't offered it, and one with some is, those being in conflict with
     /// it (see [`excluded`]). An edition made for clients without an HD
-    /// model pack excludes the pack's archives.
+    /// model pack excludes the pack's language archive, which only that
+    /// pack has.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub excludes: Vec<String>,
     /// Files it can't be beside, whoever's: those a client has are in
     /// conflict with it, and installing it backs them up (see
-    /// [`excluded`]), but it is offered all the same. Patch Y's editions
+    /// [`excluded`]), but it is offered all the same. Patch Y's HD edition
     /// with the original spell visuals can't be beside the new ones'
     /// archives.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -345,6 +348,44 @@ impl Mods {
                         || other.alternatives.contains(&game_mod.id))
             })
             .collect()
+    }
+
+    /// The files the mods installed in the client folder at `root` own, by
+    /// path within it, in lowercase (a torrent may spell it `data/enus/…`),
+    /// with the id of the mod: those of the release its marker names, as
+    /// placed there (see [`Mod::placed`]), and its settings and what it
+    /// writes. A marker naming a release no longer listed owns every path
+    /// of the mod. A mod without a marker owns nothing: its files are as
+    /// much the player's as any.
+    pub fn owned(&self, root: &Path) -> BTreeMap<String, String> {
+        let mut owned = BTreeMap::new();
+
+        for game_mod in &self.mods {
+            let Some(marker) = game_mod.marker(root) else {
+                continue;
+            };
+            let Some(placed) = game_mod.placed_in(root) else {
+                continue;
+            };
+            let paths: BTreeSet<&str> = match placed.release(&marker.version) {
+                Some(release) => release
+                    .files
+                    .iter()
+                    .map(|(path, _)| path.as_str())
+                    .chain(placed.settings.iter().map(String::as_str))
+                    .chain(placed.written())
+                    .collect(),
+                None => placed.claimed(),
+            };
+
+            for path in paths {
+                let _ = owned
+                    .entry(path.to_ascii_lowercase())
+                    .or_insert_with(|| game_mod.id.clone());
+            }
+        }
+
+        owned
     }
 }
 
@@ -918,8 +959,9 @@ pub fn conflicts(a: &Mod, b: &Mod) -> Vec<String> {
 /// with the contents of none of `game_mod`'s releases, at a path that isn't
 /// the mod's own there, and none of its `alternatives`', which installing it
 /// takes the place of. Its own are the files of the release its marker
-/// names, or all its paths when it is there without one (a repair takes
-/// those for its own files, broken); with nothing of it there, it has none.
+/// names, or all its paths when that release is no longer listed (a repair
+/// takes those for its own files, broken); without a marker it has none: a
+/// copy that matches no release isn't known to be the mod's.
 pub fn foreign(
     root: &Path,
     game_mod: &Mod,
@@ -956,16 +998,12 @@ fn foreign_of(
     release: &Release,
     alternatives: &[&Mod],
 ) -> Vec<String> {
-    let own: BTreeSet<&str> = if present(root, game_mod, alternatives) {
-        match game_mod
-            .marker(root)
-            .and_then(|marker| game_mod.release(&marker.version))
-        {
+    let own: BTreeSet<&str> = match game_mod.marker(root) {
+        Some(marker) => match game_mod.release(&marker.version) {
             Some(held) => held.files.iter().map(|(path, _)| path.as_str()).collect(),
             None => game_mod.paths(),
-        }
-    } else {
-        BTreeSet::new()
+        },
+        None => BTreeSet::new(),
     };
 
     release
@@ -989,8 +1027,11 @@ fn foreign_of(
 /// Checks what the client folder at `root` holds of `game_mod` against its
 /// releases, when no marker says which it is: the newest whose files are
 /// all there as released is recorded in its marker, set up if what its
-/// setup writes is there. Then tells what the folder holds (see [`status`],
-/// which leaves out what it shares with its `alternatives`), which is
+/// setup writes is there. Not when an `alternative` is marked, or has as many
+/// files or more there, whole: editions that share files are told apart by
+/// the one with the most, and when they tie, neither is known. Then tells
+/// what the folder holds (see [`status`], which leaves out what it shares
+/// with its `alternatives`), which is
 /// [`Problem::Unknown`] when it matches none: a copy installed by hand,
 /// with the version its files say and the DLLs it has beside `Wow.exe`.
 pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Option<Status>, Error> {
@@ -1002,12 +1043,41 @@ pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Optio
     let alternatives: Vec<&Mod> = alternatives.iter().collect();
 
     if game_mod.marker(root).is_none() {
-        let recognized = game_mod.releases.iter().find(|release| {
+        let whole = |game_mod: &Mod, release: &Release| {
             let (missing, changed) = compare(root, game_mod, release);
             missing.is_empty() && changed.is_empty()
+        };
+        let size = |game_mod: &Mod, release: &Release| {
+            release
+                .files
+                .iter()
+                .filter(|(path, _)| !game_mod.is_setting(path))
+                .count()
+        };
+        // Nothing is recognized beside an edition marked, which is not
+        // worth reading the files for.
+        let recognized = if alternatives.iter().any(|other| other.marked(root)) {
+            None
+        } else {
+            game_mod
+                .releases
+                .iter()
+                .find(|release| whole(game_mod, release))
+        };
+        // Editions of one thing that share files: the one with the most
+        // files there is the one there, and when they tie, neither is known.
+        let taken = recognized.is_some_and(|release| {
+            let wanted = size(game_mod, release);
+            alternatives.iter().any(|other| {
+                other
+                    .releases
+                    .iter()
+                    .filter(|held| size(other, held) >= wanted)
+                    .any(|held| whole(other, held))
+            })
         });
 
-        match recognized {
+        match recognized.filter(|_| !taken) {
             Some(release) => {
                 let set_up = release
                     .setup
@@ -1989,12 +2059,105 @@ mod tests {
         assert_eq!(read(&installation, "version.dll"), "another mod's loader");
         assert!(!root.join("Glow.dll").exists(), "nothing changed");
 
-        // There already, broken: a repair takes its files for its own.
+        // There already, matching no release and with no marker: not known
+        // to be its own, so installing over it needs to back it up.
         fs::write(root.join("Glow.dll"), "patched").unwrap();
         assert!(status(root, &game_mod, &[]).is_some());
-        assert_eq!(foreign(root, &game_mod, newest, &[]), [] as [String; 0]);
+        assert_eq!(
+            foreign(root, &game_mod, newest, &[]),
+            ["version.dll", "Glow.dll"]
+        );
+        assert!(matches!(
+            install(&installation, &game_mod, newest, &new_zip, &[], false),
+            Err(Error::Foreign(files)) if files == ["version.dll", "Glow.dll"]
+        ));
+        install(&installation, &game_mod, newest, &new_zip, &[], true).unwrap();
+        assert_eq!(read(&installation, "Glow.dll.backup"), "patched");
+        assert_eq!(
+            read(&installation, "version.dll.backup"),
+            "another mod's loader"
+        );
+        assert_eq!(read(&installation, "version.dll"), "loader 2");
+        assert_eq!(
+            status(root, &game_mod, &[]).unwrap().release.as_deref(),
+            Some("2.0")
+        );
+    }
+
+    #[test]
+    fn an_unknown_copy_is_backed_up_but_a_marked_release_is_replaced() {
+        let (game_mod, new_zip, _) = glow();
+        let newest = &game_mod.releases[0];
+
+        // Files at its paths that match no release, with no marker: the
+        // player's, or another mod's.
+        let (_root, installation) = crate::testing::client_with(&[
+            ("Glow.dll", "a patched one"),
+            ("version.dll", "a loader"),
+        ]);
+        let root = installation.root();
+        assert_eq!(game_mod.marker(root), None);
+        install(&installation, &game_mod, newest, &new_zip, &[], true).unwrap();
+        assert_eq!(read(&installation, "Glow.dll.backup"), "a patched one");
+        assert_eq!(read(&installation, "version.dll.backup"), "a loader");
+        assert_eq!(read(&installation, "version.dll"), "loader 2");
+
+        // Marked, one file changed: it is the mod's, repaired without a backup.
+        fs::write(root.join("version.dll"), "changed since").unwrap();
         install(&installation, &game_mod, newest, &new_zip, &[], false).unwrap();
         assert_eq!(read(&installation, "version.dll"), "loader 2");
+        assert!(!root.join("version.dll.backup-1").exists());
+        assert_eq!(
+            status(root, &game_mod, &[]).unwrap().release.as_deref(),
+            Some("2.0")
+        );
+    }
+
+    #[test]
+    fn an_edition_installed_by_hand_is_adopted_as_the_edition_it_is() {
+        // Both editions have the same Y: only the new one's spells tell.
+        let (new, _) = pax("pax-new", "Y same", true);
+        let (old, _) = pax("pax-old", "Y same", false);
+        let place = |game_mod: &Mod, root: &Path| {
+            for (path, _) in &game_mod.placed_in(root).unwrap().releases[0].files {
+                let file = at(root, path);
+                fs::create_dir_all(file.parent().unwrap()).unwrap();
+                let contents = if path.ends_with("-S.MPQ") {
+                    "tables"
+                } else if path.ends_with("patch-s.mpq") {
+                    "spells"
+                } else {
+                    "Y same"
+                };
+                fs::write(file, contents).unwrap();
+            }
+        };
+
+        // The new edition's files, in either order of asking.
+        let (_root, first) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/patch-f.mpq"]);
+        place(&new, first.root());
+        assert_eq!(check(first.root(), &old, &[&new]).unwrap(), None);
+        assert_eq!(old.marker(first.root()), None, "not the old edition");
+        assert!(check(first.root(), &new, &[&old]).unwrap().is_some());
+        assert_eq!(
+            new.marker(first.root()).map(|marker| marker.version),
+            Some("3.1.0".to_owned())
+        );
+
+        let (_root, second) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/patch-f.mpq"]);
+        place(&new, second.root());
+        assert!(check(second.root(), &new, &[&old]).unwrap().is_some());
+        assert_eq!(check(second.root(), &old, &[&new]).unwrap(), None);
+        assert_eq!(old.marker(second.root()), None);
+
+        // The old edition's files alone are the old edition.
+        let (_root, third) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/patch-f.mpq"]);
+        place(&old, third.root());
+        assert!(check(third.root(), &old, &[&new]).unwrap().is_some());
+        assert_eq!(new.marker(third.root()), None);
     }
 
     #[test]
@@ -2393,6 +2556,36 @@ mod tests {
     }
 
     #[test]
+    fn a_file_named_like_half_of_a_pack_is_left_alone_when_the_other_half_identifies_it() {
+        let (mut original, archive) = pax("pax-old", "Y old", false);
+        original.requires.clear();
+        original.excludes = vec!["Data/{locale}/patch-{locale}-F.MPQ".to_owned()];
+        let (_root, installation) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/patch-F.mpq"]);
+        let root = installation.root();
+
+        // Another pack's `patch-F.mpq`: the client suits it, nothing is in
+        // conflict, and installing it leaves that file be.
+        assert!(fits(root, &original));
+        assert_eq!(excluded(root, &original, &[]), [] as [String; 0]);
+        install(
+            &installation,
+            &original,
+            &original.releases[0],
+            &archive,
+            &[],
+            true,
+        )
+        .unwrap();
+        assert!(root.join("Data/patch-F.mpq").is_file());
+        assert!(!root.join("Data/patch-F.mpq.backup").exists());
+
+        // With the pack's language archive, it is the pack.
+        fs::write(root.join("Data/enUS/patch-enUS-F.MPQ"), "").unwrap();
+        assert!(!fits(root, &original));
+    }
+
+    #[test]
     fn installing_an_alternative_takes_the_place_of_the_one_there() {
         let (new, new_zip) = pax("pax-new", "Y new", true);
         let (old, old_zip) = pax("pax-old", "Y old", false);
@@ -2604,5 +2797,61 @@ mod tests {
                 "d3d9".to_owned()
             )])]
         );
+    }
+
+    #[test]
+    fn installed_mods_files_are_owned_by_them() {
+        let (mut game_mod, _, _) = glow();
+        game_mod.releases[0].files.push((
+            "Data/{locale}/patch-{locale}-M.MPQ".to_owned(),
+            sha256(b"maps"),
+        ));
+        let list = Mods {
+            version: Mods::VERSION,
+            mods: vec![game_mod.clone()],
+        };
+        let (_root, installation) = crate::testing::client(&["Data/enUS/a.MPQ", "Data/esES/a.MPQ"]);
+        let root = installation.root();
+
+        assert!(list.owned(root).is_empty(), "no marker: not owned");
+
+        game_mod
+            .mark(root, &game_mod.releases[0], true, None)
+            .unwrap();
+        let expected: BTreeMap<String, String> = [
+            "version.dll",
+            "glow.dll",
+            "glow.ini",
+            "glow/setup.exe",
+            "glow-spots",
+            "glow.log",
+            "glow.bin",
+            "data/enus/patch-enus-m.mpq",
+            "data/eses/patch-eses-m.mpq",
+        ]
+        .into_iter()
+        .map(|path| (path.to_owned(), "glow".to_owned()))
+        .collect();
+        assert_eq!(list.owned(root), expected, "the release's, as placed here");
+
+        // The older release the marker names has no such file.
+        game_mod
+            .mark(root, &game_mod.releases[1], true, None)
+            .unwrap();
+        let owned = list.owned(root);
+        assert!(owned.contains_key("glow/old.txt"));
+        assert!(!owned.contains_key("data/enus/patch-enus-m.mpq"));
+
+        // Naming a release no longer listed, it owns every path.
+        let mut elsewhere = game_mod.releases[0].clone();
+        elsewhere.version = "0.1".to_owned();
+        game_mod.mark(root, &elsewhere, true, None).unwrap();
+        let owned = list.owned(root);
+        assert_eq!(owned.len(), expected.len() + 1, "and the older's");
+        assert!(owned.contains_key("glow/old.txt"));
+        assert!(owned.contains_key("data/eses/patch-eses-m.mpq"));
+
+        // Marked mods that aren't listed own nothing.
+        assert!(Mods::default().owned(root).is_empty());
     }
 }
