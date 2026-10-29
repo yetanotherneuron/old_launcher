@@ -393,22 +393,21 @@ pub fn danger(_theme: &Theme, status: button::Status) -> button::Style {
 /// A button that is only its gold text, lit under the mouse: closing,
 /// dismissing, links.
 pub fn quiet(_theme: &Theme, status: button::Status) -> button::Style {
+    bare(wotlk::GOLD, status)
+}
+
+/// A link that is only its white text, lit under the mouse: beside a gold
+/// name, so as not to pass for it.
+pub fn link(_theme: &Theme, status: button::Status) -> button::Style {
+    bare(wotlk::WHITE, status)
+}
+
+/// A button that is only its text, in `color`, lit under the mouse.
+fn bare(color: Color, status: button::Status) -> button::Style {
     let (fill, text) = match status {
-        button::Status::Active => (None, wotlk::GOLD),
-        button::Status::Hovered => (
-            Some(Color {
-                a: 0.12,
-                ..wotlk::GOLD
-            }),
-            lit(wotlk::GOLD),
-        ),
-        button::Status::Pressed => (
-            Some(Color {
-                a: 0.2,
-                ..wotlk::GOLD
-            }),
-            wotlk::GOLD,
-        ),
+        button::Status::Active => (None, color),
+        button::Status::Hovered => (Some(Color { a: 0.12, ..color }), lit(color)),
+        button::Status::Pressed => (Some(Color { a: 0.2, ..color }), color),
         button::Status::Disabled => (None, wotlk::GREY),
     };
 

@@ -7,6 +7,13 @@
 //! as one JSON document. Which release a client holds is recorded in a marker
 //! in the notes beside `Wow.exe`, written when the launcher installs a
 //! release or recognizes one already there.
+//!
+//! A path in the list may name the language the client plays in, as
+//! [`LOCALE`]: a mod's files can go in that language's folder of `Data`.
+//! Paths are found in a client folder whatever their case, as the game
+//! finds them. Some mods are alternatives to each other, editions of one
+//! thing, of which a client holds one at most: installing one takes the
+//! place of the other.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -17,9 +24,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::io_at;
-use crate::installation::{STAGING_PREFIX, config_setting};
+use crate::installation::{STAGING_PREFIX, child, config_setting};
 use crate::notes::Notes;
 use crate::{Error, Installation, archive};
+
+/// What stands for the language a client plays in (`enUS`, `deDE`, …) in
+/// the paths of the list of mods.
+pub const LOCALE: &str = "{locale}";
 
 /// A published list of mods.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +73,20 @@ pub struct Mod {
     /// only, since Proton and the like bring their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub platforms: Vec<String>,
+    /// Files a client must have for the mod to suit it: one without them
+    /// isn't offered it. An edition made for an HD model pack requires the
+    /// pack's archives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
+    /// Files a client must not have for the mod to suit it: one with any of
+    /// them isn't offered it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub excludes: Vec<String>,
+    /// The mods it is an alternative to, by id: editions of one thing, of
+    /// which a client holds one at most. Installing it takes the place of
+    /// the one there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<String>,
     /// Where its files say their version, when not in their version
     /// resource (see [`crate::version::product_version`]): DXVK's DLLs
     /// carry Windows' own version there, to pass for its, and say theirs
@@ -106,8 +131,15 @@ pub struct Release {
     pub changes: Option<String>,
     /// Every file it puts in the client folder, by path relative to it with
     /// `/` between folders, with its SHA-256 in lowercase hexadecimal. An
-    /// archive holds them at the same paths, in [`Release::inside`].
+    /// archive holds them at the same paths, in [`Release::inside`], but
+    /// those [`Release::from`] names.
     pub files: Vec<(String, String)>,
+    /// The file of its archive each of its files is, by the file's path,
+    /// when not at the same path: one file of the archive may go to several
+    /// places (`patch-y.mpq` to `Data/patch-y.mpq` and
+    /// `Data/{locale}/patch-{locale}-Y.MPQ`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub from: BTreeMap<String, String>,
     /// The folder of its archive its files are in, when not the top:
     /// `dxvk-3.1.1/x32` holds DXVK's. The rest of the archive is left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -187,8 +219,10 @@ pub enum Problem {
 }
 
 impl Mods {
-    /// The schema version this crate reads and writes.
-    pub const VERSION: u32 = 1;
+    /// The schema version this crate reads and writes: 2 added the
+    /// language in paths, files placed from another file of the archive,
+    /// the files a client must have or not, and alternatives.
+    pub const VERSION: u32 = 2;
 
     /// Reads a published list, refusing schema versions this build does not
     /// know. Releases naming a path outside the client folder, or running a
@@ -204,6 +238,9 @@ impl Mods {
         mods.mods.retain_mut(|game_mod| {
             game_mod.releases.retain(|release| {
                 release.files.iter().all(|(path, _)| safe(path))
+                    && release.from.iter().all(|(to, from)| {
+                        safe(from) && release.files.iter().any(|(path, _)| path == to)
+                    })
                     && release.inside.as_deref().is_none_or(safe)
                     && release.setup.iter().all(|step| {
                         safe(&step.creates)
@@ -216,6 +253,8 @@ impl Mods {
                     .settings
                     .iter()
                     .chain(&game_mod.writes)
+                    .chain(&game_mod.requires)
+                    .chain(&game_mod.excludes)
                     .all(|path| safe(path))
                 && game_mod
                     .version_in
@@ -247,9 +286,62 @@ impl Mods {
 
         Ok(json)
     }
+
+    /// The mods of the list that `game_mod` is an alternative to, or that
+    /// are one to it: a client holds one of them at most.
+    pub fn alternatives(&self, game_mod: &Mod) -> Vec<&Mod> {
+        self.mods
+            .iter()
+            .filter(|other| {
+                other.id != game_mod.id
+                    && (game_mod.alternatives.contains(&other.id)
+                        || other.alternatives.contains(&game_mod.id))
+            })
+            .collect()
+    }
+}
+
+/// `path` in a client that plays in `locale`, [`LOCALE`] in it standing for
+/// it: nothing when it names the language and `locale` is unknown.
+fn place(path: &str, locale: Option<&str>) -> Option<String> {
+    if path.contains(LOCALE) {
+        Some(path.replace(LOCALE, locale?))
+    } else {
+        Some(path.to_owned())
+    }
+}
+
+/// Every one of `paths` in a client that plays in `locale` (see [`place`]).
+fn place_all(paths: &[String], locale: Option<&str>) -> Option<Vec<String>> {
+    paths.iter().map(|path| place(path, locale)).collect()
 }
 
 impl Mod {
+    /// The mod as it goes in a client that plays in `locale`, its paths
+    /// naming that language (see [`LOCALE`]): nothing when they name it and
+    /// `locale` is unknown.
+    pub fn placed(&self, locale: Option<&str>) -> Option<Self> {
+        Some(Self {
+            releases: self
+                .releases
+                .iter()
+                .map(|release| release.placed(locale))
+                .collect::<Option<_>>()?,
+            settings: place_all(&self.settings, locale)?,
+            writes: place_all(&self.writes, locale)?,
+            requires: place_all(&self.requires, locale)?,
+            excludes: place_all(&self.excludes, locale)?,
+            version_in: match &self.version_in {
+                Some(place_of) => Some(VersionIn {
+                    file: place(&place_of.file, locale)?,
+                    after: place_of.after.clone(),
+                }),
+                None => None,
+            },
+            ..self.clone()
+        })
+    }
+
     /// Its release of `version`.
     pub fn release(&self, version: &str) -> Option<&Release> {
         self.releases
@@ -377,6 +469,40 @@ impl Mod {
 }
 
 impl Release {
+    /// The release as it goes in a client that plays in `locale` (see
+    /// [`Mod::placed`]).
+    pub fn placed(&self, locale: Option<&str>) -> Option<Self> {
+        Some(Self {
+            files: self
+                .files
+                .iter()
+                .map(|(path, sum)| Some((place(path, locale)?, sum.clone())))
+                .collect::<Option<_>>()?,
+            from: self
+                .from
+                .iter()
+                .map(|(to, from)| Some((place(to, locale)?, place(from, locale)?)))
+                .collect::<Option<_>>()?,
+            setup: self
+                .setup
+                .iter()
+                .map(|step| {
+                    Some(Step {
+                        run: place(&step.run, locale)?,
+                        creates: place(&step.creates, locale)?,
+                        arguments: step.arguments.clone(),
+                    })
+                })
+                .collect::<Option<_>>()?,
+            ..self.clone()
+        })
+    }
+
+    /// The file of its archive that is its file at `path`.
+    fn source<'a>(&'a self, path: &'a str) -> &'a str {
+        self.from.get(path).map_or(path, String::as_str)
+    }
+
     /// Its DLLs at the client folder's root, by name without `.dll`: the
     /// ones `Wow.exe` may load from its folder in place of Windows' own.
     pub fn natives(&self) -> Vec<String> {
@@ -437,29 +563,63 @@ fn walk(root: &Path, directory: &Path, files: &mut Vec<(String, String)>) -> Res
     Ok(())
 }
 
+/// Where `path` is in the client folder at `root`: each folder and the file
+/// found whatever their case, as the game finds them, or as named when
+/// there is none.
+fn at(root: &Path, path: &str) -> PathBuf {
+    path.split('/')
+        .fold(root.to_path_buf(), |folder, name| child(&folder, name))
+}
+
+/// `mods` as they go in a client that plays in `locale` (see
+/// [`Mod::placed`]), but those that can't.
+fn placed_all(mods: &[&Mod], locale: Option<&str>) -> Vec<Mod> {
+    mods.iter()
+        .filter_map(|game_mod| game_mod.placed(locale))
+        .collect()
+}
+
 /// Whether the client folder at `root` holds `game_mod`: its marker, or one
 /// of its releases' files with that release's contents, or several of them
 /// whatever their contents. A lone file that matches no release may be
 /// another mod's: `version.dll` is a common name. What it writes as it
-/// runs doesn't count: a log outlives it.
-fn present(root: &Path, game_mod: &Mod) -> bool {
+/// runs doesn't count: a log outlives it. Neither do the paths it shares
+/// with its `alternatives`, which tell that one of them is there, not which.
+fn present(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> bool {
     if game_mod.marked(root) {
         return true;
     }
 
+    let shared: BTreeSet<String> = alternatives
+        .iter()
+        .flat_map(|other| other.paths())
+        .map(str::to_ascii_lowercase)
+        .collect();
     let there: Vec<&str> = game_mod
         .paths()
         .into_iter()
-        .filter(|path| root.join(path).is_file())
+        .filter(|path| !shared.contains(&path.to_ascii_lowercase()))
+        .filter(|path| at(root, path).is_file())
         .collect();
 
     match there.as_slice() {
         [] => false,
         [path] => {
-            fs::read(root.join(path)).is_ok_and(|bytes| game_mod.released(path, &sha256(&bytes)))
+            fs::read(at(root, path)).is_ok_and(|bytes| game_mod.released(path, &sha256(&bytes)))
         }
         _ => true,
     }
+}
+
+/// Whether the file at `path` in the client folder at `root`, of contents
+/// `sum`, is `game_mod`'s: one of the release its marker names, or with the
+/// contents one of its releases has there.
+fn owns(root: &Path, game_mod: &Mod, path: &str, sum: &str) -> bool {
+    game_mod.released(path, sum)
+        || game_mod
+            .marker(root)
+            .and_then(|marker| game_mod.release(&marker.version))
+            .is_some_and(|release| release.files.iter().any(|(file, _)| file == path))
 }
 
 /// The files of `release` in the client folder at `root` that are missing,
@@ -473,7 +633,7 @@ fn compare(root: &Path, game_mod: &Mod, release: &Release) -> (Vec<String>, Vec<
             continue;
         }
 
-        match fs::read(root.join(path)) {
+        match fs::read(at(root, path)) {
             Err(_) => missing.push(path.clone()),
             Ok(bytes) if sha256(&bytes) != *sum => changed.push(path.clone()),
             Ok(_) => {}
@@ -484,10 +644,21 @@ fn compare(root: &Path, game_mod: &Mod, release: &Release) -> (Vec<String>, Vec<
 }
 
 /// What the client folder at `root` holds of `game_mod`, if anything (see
-/// [`present`]): checked against the release its marker names, or else
+/// [`present`], which leaves out the paths it shares with its
+/// `alternatives`): checked against the release its marker names, or else
 /// [`Problem::Unchecked`].
-pub fn status(root: &Path, game_mod: &Mod) -> Option<Status> {
-    if !present(root, game_mod) {
+pub fn status(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Option<Status> {
+    let locale = crate::installation::locale(root);
+    let game_mod = game_mod.placed(locale.as_deref())?;
+    let alternatives = placed_all(alternatives, locale.as_deref());
+
+    status_of(root, &game_mod, &alternatives.iter().collect::<Vec<_>>())
+}
+
+/// [`status`], of `game_mod` and its `alternatives` placed in the client
+/// folder at `root`.
+fn status_of(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Option<Status> {
+    if !present(root, game_mod, alternatives) {
         return None;
     }
 
@@ -515,7 +686,7 @@ pub fn status(root: &Path, game_mod: &Mod) -> Option<Status> {
                 .setup
                 .iter()
                 .map(|step| step.creates.clone())
-                .filter(|creates| !marker.set_up || !root.join(creates).exists())
+                .filter(|creates| !marker.set_up || !at(root, creates).exists())
                 .collect();
             if !not_set_up.is_empty() {
                 problems.push(Problem::NotSetUp(not_set_up));
@@ -560,13 +731,43 @@ pub fn conflicts(a: &Mod, b: &Mod) -> Vec<String> {
 
 /// The files of `release` in the client folder at `root` that belong to
 /// something else, which installing it would replace: not the player's,
-/// with the contents of none of `game_mod`'s releases, and at a path that
-/// isn't the mod's own there. Its own are the files of the release its
-/// marker names, or all its paths when it is there without one (a repair
-/// takes those for its own files, broken); with nothing of it there, it has
-/// none.
-pub fn foreign(root: &Path, game_mod: &Mod, release: &Release) -> Vec<String> {
-    let own: BTreeSet<&str> = if present(root, game_mod) {
+/// with the contents of none of `game_mod`'s releases, at a path that isn't
+/// the mod's own there, and none of its `alternatives`', which installing it
+/// takes the place of. Its own are the files of the release its marker
+/// names, or all its paths when it is there without one (a repair takes
+/// those for its own files, broken); with nothing of it there, it has none.
+pub fn foreign(
+    root: &Path,
+    game_mod: &Mod,
+    release: &Release,
+    alternatives: &[&Mod],
+) -> Vec<String> {
+    let locale = crate::installation::locale(root);
+    let (Some(game_mod), Some(release)) = (
+        game_mod.placed(locale.as_deref()),
+        release.placed(locale.as_deref()),
+    ) else {
+        return Vec::new();
+    };
+    let alternatives = placed_all(alternatives, locale.as_deref());
+
+    foreign_of(
+        root,
+        &game_mod,
+        &release,
+        &alternatives.iter().collect::<Vec<_>>(),
+    )
+}
+
+/// [`foreign`], of `game_mod`, `release` and the `alternatives` placed in
+/// the client folder at `root`.
+fn foreign_of(
+    root: &Path,
+    game_mod: &Mod,
+    release: &Release,
+    alternatives: &[&Mod],
+) -> Vec<String> {
+    let own: BTreeSet<&str> = if present(root, game_mod, alternatives) {
         match game_mod
             .marker(root)
             .and_then(|marker| game_mod.release(&marker.version))
@@ -584,7 +785,13 @@ pub fn foreign(root: &Path, game_mod: &Mod, release: &Release) -> Vec<String> {
         .map(|(path, _)| path)
         .filter(|path| !game_mod.is_setting(path) && !own.contains(path.as_str()))
         .filter(|path| {
-            fs::read(root.join(path)).is_ok_and(|bytes| !game_mod.released(path, &sha256(&bytes)))
+            fs::read(at(root, path)).is_ok_and(|bytes| {
+                let sum = sha256(&bytes);
+                !game_mod.released(path, &sum)
+                    && !alternatives
+                        .iter()
+                        .any(|other| owns(root, other, path, &sum))
+            })
         })
         .cloned()
         .collect()
@@ -593,10 +800,19 @@ pub fn foreign(root: &Path, game_mod: &Mod, release: &Release) -> Vec<String> {
 /// Checks what the client folder at `root` holds of `game_mod` against its
 /// releases, when no marker says which it is: the newest whose files are
 /// all there as released is recorded in its marker, set up if what its
-/// setup writes is there. Then tells what the folder holds, which is
+/// setup writes is there. Then tells what the folder holds (see [`status`],
+/// which leaves out what it shares with its `alternatives`), which is
 /// [`Problem::Unknown`] when it matches none: a copy installed by hand,
 /// with the version its files say and the DLLs it has beside `Wow.exe`.
-pub fn check(root: &Path, game_mod: &Mod) -> Result<Option<Status>, Error> {
+pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Option<Status>, Error> {
+    let locale = crate::installation::locale(root);
+    let Some(game_mod) = game_mod.placed(locale.as_deref()) else {
+        return Ok(None);
+    };
+    let game_mod = &game_mod;
+    let alternatives = placed_all(alternatives, locale.as_deref());
+    let alternatives: Vec<&Mod> = alternatives.iter().collect();
+
     if game_mod.marker(root).is_none() {
         let recognized = game_mod.releases.iter().find(|release| {
             let (missing, changed) = compare(root, game_mod, release);
@@ -608,16 +824,16 @@ pub fn check(root: &Path, game_mod: &Mod) -> Result<Option<Status>, Error> {
                 let set_up = release
                     .setup
                     .iter()
-                    .all(|step| root.join(&step.creates).exists());
+                    .all(|step| at(root, &step.creates).exists());
                 game_mod.mark(root, release, set_up)?;
             }
             None => {
-                return Ok(status(root, game_mod).map(|_| {
+                return Ok(status_of(root, game_mod, &alternatives).map(|_| {
                     let mut natives: Vec<String> = game_mod
                         .releases
                         .iter()
                         .flat_map(Release::natives)
-                        .filter(|dll| root.join(format!("{dll}.dll")).is_file())
+                        .filter(|dll| at(root, &format!("{dll}.dll")).is_file())
                         .collect();
                     natives.sort_unstable();
                     natives.dedup();
@@ -634,7 +850,70 @@ pub fn check(root: &Path, game_mod: &Mod) -> Result<Option<Status>, Error> {
         }
     }
 
-    Ok(status(root, game_mod))
+    Ok(status_of(root, game_mod, &alternatives))
+}
+
+/// The files `game_mod` requires that the client folder at `root` has, and
+/// those it lacks, when it has some but not all: what the mod needs is
+/// there only in part, so it doesn't suit the client, and neither does an
+/// alternative that excludes those files.
+pub fn partly(root: &Path, game_mod: &Mod) -> Option<(Vec<String>, Vec<String>)> {
+    let game_mod = game_mod.placed(crate::installation::locale(root).as_deref())?;
+    let (present, missing): (Vec<String>, Vec<String>) = game_mod
+        .requires
+        .iter()
+        .cloned()
+        .partition(|path| at(root, path).is_file());
+
+    (!present.is_empty() && !missing.is_empty()).then_some((present, missing))
+}
+
+/// The suffix of a file set aside: the game doesn't load it.
+pub const ASIDE: &str = ".disabled";
+
+/// Sets the files at `paths` in `installation`'s folder aside: each renamed
+/// to end in [`ASIDE`], which the game doesn't load, so renaming it back
+/// undoes it. Nothing is renamed when a file set aside before is in the way
+/// of any of them.
+pub fn set_aside(installation: &Installation, paths: &[String]) -> Result<(), Error> {
+    let moves: Vec<(PathBuf, PathBuf)> = paths
+        .iter()
+        .map(|path| {
+            let file = at(installation.root(), path);
+            let name = file.file_name().unwrap_or_default().to_string_lossy();
+            // One set aside before, whatever its case, as the game finds it.
+            let aside = child(
+                file.parent().unwrap_or(installation.root()),
+                &format!("{name}{ASIDE}"),
+            );
+
+            (file, aside)
+        })
+        .collect();
+
+    if let Some((_, aside)) = moves.iter().find(|(_, aside)| aside.exists()) {
+        return Err(io_at(aside)(io::ErrorKind::AlreadyExists.into()));
+    }
+    for (file, aside) in &moves {
+        fs::rename(file, aside).map_err(io_at(file))?;
+    }
+
+    Ok(())
+}
+
+/// Whether `game_mod` suits the client folder at `root`: it has every file
+/// the mod requires and none it excludes, whatever their case. A mod whose
+/// paths name the client's language suits none without language data.
+pub fn fits(root: &Path, game_mod: &Mod) -> bool {
+    let Some(game_mod) = game_mod.placed(crate::installation::locale(root).as_deref()) else {
+        return false;
+    };
+
+    game_mod
+        .requires
+        .iter()
+        .all(|path| at(root, path).is_file())
+        && !game_mod.excludes.iter().any(|path| at(root, path).exists())
 }
 
 /// The version the files of `game_mod` in the client folder at `root` say
@@ -642,7 +921,7 @@ pub fn check(root: &Path, game_mod: &Mod) -> Result<Option<Status>, Error> {
 /// else in the version resource of the first of its files that has one.
 fn manual_version(root: &Path, game_mod: &Mod) -> Option<String> {
     if let Some(place) = &game_mod.version_in {
-        let bytes = fs::read(root.join(&place.file)).ok()?;
+        let bytes = fs::read(at(root, &place.file)).ok()?;
         let after = place.after.as_bytes();
         let at = bytes
             .windows(after.len())
@@ -663,28 +942,40 @@ fn manual_version(root: &Path, game_mod: &Mod) -> Option<String> {
     game_mod
         .paths()
         .into_iter()
-        .filter_map(|path| fs::read(root.join(path)).ok())
+        .filter_map(|path| fs::read(at(root, path)).ok())
         .find_map(|bytes| crate::version::product_version(&bytes))
 }
 
 /// Installs `release` of `game_mod`, downloaded as `download`, into
 /// `installation`'s folder. Every file is checked against the release first,
-/// so nothing changes unless all of them are right. Then what was there of
-/// the mod goes but the player's files (see [`uninstall`]), the release's
-/// files go in place but the player's ones already there, the marker records
-/// the release, and `WTF/Config.wtf` gets what the mod needs. Its setup isn't
-/// run: until [`finish_setup`] says it ran to the end, the marker says it
-/// didn't, when there is one. Files of something else where the release
-/// puts its own stay, and so does everything else: see [`foreign`].
+/// so nothing changes unless all of them are right. Then its `alternatives`
+/// there go, and what was there of the mod, but the player's files (see
+/// [`uninstall`]); the release's files go in place but the player's ones
+/// already there, the marker records the release, and `WTF/Config.wtf` gets
+/// what the mod needs. Its setup isn't run: until [`finish_setup`] says it
+/// ran to the end, the marker says it didn't, when there is one. Files of
+/// something else where the release puts its own stay, and so does
+/// everything else: see [`foreign`].
 pub fn install(
     installation: &Installation,
     game_mod: &Mod,
     release: &Release,
     download: &[u8],
+    alternatives: &[&Mod],
 ) -> Result<(), Error> {
     let root = installation.root();
+    let locale = crate::installation::locale(root);
+    let (Some(game_mod), Some(release)) = (
+        game_mod.placed(locale.as_deref()),
+        release.placed(locale.as_deref()),
+    ) else {
+        return Err(Error::NoLanguage);
+    };
+    let (game_mod, release) = (&game_mod, &release);
+    let alternatives = placed_all(alternatives, locale.as_deref());
+    let alternatives: Vec<&Mod> = alternatives.iter().collect();
 
-    let foreign = foreign(root, game_mod, release);
+    let foreign = foreign_of(root, game_mod, release, &alternatives);
     if !foreign.is_empty() {
         return Err(Error::Foreign(foreign));
     }
@@ -704,7 +995,7 @@ pub fn install(
         }
         // Not an archive: the release's one file itself.
         (None, [(path, _)]) => {
-            let file = from.join(path);
+            let file = from.join(release.source(path));
             if let Some(parent) = file.parent() {
                 fs::create_dir_all(parent).map_err(io_at(parent))?;
             }
@@ -714,18 +1005,38 @@ pub fn install(
     }
 
     for (path, sum) in &release.files {
-        let bytes = fs::read(from.join(path)).map_err(|_| Error::NotInRelease(path.clone()))?;
+        let source = release.source(path);
+        let bytes =
+            fs::read(from.join(source)).map_err(|_| Error::NotInRelease(source.to_owned()))?;
         if sha256(&bytes) != *sum {
             return Err(Error::Checksum(path.clone()));
         }
     }
 
-    // Nothing left over of what was there, another release's or a broken
-    // install's.
-    uninstall(installation, game_mod, true)?;
+    // What it takes the place of goes, then whatever was there of it,
+    // another release's or a broken install's.
+    for other in alternatives
+        .iter()
+        .filter(|other| present(root, other, &[]))
+    {
+        uninstall_of(installation, other, true)?;
+    }
+    uninstall_of(installation, game_mod, true)?;
+
+    // A file of the archive that goes to several places is copied to each
+    // but the last, where it moves.
+    let mut uses: BTreeMap<&str, usize> = BTreeMap::new();
+    for (path, _) in &release.files {
+        *uses.entry(release.source(path)).or_default() += 1;
+    }
 
     for (path, _) in &release.files {
-        let target = root.join(path);
+        let source = release.source(path);
+        let left = uses.get_mut(source).map_or(0, |left| {
+            *left -= 1;
+            *left
+        });
+        let target = at(root, path);
         if game_mod.is_setting(path) && target.exists() {
             continue;
         }
@@ -733,7 +1044,13 @@ pub fn install(
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).map_err(io_at(parent))?;
         }
-        fs::rename(from.join(path), &target).map_err(io_at(&target))?;
+        let staged = from.join(source);
+        let placed = if left > 0 {
+            fs::copy(&staged, &target).map(drop)
+        } else {
+            fs::rename(&staged, &target)
+        };
+        placed.map_err(io_at(&target))?;
     }
     game_mod.mark(root, release, release.setup.is_empty())?;
 
@@ -768,6 +1085,21 @@ pub fn uninstall(
     keep_settings: bool,
 ) -> Result<(), Error> {
     let root = installation.root();
+
+    match game_mod.placed(crate::installation::locale(root).as_deref()) {
+        Some(game_mod) => uninstall_of(installation, &game_mod, keep_settings),
+        // Where its files go is unknown: only its marker can go.
+        None => game_mod.unmark(root),
+    }
+}
+
+/// [`uninstall`], of `game_mod` placed in `installation`'s folder.
+fn uninstall_of(
+    installation: &Installation,
+    game_mod: &Mod,
+    keep_settings: bool,
+) -> Result<(), Error> {
+    let root = installation.root();
     let marked: BTreeSet<&str> = game_mod
         .marker(root)
         .and_then(|marker| game_mod.release(&marker.version))
@@ -784,7 +1116,7 @@ pub fn uninstall(
     let mut removed: Vec<&str> = Vec::new();
 
     for path in game_mod.paths() {
-        let file = root.join(path);
+        let file = at(root, path);
         let ours = marked.contains(path)
             || fs::read(&file).is_ok_and(|bytes| game_mod.released(path, &sha256(&bytes)));
 
@@ -800,7 +1132,7 @@ pub fn uninstall(
         .map(String::as_str)
         .filter(|_| !keep_settings);
     for path in game_mod.written().into_iter().chain(settings) {
-        remove(&root.join(path))?;
+        remove(&at(root, path))?;
         removed.push(path);
     }
     game_mod.unmark(root)?;
@@ -891,6 +1223,7 @@ mod tests {
                 .iter()
                 .map(|(path, contents)| ((*path).to_owned(), sha256(contents.as_bytes())))
                 .collect(),
+            from: BTreeMap::new(),
             inside: None,
             setup: vec![Step {
                 run: "Glow/setup.exe".to_owned(),
@@ -937,6 +1270,9 @@ mod tests {
             writes: vec!["Glow.log".to_owned()],
             config: BTreeMap::from([("gxApi".to_owned(), "d3d9".to_owned())]),
             platforms: Vec::new(),
+            requires: Vec::new(),
+            excludes: Vec::new(),
+            alternatives: Vec::new(),
             version_in: None,
         };
 
@@ -979,8 +1315,12 @@ mod tests {
             "files are path and checksum pairs, sorted"
         );
         assert!(matches!(
-            Mods::parse(br#"{ "version": 2, "mods": [] }"#),
-            Err(Error::ModsVersion(2))
+            Mods::parse(br#"{ "version": 1, "mods": [] }"#),
+            Err(Error::ModsVersion(1))
+        ));
+        assert!(matches!(
+            Mods::parse(br#"{ "version": 3, "mods": [] }"#),
+            Err(Error::ModsVersion(3))
         ));
     }
 
@@ -1006,7 +1346,7 @@ mod tests {
         let (game_mod, _, _) = glow();
         let is_there = |files: &[(&str, &str)]| {
             let (_root, installation) = crate::testing::client_with(files);
-            status(installation.root(), &game_mod)
+            status(installation.root(), &game_mod, &[])
         };
 
         assert_eq!(is_there(&[]), None);
@@ -1051,7 +1391,7 @@ mod tests {
 
         // Its version resource says.
         assert_eq!(
-            check(root, &game_mod).unwrap().unwrap().problems,
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
             [unknown(Some("3.0"))]
         );
         assert_eq!(game_mod.marker(root), None, "nothing to record");
@@ -1063,12 +1403,12 @@ mod tests {
             after: "Glow: v".to_owned(),
         });
         assert_eq!(
-            check(root, &game_mod).unwrap().unwrap().problems,
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
             [unknown(None)]
         );
         fs::write(root.join("Glow.dll"), b"MZ \0Game: \0Glow: v3.1-rc\0\0 ").unwrap();
         assert_eq!(
-            check(root, &game_mod).unwrap().unwrap().problems,
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
             [unknown(Some("3.1-rc"))]
         );
     }
@@ -1086,7 +1426,7 @@ mod tests {
         let root = installation.root();
 
         assert_eq!(
-            check(root, &game_mod).unwrap(),
+            check(root, &game_mod, &[]).unwrap(),
             Some(Status {
                 release: Some("1.0".to_owned()),
                 problems: vec![Problem::NotSetUp(vec!["glow.bin".to_owned()])],
@@ -1097,20 +1437,20 @@ mod tests {
 
         fs::write(root.join("glow.bin"), "").unwrap();
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             [Problem::NotSetUp(vec!["glow.bin".to_owned()])],
             "made after the check, it may be half written"
         );
 
         // Checked with what its setup writes there, it counts as set up.
         game_mod.unmark(root).unwrap();
-        assert_eq!(check(root, &game_mod).unwrap().unwrap().problems, []);
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
         assert!(game_mod.marker(root).unwrap().set_up);
 
         fs::write(root.join("Glow.dll"), "patched").unwrap();
         fs::remove_file(root.join("Glow/old.txt")).unwrap();
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             [
                 Problem::Missing(vec!["Glow/old.txt".to_owned()]),
                 Problem::Changed(vec!["Glow.dll".to_owned()]),
@@ -1120,7 +1460,7 @@ mod tests {
         // Without the marker, it matches no release.
         game_mod.unmark(root).unwrap();
         assert_eq!(
-            check(root, &game_mod).unwrap().unwrap().problems,
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
             [Problem::Unknown {
                 version: None,
                 natives: vec!["Glow".to_owned(), "version".to_owned()],
@@ -1141,7 +1481,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             [Problem::Unlisted("0.9".to_owned())]
         );
         assert!(
@@ -1160,10 +1500,24 @@ mod tests {
         ]);
         let root = installation.root();
 
-        install(&installation, &game_mod, &game_mod.releases[1], &old_zip).unwrap();
+        install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[1],
+            &old_zip,
+            &[],
+        )
+        .unwrap();
         fs::write(root.join("Glow.ini"), "Enable=0\n").unwrap();
         fs::write(root.join("Glow.log"), "ran").unwrap();
-        install(&installation, &game_mod, &game_mod.releases[0], &new_zip).unwrap();
+        install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &new_zip,
+            &[],
+        )
+        .unwrap();
 
         assert_eq!(read(&installation, "Glow.dll"), "renderer 2");
         assert!(!root.join("Glow/old.txt").exists(), "1.0's alone");
@@ -1177,7 +1531,7 @@ mod tests {
         assert_eq!(installation.setting("gxApi").as_deref(), Some("d3d9"));
         assert_eq!(game_mod.marker(root).unwrap().version, "2.0");
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             [Problem::NotSetUp(vec!["glow.bin".to_owned()])],
             "the setup is left to run"
         );
@@ -1204,19 +1558,19 @@ mod tests {
         let newest = &game_mod.releases[0];
         let not_set_up = [Problem::NotSetUp(vec!["glow.bin".to_owned()])];
 
-        install(&installation, &game_mod, newest, &new_zip).unwrap();
+        install(&installation, &game_mod, newest, &new_zip, &[]).unwrap();
         fs::write(root.join("glow.bin"), "half").unwrap();
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             not_set_up,
             "cut short, the setup may have left it half written"
         );
 
         finish_setup(&installation, &game_mod, newest).unwrap();
-        assert_eq!(status(root, &game_mod).unwrap().problems, []);
+        assert_eq!(status(root, &game_mod, &[]).unwrap().problems, []);
 
         fs::remove_file(root.join("glow.bin")).unwrap();
-        assert_eq!(status(root, &game_mod).unwrap().problems, not_set_up);
+        assert_eq!(status(root, &game_mod, &[]).unwrap().problems, not_set_up);
 
         // Markers from before the launcher recorded it count as not set up.
         game_mod.unmark(root).unwrap();
@@ -1226,7 +1580,7 @@ mod tests {
         )
         .unwrap();
         fs::write(root.join("glow.bin"), "whole").unwrap();
-        assert_eq!(status(root, &game_mod).unwrap().problems, not_set_up);
+        assert_eq!(status(root, &game_mod, &[]).unwrap().problems, not_set_up);
     }
 
     #[test]
@@ -1251,6 +1605,7 @@ mod tests {
                 updated: None,
                 changes: None,
                 files: vec![("d3d9.dll".to_owned(), sha256(b"32-bit"))],
+                from: BTreeMap::new(),
                 inside: Some("dxvk-1.0/x32".to_owned()),
                 setup: Vec::new(),
             }],
@@ -1258,13 +1613,16 @@ mod tests {
             writes: Vec::new(),
             config: BTreeMap::new(),
             platforms: vec!["windows".to_owned()],
+            requires: Vec::new(),
+            excludes: Vec::new(),
+            alternatives: Vec::new(),
             version_in: None,
         };
 
-        install(&installation, &vulkan, &vulkan.releases[0], &archive).unwrap();
+        install(&installation, &vulkan, &vulkan.releases[0], &archive, &[]).unwrap();
         assert_eq!(read(&installation, "d3d9.dll"), "32-bit");
         assert!(!root.join("dxvk-1.0").exists(), "the rest stays out");
-        assert_eq!(status(root, &vulkan).unwrap().problems, []);
+        assert_eq!(status(root, &vulkan, &[]).unwrap().problems, []);
 
         assert_eq!(vulkan.is_for_this_system(), cfg!(windows));
         let mut anywhere = vulkan.clone();
@@ -1291,9 +1649,9 @@ mod tests {
             crate::testing::client_with(&[("version.dll", "another mod's loader")]);
         let root = installation.root();
 
-        assert_eq!(foreign(root, &game_mod, newest), ["version.dll"]);
+        assert_eq!(foreign(root, &game_mod, newest, &[]), ["version.dll"]);
         assert!(matches!(
-            install(&installation, &game_mod, newest, &new_zip),
+            install(&installation, &game_mod, newest, &new_zip, &[]),
             Err(Error::Foreign(files)) if files == ["version.dll"]
         ));
         assert_eq!(read(&installation, "version.dll"), "another mod's loader");
@@ -1301,9 +1659,9 @@ mod tests {
 
         // There already, broken: a repair takes its files for its own.
         fs::write(root.join("Glow.dll"), "patched").unwrap();
-        assert!(status(root, &game_mod).is_some());
-        assert_eq!(foreign(root, &game_mod, newest), [] as [String; 0]);
-        install(&installation, &game_mod, newest, &new_zip).unwrap();
+        assert!(status(root, &game_mod, &[]).is_some());
+        assert_eq!(foreign(root, &game_mod, newest, &[]), [] as [String; 0]);
+        install(&installation, &game_mod, newest, &new_zip, &[]).unwrap();
         assert_eq!(read(&installation, "version.dll"), "loader 2");
     }
 
@@ -1338,10 +1696,16 @@ mod tests {
             ("Glow/setup.exe", "setup"),
         ]);
 
-        let installed = install(&installation, &game_mod, &game_mod.releases[0], &tampered);
+        let installed = install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &tampered,
+            &[],
+        );
 
         assert!(matches!(&installed, Err(Error::Checksum(file)) if file == "Glow.dll"));
-        assert_eq!(status(installation.root(), &game_mod), None);
+        assert_eq!(status(installation.root(), &game_mod, &[]), None);
     }
 
     #[test]
@@ -1360,6 +1724,7 @@ mod tests {
                 updated: None,
                 changes: None,
                 files: vec![("Data/patch-4.MPQ".to_owned(), sha256(b"MPQ\x1a"))],
+                from: BTreeMap::new(),
                 inside: None,
                 setup: Vec::new(),
             }],
@@ -1367,13 +1732,19 @@ mod tests {
             writes: Vec::new(),
             config: BTreeMap::new(),
             platforms: Vec::new(),
+            requires: Vec::new(),
+            excludes: Vec::new(),
+            alternatives: Vec::new(),
             version_in: None,
         };
         let (_root, installation) = crate::testing::client(&["Data/enUS/locale-enUS.MPQ"]);
 
-        install(&installation, &patch, &patch.releases[0], b"MPQ\x1a").unwrap();
+        install(&installation, &patch, &patch.releases[0], b"MPQ\x1a", &[]).unwrap();
         assert_eq!(read(&installation, "Data/patch-4.MPQ"), "MPQ\x1a");
-        assert_eq!(status(installation.root(), &patch).unwrap().problems, []);
+        assert_eq!(
+            status(installation.root(), &patch, &[]).unwrap().problems,
+            []
+        );
 
         uninstall(&installation, &patch, false).unwrap();
         assert!(!installation.root().join("Data/patch-4.MPQ").exists());
@@ -1386,13 +1757,20 @@ mod tests {
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root();
 
-        install(&installation, &game_mod, &game_mod.releases[0], &new_zip).unwrap();
+        install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &new_zip,
+            &[],
+        )
+        .unwrap();
         fs::write(root.join("glow.bin"), "").unwrap();
         uninstall(&installation, &game_mod, true).unwrap();
         assert!(!root.join("Glow").exists(), "an empty folder goes too");
         assert!(!root.join("glow.bin").exists());
         assert_eq!(read(&installation, "Glow.ini"), "Enable=1\n");
-        assert_eq!(status(root, &game_mod), None);
+        assert_eq!(status(root, &game_mod, &[]), None);
 
         uninstall(&installation, &game_mod, false).unwrap();
         assert!(!root.join("Glow.ini").exists());
@@ -1418,19 +1796,271 @@ mod tests {
         assert_eq!(release.natives(), ["version", "Glow"]);
     }
 
+    /// An edition of Pax, a patch of the client's archives: `patch-y.mpq`,
+    /// of `y`, in `Data` and in the folder of the client's language, and with
+    /// `spells` the new spells' pair too. It is for clients with the HD
+    /// models' `patch-f.mpq`, and the other edition is its alternative.
+    fn pax(id: &str, y: &str, spells: bool) -> (Mod, Vec<u8>) {
+        let mut members = vec![("patch-y.mpq", y)];
+        let mut placed = vec![
+            ("Data/patch-y.mpq", "patch-y.mpq", y),
+            ("Data/{locale}/patch-{locale}-Y.MPQ", "patch-y.mpq", y),
+        ];
+        if spells {
+            members.extend([("patch-s.mpq", "spells"), ("patch-LOCALE-S.MPQ", "tables")]);
+            placed.extend([
+                ("Data/patch-s.mpq", "patch-s.mpq", "spells"),
+                (
+                    "Data/{locale}/patch-{locale}-S.MPQ",
+                    "patch-LOCALE-S.MPQ",
+                    "tables",
+                ),
+            ]);
+        }
+
+        let release = Release {
+            version: "3.1.0".to_owned(),
+            url: format!("https://example.com/{id}.zip"),
+            updated: None,
+            changes: None,
+            files: placed
+                .iter()
+                .map(|(path, _, contents)| ((*path).to_owned(), sha256(contents.as_bytes())))
+                .collect(),
+            from: placed
+                .iter()
+                .map(|(path, member, _)| ((*path).to_owned(), (*member).to_owned()))
+                .collect(),
+            inside: None,
+            setup: Vec::new(),
+        };
+        let game_mod = Mod {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            description: String::new(),
+            source: Source {
+                name: "Pax on GitHub".to_owned(),
+                page: "https://example.com/pax".to_owned(),
+            },
+            releases: vec![release],
+            settings: Vec::new(),
+            writes: Vec::new(),
+            config: BTreeMap::new(),
+            platforms: Vec::new(),
+            requires: vec!["Data/patch-f.mpq".to_owned()],
+            excludes: Vec::new(),
+            alternatives: ["pax-new", "pax-old"]
+                .into_iter()
+                .filter(|other| *other != id)
+                .map(str::to_owned)
+                .collect(),
+            version_in: None,
+        };
+
+        (game_mod, zip(&members))
+    }
+
+    #[test]
+    fn paths_can_name_the_language_the_client_plays_in() {
+        let (pax, archive) = pax("pax-new", "Y new", true);
+        let (_root, installation) = crate::testing::client(&["Data/enUS/locale-enUS.MPQ"]);
+        let root = installation.root();
+
+        install(&installation, &pax, &pax.releases[0], &archive, &[]).unwrap();
+        assert_eq!(read(&installation, "Data/patch-y.mpq"), "Y new");
+        assert_eq!(
+            read(&installation, "Data/enUS/patch-enUS-Y.MPQ"),
+            "Y new",
+            "one file of the archive, in two places"
+        );
+        assert_eq!(read(&installation, "Data/enUS/patch-enUS-S.MPQ"), "tables");
+        assert_eq!(status(root, &pax, &[]).unwrap().problems, []);
+
+        pax.unmark(root).unwrap();
+        assert_eq!(
+            check(root, &pax, &[]).unwrap().unwrap().release.as_deref(),
+            Some("3.1.0"),
+            "recognized"
+        );
+
+        uninstall(&installation, &pax, false).unwrap();
+        assert!(!root.join("Data/patch-y.mpq").exists());
+        assert!(!root.join("Data/enUS/patch-enUS-Y.MPQ").exists());
+        assert!(root.join("Data/enUS/locale-enUS.MPQ").exists());
+
+        // In another language, its own folder.
+        let placed = pax.placed(Some("deDE")).unwrap();
+        assert_eq!(placed.releases[0].files[1].0, "Data/deDE/patch-deDE-Y.MPQ");
+        assert_eq!(
+            placed.releases[0].source("Data/deDE/patch-deDE-Y.MPQ"),
+            "patch-y.mpq"
+        );
+
+        // A client without language data has no folder for it.
+        assert_eq!(pax.placed(None), None);
+        let (_root, bare) = crate::testing::client(&[]);
+        assert!(matches!(
+            install(&bare, &pax, &pax.releases[0], &archive, &[]),
+            Err(Error::NoLanguage)
+        ));
+        assert_eq!(check(bare.root(), &pax, &[]).unwrap(), None);
+        let (glow, _, _) = glow();
+        assert_eq!(glow.placed(None), Some(glow.clone()), "it names none");
+    }
+
+    #[test]
+    fn a_mod_suits_clients_with_what_it_requires_and_without_what_it_excludes() {
+        let (hd, _) = pax("pax-new", "Y new", true);
+        let mut original = hd.clone();
+        original.excludes = std::mem::take(&mut original.requires);
+
+        let (_root, plain) = crate::testing::client(&["Data/enUS/locale-enUS.MPQ"]);
+        assert!(!fits(plain.root(), &hd));
+        assert!(fits(plain.root(), &original));
+
+        // Whatever the case of its name, as the game finds it.
+        let (_root, models) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/PATCH-F.MPQ"]);
+        assert!(fits(models.root(), &hd));
+        assert!(!fits(models.root(), &original));
+    }
+
+    #[test]
+    fn what_a_mod_requires_there_only_in_part_can_be_set_aside() {
+        let (hd, _) = pax("pax-new", "Y new", true);
+        let mut hd = hd;
+        hd.requires
+            .push("Data/{locale}/patch-{locale}-F.MPQ".to_owned());
+        let (_root, installation) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/PATCH-F.MPQ"]);
+        let root = installation.root();
+
+        assert_eq!(
+            partly(root, &hd),
+            Some((
+                vec!["Data/patch-f.mpq".to_owned()],
+                vec!["Data/enUS/patch-enUS-F.MPQ".to_owned()]
+            ))
+        );
+        assert!(!fits(root, &hd));
+
+        set_aside(&installation, &["Data/patch-f.mpq".to_owned()]).unwrap();
+        assert!(root.join("Data/PATCH-F.MPQ.disabled").is_file());
+        assert!(!root.join("Data/PATCH-F.MPQ").exists());
+        assert_eq!(partly(root, &hd), None, "none of it there now");
+
+        // One set aside before stays, and so does the file in its way.
+        fs::write(root.join("Data/patch-f.mpq"), "again").unwrap();
+        assert!(matches!(
+            set_aside(&installation, &["Data/PATCH-F.MPQ".to_owned()]),
+            Err(Error::Io { .. })
+        ));
+        assert_eq!(read(&installation, "Data/patch-f.mpq"), "again");
+
+        // All of it there: nothing to set aside.
+        fs::write(root.join("Data/enUS/patch-enUS-F.MPQ"), "").unwrap();
+        assert_eq!(partly(root, &hd), None);
+        assert!(fits(root, &hd));
+    }
+
+    #[test]
+    fn installing_an_alternative_takes_the_place_of_the_one_there() {
+        let (new, new_zip) = pax("pax-new", "Y new", true);
+        let (old, old_zip) = pax("pax-old", "Y old", false);
+        let (_root, installation) =
+            crate::testing::client(&["Data/enUS/locale-enUS.MPQ", "Data/patch-f.mpq"]);
+        let root = installation.root();
+
+        install(&installation, &new, &new.releases[0], &new_zip, &[&old]).unwrap();
+        assert_eq!(
+            check(root, &old, &[&new]).unwrap(),
+            None,
+            "the files they share are the other's"
+        );
+        assert!(check(root, &new, &[&old]).unwrap().is_some());
+        assert_eq!(
+            foreign(root, &old, &old.releases[0], &[&new]),
+            [] as [String; 0],
+            "taken the place of"
+        );
+
+        install(&installation, &old, &old.releases[0], &old_zip, &[&new]).unwrap();
+        assert_eq!(read(&installation, "Data/enUS/patch-enUS-Y.MPQ"), "Y old");
+        assert!(!root.join("Data/patch-s.mpq").exists(), "the other's alone");
+        assert!(!root.join("Data/enUS/patch-enUS-S.MPQ").exists());
+        assert_eq!(new.marker(root), None);
+        assert_eq!(status(root, &new, &[&old]), None);
+        assert_eq!(status(root, &old, &[&new]).unwrap().problems, []);
+    }
+
+    #[test]
+    fn a_file_of_something_else_keeps_an_alternative_out_whatever_its_case() {
+        let (new, new_zip) = pax("pax-new", "Y new", true);
+        let (old, _) = pax("pax-old", "Y old", false);
+        let (_root, installation) = crate::testing::client_with(&[
+            ("Data/enUS/locale-enUS.MPQ", ""),
+            ("Data/enUS/patch-enus-y.mpq", "another patch"),
+        ]);
+
+        assert!(matches!(
+            install(&installation, &new, &new.releases[0], &new_zip, &[&old]),
+            Err(Error::Foreign(files)) if files == ["Data/enUS/patch-enUS-Y.MPQ"]
+        ));
+        assert_eq!(
+            read(&installation, "Data/enUS/patch-enus-y.mpq"),
+            "another patch"
+        );
+        assert!(!installation.root().join("Data/patch-y.mpq").exists());
+    }
+
+    #[test]
+    fn files_placed_from_another_of_the_archive_must_be_its_files() {
+        let (pax, _) = pax("pax-new", "Y new", true);
+        let list = |game_mod: Mod| {
+            let json = Mods {
+                version: Mods::VERSION,
+                mods: vec![game_mod],
+            }
+            .to_json()
+            .unwrap();
+            Mods::parse(json.as_bytes()).unwrap().mods
+        };
+
+        let mut sorted = pax.clone();
+        sorted.releases[0].files.sort();
+        assert_eq!(list(pax.clone()), [sorted], "read back as written");
+
+        let mut stray = pax.clone();
+        let _ = stray.releases[0]
+            .from
+            .insert("Data/patch-z.mpq".to_owned(), "patch-y.mpq".to_owned());
+        assert_eq!(list(stray), [], "a file it doesn't list");
+
+        let mut escaping = pax;
+        escaping.requires.push("../patch-f.mpq".to_owned());
+        assert_eq!(list(escaping), []);
+    }
+
     #[test]
     fn the_config_it_needs_is_a_problem_only_when_set_otherwise() {
         let (game_mod, new_zip, _) = glow();
         let (_root, installation) = crate::testing::client(&[]);
         let root = installation.root();
-        install(&installation, &game_mod, &game_mod.releases[0], &new_zip).unwrap();
+        install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &new_zip,
+            &[],
+        )
+        .unwrap();
         fs::write(root.join("glow.bin"), "").unwrap();
         finish_setup(&installation, &game_mod, &game_mod.releases[0]).unwrap();
-        assert_eq!(status(root, &game_mod).unwrap().problems, []);
+        assert_eq!(status(root, &game_mod, &[]).unwrap().problems, []);
 
         installation.set("gxApi", "D3D9Ex").unwrap();
         assert_eq!(
-            status(root, &game_mod).unwrap().problems,
+            status(root, &game_mod, &[]).unwrap().problems,
             [Problem::Config(vec![(
                 "gxApi".to_owned(),
                 "D3D9Ex".to_owned(),

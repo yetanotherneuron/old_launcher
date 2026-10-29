@@ -3,6 +3,7 @@
 //! every release is hashed.
 
 pub mod dxvk;
+pub mod lau;
 pub mod lumenveil;
 
 use std::collections::BTreeMap;
@@ -110,9 +111,10 @@ pub async fn gather(client: &reqwest::Client, known: &Known) -> anyhow::Result<G
 
     let lumenveil = lumenveil::gather(client, known, &mut found, &mut left_out).await?;
     let dxvk = dxvk::gather(client, known, &mut found, &mut left_out).await?;
+    let lau = lau::gather(client, known, &mut found, &mut left_out).await?;
 
     Ok(Gathered {
-        mods: vec![lumenveil, dxvk],
+        mods: [lumenveil, dxvk].into_iter().chain(lau).collect(),
         found,
         missed: left_out.missed,
         skipped: left_out.skipped,
@@ -166,6 +168,7 @@ mod tests {
             updated: None,
             changes: None,
             files: Vec::new(),
+            from: BTreeMap::new(),
             inside: None,
             setup: Vec::new(),
         };

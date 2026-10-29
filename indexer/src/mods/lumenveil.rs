@@ -127,6 +127,9 @@ pub async fn gather(
         writes: WRITES.iter().copied().map(str::to_owned).collect(),
         config: BTreeMap::from([("gxApi".to_owned(), "d3d9".to_owned())]),
         platforms: Vec::new(),
+        requires: Vec::new(),
+        excludes: Vec::new(),
+        alternatives: Vec::new(),
         // Its DLLs say their version in their version resource.
         version_in: None,
     })
@@ -219,6 +222,7 @@ fn release(
         updated: published.day(),
         changes: Some(published.html_url),
         files,
+        from: BTreeMap::new(),
         inside: None,
         setup: steps,
     })

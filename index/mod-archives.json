@@ -1,4 +1,54 @@
 {
+  "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-HD-New-Spells.zip": [
+    [
+      "README.txt",
+      "2e66bd41344a9febc6fa23b9ee3c35041e5123e9166140933f18c5198e785d30"
+    ],
+    [
+      "package-manifest.json",
+      "32ae49803916fb4acb931ca2a4bbff2c8ef806b3533d0cb59a8cbd0e167d0b6f"
+    ],
+    [
+      "patch-LOCALE-S.MPQ",
+      "6dd53dd139ae0f05e0eff1133819da84c683f2a280bc634ee019a288efe48ada"
+    ],
+    [
+      "patch-s.mpq",
+      "ec6f91ceea7bdbc7e5d0b51d566a9f5d59ccc8387bf00ac2ab7069be16096eb5"
+    ],
+    [
+      "patch-y.mpq",
+      "0332b2238d141e2744b9dc9b28fb2f1d2df35058b3acf56f8b21b3df427101b8"
+    ]
+  ],
+  "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-HD-Original-Spells.zip": [
+    [
+      "README.txt",
+      "b6714c7564924b99c735231c8bdb6961964e0fa11c9c95f936c24e26502743f1"
+    ],
+    [
+      "package-manifest.json",
+      "ebcd4a78805aa636f297be711a0afbc74ebc47ea77d1dc28d92c9066fcba616c"
+    ],
+    [
+      "patch-y.mpq",
+      "6c556c32df440007ca65769d3ca9c98979becc4899757a483d252415c437f4bc"
+    ]
+  ],
+  "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-Non-HD.zip": [
+    [
+      "README.txt",
+      "cce5a20fcefb95f94dc494806417cb220feaa308ba7736d7cf7f079e7c50d975"
+    ],
+    [
+      "package-manifest.json",
+      "a730a18534306d80ce1176956f813ca9b92b16233e3ab53ac6a6018739a26ea7"
+    ],
+    [
+      "patch-y.mpq",
+      "6efe038086868a89b719d984505606242f0eff35ea3cbb275d8b633a4ab14e3e"
+    ]
+  ],
   "https://github.com/doitsujin/dxvk/releases/download/v1.10.1/dxvk-1.10.1.tar.gz": [
     [
       "dxvk-1.10.1/setup_dxvk.sh",

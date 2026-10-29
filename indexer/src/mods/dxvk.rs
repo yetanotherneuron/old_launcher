@@ -65,6 +65,9 @@ pub async fn gather(
         writes: vec!["Wow_d3d9.log".to_owned(), "Wow.dxvk-cache".to_owned()],
         config: BTreeMap::new(),
         platforms: vec!["windows".to_owned()],
+        requires: Vec::new(),
+        excludes: Vec::new(),
+        alternatives: Vec::new(),
         // Its DLL says Windows' own version in its version resource, to
         // pass for Windows' DLL, and its own in the line it logs at start.
         version_in: Some(VersionIn {
@@ -112,6 +115,7 @@ fn release(
         updated: published.day(),
         changes: Some(published.html_url),
         files: vec![(DLL.to_owned(), sum.clone())],
+        from: BTreeMap::new(),
         inside: Some(inside),
         setup: Vec::new(),
     })

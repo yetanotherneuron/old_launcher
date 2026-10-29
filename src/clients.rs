@@ -1308,6 +1308,8 @@ mod tests {
                 },
             )]),
             foreign: BTreeMap::new(),
+            unfit: Default::default(),
+            partly: BTreeMap::new(),
         };
         let _ = update(
             &mut state,
@@ -1603,6 +1605,8 @@ mod tests {
                 },
             )]),
             foreign: BTreeMap::new(),
+            unfit: Default::default(),
+            partly: BTreeMap::new(),
         };
         let _ = update(
             &mut state,

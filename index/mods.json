@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "mods": [
     {
       "id": "dxvk",
@@ -597,6 +597,133 @@
         "file": "d3d9.dll",
         "after": "DXVK: \u0000v"
       }
+    },
+    {
+      "id": "lau-hd-new-spells",
+      "name": "Patch Y: new spell visuals",
+      "description": "Makes raid bosses' abilities easier to see and avoid.",
+      "source": {
+        "name": "Lau Setup on GitHub",
+        "page": "https://github.com/CRSD-Lau/Lau-Setup"
+      },
+      "releases": [
+        {
+          "version": "3.1.0",
+          "url": "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-HD-New-Spells.zip",
+          "updated": "2026-09-26",
+          "changes": "https://github.com/CRSD-Lau/Lau-Setup/releases/tag/payload-3.1.0",
+          "files": [
+            [
+              "Data/patch-s.mpq",
+              "ec6f91ceea7bdbc7e5d0b51d566a9f5d59ccc8387bf00ac2ab7069be16096eb5"
+            ],
+            [
+              "Data/patch-y.mpq",
+              "0332b2238d141e2744b9dc9b28fb2f1d2df35058b3acf56f8b21b3df427101b8"
+            ],
+            [
+              "Data/{locale}/patch-{locale}-S.MPQ",
+              "6dd53dd139ae0f05e0eff1133819da84c683f2a280bc634ee019a288efe48ada"
+            ],
+            [
+              "Data/{locale}/patch-{locale}-Y.MPQ",
+              "0332b2238d141e2744b9dc9b28fb2f1d2df35058b3acf56f8b21b3df427101b8"
+            ]
+          ],
+          "from": {
+            "Data/patch-s.mpq": "patch-s.mpq",
+            "Data/patch-y.mpq": "patch-y.mpq",
+            "Data/{locale}/patch-{locale}-S.MPQ": "patch-LOCALE-S.MPQ",
+            "Data/{locale}/patch-{locale}-Y.MPQ": "patch-y.mpq"
+          }
+        }
+      ],
+      "requires": [
+        "Data/patch-f.mpq",
+        "Data/{locale}/patch-{locale}-F.MPQ"
+      ],
+      "alternatives": [
+        "lau-hd-original-spells",
+        "lau-non-hd"
+      ]
+    },
+    {
+      "id": "lau-hd-original-spells",
+      "name": "Patch Y: original spell visuals",
+      "description": "Makes raid bosses' abilities easier to see and avoid.",
+      "source": {
+        "name": "Lau Setup on GitHub",
+        "page": "https://github.com/CRSD-Lau/Lau-Setup"
+      },
+      "releases": [
+        {
+          "version": "3.1.0",
+          "url": "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-HD-Original-Spells.zip",
+          "updated": "2026-09-26",
+          "changes": "https://github.com/CRSD-Lau/Lau-Setup/releases/tag/payload-3.1.0",
+          "files": [
+            [
+              "Data/patch-y.mpq",
+              "6c556c32df440007ca65769d3ca9c98979becc4899757a483d252415c437f4bc"
+            ],
+            [
+              "Data/{locale}/patch-{locale}-Y.MPQ",
+              "6c556c32df440007ca65769d3ca9c98979becc4899757a483d252415c437f4bc"
+            ]
+          ],
+          "from": {
+            "Data/patch-y.mpq": "patch-y.mpq",
+            "Data/{locale}/patch-{locale}-Y.MPQ": "patch-y.mpq"
+          }
+        }
+      ],
+      "requires": [
+        "Data/patch-f.mpq",
+        "Data/{locale}/patch-{locale}-F.MPQ"
+      ],
+      "alternatives": [
+        "lau-hd-new-spells",
+        "lau-non-hd"
+      ]
+    },
+    {
+      "id": "lau-non-hd",
+      "name": "Patch Y",
+      "description": "Makes raid bosses' abilities easier to see and avoid.",
+      "source": {
+        "name": "Lau Setup on GitHub",
+        "page": "https://github.com/CRSD-Lau/Lau-Setup"
+      },
+      "releases": [
+        {
+          "version": "3.1.0",
+          "url": "https://github.com/CRSD-Lau/Lau-Setup/releases/download/payload-3.1.0/Patch-Y-3.1.0-Non-HD.zip",
+          "updated": "2026-09-26",
+          "changes": "https://github.com/CRSD-Lau/Lau-Setup/releases/tag/payload-3.1.0",
+          "files": [
+            [
+              "Data/patch-y.mpq",
+              "6efe038086868a89b719d984505606242f0eff35ea3cbb275d8b633a4ab14e3e"
+            ],
+            [
+              "Data/{locale}/patch-{locale}-Y.MPQ",
+              "6efe038086868a89b719d984505606242f0eff35ea3cbb275d8b633a4ab14e3e"
+            ]
+          ],
+          "from": {
+            "Data/patch-y.mpq": "patch-y.mpq",
+            "Data/{locale}/patch-{locale}-Y.MPQ": "patch-y.mpq"
+          }
+        }
+      ],
+      "excludes": [
+        "Data/patch-f.mpq",
+        "Data/{locale}/patch-{locale}-F.MPQ"
+      ],
+      "alternatives": [
+        "lau-hd-new-spells",
+        "lau-hd-original-spells"
+      ]
     },
     {
       "id": "lumenveil",

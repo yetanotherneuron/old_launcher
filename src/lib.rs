@@ -2519,6 +2519,8 @@ mod tests {
                         },
                     )]),
                     foreign: std::collections::BTreeMap::new(),
+                    unfit: Default::default(),
+                    partly: Default::default(),
                 },
             )))
         };

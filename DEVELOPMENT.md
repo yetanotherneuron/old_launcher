@@ -128,20 +128,24 @@ GitLab project one more path in `gitlab::AUTHORS`.
 `index/mods.json` lists the mods: what each is, where it comes from, and
 its releases, each with every file it puts in the client folder and its
 SHA-256, what else it needs (settings, setup steps, `Config.wtf`
-settings, platforms, where its files say their version). The same indexer
-run writes it (`--mods-only` writes it alone); `core/src/mods.rs` is the
-schema and what the launcher does with it, `src/clients/mods.rs` the
-dialog section and the checks before the game starts.
+settings, platforms, where its files say their version), which clients it
+suits, and the mods it is an alternative to. A path may name the client's
+language as `{locale}`. The list has a format version: a change older
+launchers would misread raises it, and they refuse the list. The same
+indexer run writes it (`--mods-only` writes it alone); `core/src/mods.rs`
+is the schema and what the launcher does with it, `src/clients/mods.rs`
+the dialog section and the checks before the game starts.
 
 **Adding a mod** is a module in `indexer/src/mods/` called from
 `mods::gather`, which finds the releases and writes down what can't be
 read from them (Lumenveil's knows its setup scripts by checksum; DXVK's
-knows where its DLL is in the tarball). A release the module doesn't
-understand is left out rather than guessed at, and the launcher goes on
-offering the last one listed; when that leaves a mod's newest release out,
-the indexer exits with code 3 after writing, and the schedule commits what
-it wrote and then fails, so its owner is mailed the reason, which says
-what to teach the module.
+knows where its DLL is in the tarball; Lau's knows where each archive of
+its zips goes, and checks their manifests say the same). A release the
+module doesn't understand is left out rather than guessed at, and the
+launcher goes on offering the last one listed; when that leaves a mod's
+newest release out, the indexer exits with code 3 after writing, and the
+schedule commits what it wrote and then fails, so its owner is mailed the
+reason, which says what to teach the module.
 
 ## Starting the game
 

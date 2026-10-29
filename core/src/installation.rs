@@ -110,8 +110,9 @@ impl Installation {
         self.version
     }
 
-    /// The language the client plays in (`enUS`, `esES`, …): the one
-    /// `WTF/Config.wtf` sets, or else the first it has data for.
+    /// The language the client plays in (`enUS`, `esES`, …), as its game
+    /// picks it: the one `WTF/Config.wtf` sets, or `enUS`, when installed,
+    /// else the next installed in the game's own order.
     pub fn locale(&self) -> Option<&str> {
         self.locale.as_deref()
     }
@@ -568,12 +569,48 @@ fn write_over(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     fs::rename(&partial, path).map_err(io_at(path))
 }
 
-/// The language the client at `root` plays in: the one `WTF/Config.wtf`
-/// sets when the client has data for it, or else the first it has data for.
-fn locale(root: &Path) -> Option<String> {
-    let locales = locales(root);
+/// The languages 3.3.5a's `Wow.exe` (build 12340) knows, in the order it
+/// looks through them for one installed.
+const GAME_LOCALES: [&str; 12] = [
+    "deDE", "enGB", "enUS", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU",
+];
+
+/// The language the client at `root` plays in, as its game picks it. In a
+/// whole client (with `Data/common.MPQ`), the first of [`GAME_LOCALES`]
+/// installed (with `Data/<code>/locale-<code>.MPQ`), looking from the one
+/// `WTF/Config.wtf` sets onward and around; from `enUS` when it sets none,
+/// or one the game doesn't know. The game then writes it into
+/// `Config.wtf`. Otherwise, or with none of those installed: the one
+/// `Config.wtf` sets when the client has data for it, or else the first it
+/// has data for.
+pub(crate) fn locale(root: &Path) -> Option<String> {
+    let data = child(root, "Data");
     let set = setting(&child(&child(root, "WTF"), "Config.wtf"), "locale");
 
+    if child(&data, "common.MPQ").is_file() {
+        let known = |code: &str| {
+            GAME_LOCALES
+                .iter()
+                .position(|known| known.eq_ignore_ascii_case(code))
+        };
+        let start = set
+            .as_deref()
+            .and_then(known)
+            .or_else(|| known("enUS"))
+            .unwrap_or_default();
+        let installed = GAME_LOCALES
+            .iter()
+            .cycle()
+            .skip(start)
+            .take(GAME_LOCALES.len())
+            .find(|code| child(&child(&data, code), &format!("locale-{code}.MPQ")).is_file());
+
+        if let Some(code) = installed {
+            return Some((*code).to_owned());
+        }
+    }
+
+    let locales = locales(root);
     set.filter(|set| locales.contains(set))
         .or_else(|| locales.into_iter().next())
 }
@@ -1123,6 +1160,70 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o777
         );
+    }
+
+    #[test]
+    fn the_language_is_the_one_the_game_picks() {
+        let picked = |files: &[&str], config: Option<&str>| {
+            let mut files: Vec<(String, String)> = files
+                .iter()
+                .map(|file| ((*file).to_owned(), String::new()))
+                .collect();
+            if let Some(locale) = config {
+                files.push((
+                    "WTF/Config.wtf".to_owned(),
+                    format!("SET locale \"{locale}\"\n"),
+                ));
+            }
+            let files: Vec<(&str, &str)> = files
+                .iter()
+                .map(|(path, contents)| (path.as_str(), contents.as_str()))
+                .collect();
+            let (_root, installation) = crate::testing::client_with(&files);
+
+            installation.locale().map(str::to_owned)
+        };
+        let whole = |locales: &[&str]| -> Vec<String> {
+            locales
+                .iter()
+                .map(|code| format!("Data/{code}/locale-{code}.MPQ"))
+                .chain(["Data/common.MPQ".to_owned()])
+                .collect()
+        };
+        fn files(paths: &[String]) -> Vec<&str> {
+            paths.iter().map(String::as_str).collect()
+        }
+
+        let both = whole(&["deDE", "enUS"]);
+        assert_eq!(picked(&files(&both), None).as_deref(), Some("enUS"));
+        let no_english = whole(&["deDE", "enGB"]);
+        assert_eq!(
+            picked(&files(&no_english), None).as_deref(),
+            Some("deDE"),
+            "from enUS onward, and around"
+        );
+        let two = whole(&["enUS", "ruRU"]);
+        assert_eq!(
+            picked(&files(&two), Some("frFR")).as_deref(),
+            Some("ruRU"),
+            "set without data: the next installed"
+        );
+        let brazilian = whole(&["enUS", "ptBR"]);
+        assert_eq!(
+            picked(&files(&brazilian), Some("ptBR")).as_deref(),
+            Some("enUS"),
+            "one the game doesn't know"
+        );
+        let only_brazilian = whole(&["ptBR"]);
+        assert_eq!(
+            picked(&files(&only_brazilian), Some("ptBR")).as_deref(),
+            Some("ptBR"),
+            "the only one there"
+        );
+
+        // Not a whole client: the first it has data for.
+        let partial = ["Data/deDE/locale-deDE.MPQ", "Data/enUS/locale-enUS.MPQ"];
+        assert_eq!(picked(&partial, None).as_deref(), Some("deDE"));
     }
 
     #[test]

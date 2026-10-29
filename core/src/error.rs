@@ -84,6 +84,11 @@ pub enum Error {
     )]
     Foreign(Vec<String>),
 
+    /// A mod whose files go in the folder of the client's language, in a
+    /// client without language data.
+    #[error("the client has no language data in its Data folder")]
+    NoLanguage,
+
     /// An addon folder name that is not a single, plain path component.
     #[error("invalid addon folder name: {0:?}")]
     InvalidName(String),

@@ -16,6 +16,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+# Reads the manifest inside Lau's zips.
+zip = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

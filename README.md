@@ -32,7 +32,7 @@ It's a portable program: nothing to install, just run it.
 - **Download a client** from a torrent, in the languages you choose, and check any client for updates against one.
 - **Switch the language** of a client that has more than one.
 - **4 GB of memory** for a client's game (Large Address Aware), for HD textures and long view distances.
-- **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
+- **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water), [Patch Y](https://github.com/CRSD-Lau/Lau-Setup) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
 - **Show on Discord** that you're playing, if you want.
 
 ![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
