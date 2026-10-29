@@ -4,7 +4,7 @@
 use std::cmp::{Ordering, Reverse};
 
 use crate::Snapshot;
-use crate::catalog::{Catalog, Entry};
+use crate::catalog::{Catalog, Download, Entry};
 use crate::search::Query;
 use crate::snapshot::Group;
 use crate::toc;
@@ -184,9 +184,11 @@ impl<'a> Library<'a> {
 
     /// The newer version the catalog offers for the installed `item`, if
     /// any: the first folder its preferred download installs whose `.toc`
-    /// version is newer than the installed folder's, or differs from it
-    /// without comparing (see [`toc::compare_versions`]). Folders without a
-    /// version on either side say nothing.
+    /// version is newer than the installed folder's. Versions that don't
+    /// compare (see [`toc::compare_versions`]) go by the catalog's dates
+    /// instead (see [`by_date`]), and when those can't tell either, a
+    /// different version counts as newer. Folders without a version on
+    /// either side say nothing.
     pub fn update(&self, item: Item<'a>) -> Option<Versions<'a>> {
         self.versions(item)
             .into_iter()
@@ -197,7 +199,8 @@ impl<'a> Library<'a> {
 
     /// The version installed for `item` that is newer than the catalog's,
     /// if any: the first folder whose installed `.toc` version compares
-    /// newer than the one the preferred download installs.
+    /// newer than the one the preferred download installs, or, for versions
+    /// that don't compare, that the catalog dates later (see [`by_date`]).
     pub fn ahead(&self, item: Item<'a>) -> Option<Versions<'a>> {
         self.versions(item)
             .into_iter()
@@ -216,6 +219,7 @@ impl<'a> Library<'a> {
             return Vec::new();
         };
         let group = &self.groups[index];
+        let dated = by_date(entry, group);
 
         entry
             .folders()
@@ -228,7 +232,7 @@ impl<'a> Library<'a> {
                     .find(|addon| addon.name.eq_ignore_ascii_case(&offered.name))?;
                 let installed = addon.toc.as_ref()?.version.as_deref()?;
                 let offered = offered.version.as_deref()?;
-                let ordering = toc::compare_versions(offered, installed);
+                let ordering = toc::compare_versions(offered, installed).or(dated);
 
                 (ordering != Some(Ordering::Equal)).then_some((
                     Versions {
@@ -367,6 +371,52 @@ impl<'a> Library<'a> {
 
         fields
     }
+}
+
+/// How the preferred download of `entry` compares with what `group` has
+/// installed by the catalog's dates, for versions that don't compare: its
+/// date against those of the downloads that hold exactly the installed
+/// versions (see [`holds`]). Nothing when the catalog can't tell: no
+/// download holds them, a date is missing, or the dates tie or disagree.
+/// The files' own dates aren't asked: a copy made by hand dates them when
+/// it was made, not when the addon was.
+fn by_date(entry: &Entry, group: &Group<'_>) -> Option<Ordering> {
+    let offered = entry.preferred()?.updated.as_deref()?;
+    let mut orderings = entry
+        .downloads
+        .iter()
+        .filter(|download| holds(download, group))
+        .map(|download| Some(offered.cmp(download.updated.as_deref()?)));
+
+    let first = orderings.next()??;
+    let agreed = orderings.all(|ordering| ordering == Some(first));
+
+    (agreed && first != Ordering::Equal).then_some(first)
+}
+
+/// Whether `download` installs the versions `group` has: it gives a version
+/// for at least one folder, and every folder it gives one for is installed
+/// at that version.
+fn holds(download: &Download, group: &Group<'_>) -> bool {
+    let mut versioned = false;
+
+    let installed = download.folders.iter().all(|folder| {
+        let Some(version) = folder.version.as_deref() else {
+            return true;
+        };
+        versioned = true;
+
+        group
+            .addons
+            .iter()
+            .find(|addon| addon.name.eq_ignore_ascii_case(&folder.name))
+            .and_then(|addon| addon.toc.as_ref()?.version.as_deref())
+            .is_some_and(|installed| {
+                toc::compare_versions(version, installed) == Some(Ordering::Equal)
+            })
+    });
+
+    installed && versioned
 }
 
 #[cfg(test)]
@@ -604,6 +654,93 @@ mod tests {
         // The same: neither.
         snapshot.addons[0].toc.as_mut().unwrap().version = Some("1.0".into());
         assert_eq!(compared(&snapshot), (None, None));
+    }
+
+    /// SellJunk, with CurseForge's r117 first, dated `curseforge`, and
+    /// another source's 1.4.2, dated `other`.
+    fn sell_junk(curseforge: Option<&str>, other: Option<&str>) -> Catalog {
+        let mut sell_junk = entry("SellJunk", "curseforge", curseforge, &["SellJunk"]);
+        sell_junk.downloads[0].folders[0].version = Some("r117".into());
+        let mut semver = entry("SellJunk", "other", other, &["SellJunk"])
+            .downloads
+            .remove(0);
+        semver.folders[0].version = Some("1.4.2".into());
+        sell_junk.downloads.push(semver);
+
+        Catalog {
+            version: Catalog::VERSION,
+            sources: Vec::new(),
+            entries: vec![sell_junk],
+        }
+    }
+
+    /// What `catalog` offers as an update for its first entry installed at
+    /// `version` from its second download, and what is installed ahead of
+    /// it.
+    fn compared(catalog: &Catalog, version: &str) -> (Option<String>, Option<String>) {
+        let mut installed = addon("SellJunk", None);
+        installed.marker = Some(catalog.entries[0].downloads[1].marker());
+        installed.toc.as_mut().unwrap().version = Some(version.into());
+        let snapshot = Snapshot {
+            addons: vec![installed],
+            ..Snapshot::default()
+        };
+        let library = Library::new(catalog, Some(&snapshot));
+        let item = library.items[0];
+
+        (
+            library
+                .update(item)
+                .map(|versions| versions.offered.to_owned()),
+            library
+                .ahead(item)
+                .map(|versions| versions.installed.to_owned()),
+        )
+    }
+
+    #[test]
+    fn versions_that_dont_compare_go_by_the_catalogs_dates() {
+        // r117 is from 2010, the 1.4.2 installed from 2023: ahead.
+        let catalog = sell_junk(Some("2010-09-02"), Some("2023-05-01"));
+        assert_eq!(compared(&catalog, "1.4.2"), (None, Some("1.4.2".into())));
+
+        // An r117 newer than it: an update.
+        let catalog = sell_junk(Some("2024-01-01"), Some("2023-05-01"));
+        assert_eq!(compared(&catalog, "1.4.2"), (Some("r117".into()), None));
+    }
+
+    #[test]
+    fn when_the_dates_cant_tell_a_different_version_is_offered() {
+        let offered = (Some("r117".to_owned()), None);
+
+        // Installed at a version no download holds, so the catalog has no
+        // date for it.
+        let catalog = sell_junk(Some("2010-09-02"), Some("2023-05-01"));
+        assert_eq!(compared(&catalog, "1.5.0"), offered, "not listed");
+
+        assert_eq!(
+            compared(&sell_junk(Some("2010-09-02"), None), "1.4.2"),
+            offered,
+            "the installed version undated"
+        );
+        assert_eq!(
+            compared(&sell_junk(None, Some("2023-05-01")), "1.4.2"),
+            offered,
+            "the offered one undated"
+        );
+        assert_eq!(
+            compared(&sell_junk(Some("2023-05-01"), Some("2023-05-01")), "1.4.2"),
+            offered,
+            "the same day"
+        );
+
+        // Two downloads hold 1.4.2, one dated before r117 and one after.
+        let mut catalog = sell_junk(Some("2020-01-01"), Some("2023-05-01"));
+        let mut older = catalog.entries[0].downloads[1].clone();
+        older.source = "third".into();
+        older.updated = Some("2015-01-01".into());
+        catalog.entries[0].downloads.push(older);
+        assert_eq!(compared(&catalog, "1.4.2"), offered, "dates that disagree");
     }
 
     /// ACP as the catalog has it: Rising Gods' 3.3.4 first, the newest,
