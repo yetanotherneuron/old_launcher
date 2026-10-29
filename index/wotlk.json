@@ -7830,10 +7830,26 @@
       ]
     },
     {
-      "name": "Cell",
-      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
+      "name": "Cell-WotLK",
+      "description": "A World of Warcraft raid frame addon.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
+          "updated": "2026-10-20",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -7846,22 +7862,6 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
-          "updated": "2026-10-20",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -8515,22 +8515,17 @@
       ]
     },
     {
-      "name": "ClassicNumbers",
-      "description": "ClassicNumbers replaces the default floating damage text with the classic popping animation. It offers configurable size, transparency, duration, scroll speed, damage-school colors, number shortening, and filters for small hits and critical strikes. Open its options with /cn.",
+      "name": "ClassicNumbers-WotLK",
+      "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "ClassicNumbers",
+          "name": "ClassicNumbers-WotLK",
           "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/refs/heads/main.zip",
           "updated": "2026-07-13",
+          "page": "https://github.com/NoM0Re/ClassicNumbers-WotLK",
           "changes": "https://github.com/NoM0Re/ClassicNumbers-WotLK/commits/main",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK"
-            }
-          ],
           "folders": [
             {
               "name": "ClassicNumbers",
@@ -28904,22 +28899,39 @@
       ]
     },
     {
-      "name": "PallyPower Improved",
-      "description": "PallyPower Improved helps paladins manage blessings, auras, seals and Righteous Fury through an interactive interface with indicators for missing buffs.",
+      "name": "PallyPower Skinner",
+      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "PallyPower Skinner",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
+          "updated": "2010-05-17",
+          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
+          "folders": [
+            {
+              "name": "!PPSkinner",
+              "title": "PP Skinner",
+              "version": "1.0.1.r",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PallyPower-Improved-3.3.5",
+      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "PallyPower Improved",
+          "name": "PallyPower-Improved-3.3.5",
           "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/refs/heads/main.zip",
           "updated": "2026-10-07",
+          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
           "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
-            }
-          ],
           "folders": [
             {
               "name": "PallyPower",
@@ -28956,28 +28968,6 @@
               "name": "PallyPower",
               "title": "PallyPower",
               "version": "v3.2.20",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "PallyPower Skinner",
-      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
-      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
-      "downloads": [
-        {
-          "source": "wowinterface",
-          "name": "PallyPower Skinner",
-          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
-          "updated": "2010-05-17",
-          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
-          "folders": [
-            {
-              "name": "!PPSkinner",
-              "title": "PP Skinner",
-              "version": "1.0.1.r",
               "interface": 30300
             }
           ]
@@ -40828,120 +40818,6 @@
     },
     {
       "name": "WeakAuras",
-      "description": "WeakAuras lets you create customizable displays for buffs, debuffs, cooldowns and other combat information. Use icons, bars, text, sounds and other visuals to track the information you need.",
-      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
-      "downloads": [
-        {
-          "source": "nom0re",
-          "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-10-18",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
-            }
-          ],
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.1",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-10-18",
-          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
-          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
-          "folders": [
-            {
-              "name": "APIDocumentation",
-              "title": "APIDocumentation",
-              "version": "1.0.2",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAuras",
-              "title": "WeakAuras",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasArchive",
-              "title": "WeakAuras Archive",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasModelPaths",
-              "title": "WeakAuras Model Paths",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasOptions",
-              "title": "WeakAuras Options",
-              "version": "5.22.1",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasStopMotion",
-              "title": "WeakAuras Stop Motion Textures",
-              "interface": 30300
-            },
-            {
-              "name": "WeakAurasTemplates",
-              "title": "WeakAuras Templates",
-              "version": "5.22.1",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "WeakAuras",
       "description": "Displays configurable graphics and text based on buffs, debuffs, cooldowns, and other triggers",
       "downloads": [
         {
@@ -41077,6 +40953,120 @@
             {
               "name": "WeakAurasArchive",
               "title": "WeakAuras Archive",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WeakAuras-WotLK",
+      "description": "World of Warcraft addon that provides a powerful framework to display customizable graphics on your screen.",
+      "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/WeakAura.png",
+      "downloads": [
+        {
+          "source": "nom0re",
+          "name": "WeakAuras-WotLK",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
+          "updated": "2026-10-18",
+          "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "WeakAuras",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
+          "updated": "2026-10-18",
+          "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/WeakAuras-WotLK"
+            }
+          ],
+          "folders": [
+            {
+              "name": "APIDocumentation",
+              "title": "APIDocumentation",
+              "version": "1.0.2",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAuras",
+              "title": "WeakAuras",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasArchive",
+              "title": "WeakAuras Archive",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasModelPaths",
+              "title": "WeakAuras Model Paths",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasOptions",
+              "title": "WeakAuras Options",
+              "version": "5.22.1",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasStopMotion",
+              "title": "WeakAuras Stop Motion Textures",
+              "interface": 30300
+            },
+            {
+              "name": "WeakAurasTemplates",
+              "title": "WeakAuras Templates",
+              "version": "5.22.1",
               "interface": 30300
             }
           ]
