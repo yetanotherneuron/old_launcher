@@ -363,11 +363,14 @@ mod tests {
         let json = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
         let mods = Mods::parse(&json).unwrap();
 
-        assert!(
-            mods.mods
-                .iter()
-                .any(|listed| listed.id == "lumenveil" && !listed.releases.is_empty())
-        );
+        for id in ["lumenveil", "dungeon-maps"] {
+            assert!(
+                mods.mods
+                    .iter()
+                    .any(|listed| listed.id == id && !listed.releases.is_empty()),
+                "{id}"
+            );
+        }
     }
 
     #[test]

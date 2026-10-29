@@ -2,6 +2,7 @@
 //! releases are and what the launcher can't read from them, and every file of
 //! every release is hashed.
 
+pub mod dungeon_maps;
 pub mod dxvk;
 pub mod lau;
 pub mod lumenveil;
@@ -35,6 +36,10 @@ pub struct Published {
 pub struct Asset {
     pub name: String,
     pub browser_download_url: String,
+    /// Its checksum (`sha256:<hex>`), which GitHub gives for files attached
+    /// since mid-2025.
+    #[serde(default)]
+    pub digest: Option<String>,
 }
 
 impl Published {
@@ -112,9 +117,14 @@ pub async fn gather(client: &reqwest::Client, known: &Known) -> anyhow::Result<G
     let lumenveil = lumenveil::gather(client, known, &mut found, &mut left_out).await?;
     let dxvk = dxvk::gather(client, known, &mut found, &mut left_out).await?;
     let lau = lau::gather(client, known, &mut found, &mut left_out).await?;
+    let maps = dungeon_maps::gather(client, known, &mut found, &mut left_out).await?;
 
     Ok(Gathered {
-        mods: [lumenveil, dxvk].into_iter().chain(lau).collect(),
+        mods: [lumenveil, dxvk]
+            .into_iter()
+            .chain(lau)
+            .chain([maps])
+            .collect(),
         found,
         missed: left_out.missed,
         skipped: left_out.skipped,
@@ -171,6 +181,7 @@ mod tests {
             from: BTreeMap::new(),
             inside: None,
             setup: Vec::new(),
+            languages: BTreeMap::new(),
         };
         let mut left_out = LeftOut::default();
 

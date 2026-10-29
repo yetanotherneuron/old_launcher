@@ -3,7 +3,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::Version;
+use crate::{Locale, Version};
 
 /// Everything that can go wrong while inspecting or modifying an installation.
 #[derive(Debug, thiserror::Error)]
@@ -71,6 +71,11 @@ pub enum Error {
     #[error("{0} is missing from the download")]
     NotInRelease(String),
 
+    /// A download of a release, by address, that wasn't given to install
+    /// it.
+    #[error("{0} wasn't downloaded")]
+    Undownloaded(String),
+
     /// Bytes that aren't a torrent the launcher can use, and why.
     #[error("not a usable torrent: {0}")]
     Torrent(String),
@@ -95,7 +100,11 @@ pub enum Error {
 
     /// A language the client has no `Data` folder for.
     #[error("the client has no Data/{0} folder")]
-    NoLocale(String),
+    NoLocale(Locale),
+
+    /// The language the game plays in, which can't be deleted.
+    #[error("the game plays in {0}: switch it to another language first")]
+    PlayedLocale(Locale),
 
     /// A SavedVariables path handed to `clean` lies outside the installation.
     #[error("refusing to delete {}: not inside the installation's WTF folder", .0.display())]

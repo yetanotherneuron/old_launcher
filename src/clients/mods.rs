@@ -2,6 +2,10 @@
 //! the client is read, with a banner above the addons while the launcher
 //! needs to check or repair one before starting the game, and a section of
 //! the clients dialog that installs, updates, repairs and removes them.
+//!
+//! The last download of each mod is kept in the launcher's cache (see
+//! [`cache`]): installing it again, in another client or to repair one,
+//! downloads nothing.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -9,7 +13,9 @@ use std::process::Stdio;
 
 use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
-use iced::widget::{button, checkbox, column, container, progress_bar, row, space, text};
+use iced::widget::{
+    button, checkbox, column, container, pick_list, progress_bar, row, space, text,
+};
 use iced::{Center, Element, Fill, Right, Task, Widget};
 use sipper::Sender;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -17,7 +23,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::action::Action;
 use crate::activity::activity;
 use crate::core::mods::{self, Mod, Mods, Problem, Release, Status};
-use crate::core::{Config, Installation, Launch, launch};
+use crate::core::{Config, Installation, Launch, Locale, launch};
 use crate::errors::Errors;
 use crate::{blocking, describe, github, size, style, update};
 
@@ -43,9 +49,16 @@ pub struct State {
     /// In each client folder looked at, the mods that don't suit it (see
     /// [`Seen::unfit`]).
     unfit: BTreeMap<PathBuf, BTreeSet<String>>,
-    /// In each client folder looked at, what mods require that it has only
-    /// in part (see [`Seen::partly`]).
-    partly: BTreeMap<PathBuf, BTreeMap<String, Partly>>,
+    /// In each client folder looked at, the files in conflict with mods
+    /// that it has (see [`Seen::excluded`]).
+    excluded: BTreeMap<PathBuf, BTreeMap<String, Vec<String>>>,
+    /// In each client folder looked at, its languages mods don't come in
+    /// (see [`Seen::lacking`]).
+    lacking: BTreeMap<PathBuf, BTreeMap<String, Vec<Locale>>>,
+    /// In each client folder, the language of a mod chosen for those of its
+    /// languages the mod doesn't come in, by mod id: [`mods::fallback`]
+    /// until one is.
+    instead: BTreeMap<PathBuf, BTreeMap<String, Locale>>,
     /// The client folders being looked at, and whether to look again once
     /// done: asked meanwhile, the folder may have changed since.
     finding: BTreeMap<PathBuf, bool>,
@@ -54,10 +67,19 @@ pub struct State {
     /// The client folder and the mod whose removal from it waits for a yes,
     /// and whether the player's files go too.
     removing: Option<(PathBuf, String, bool)>,
+    /// The client folder and the mod whose install in it, over the files
+    /// in conflict with it, waits for a yes.
+    confirming: Option<(PathBuf, String)>,
+    /// The client folders whose mods are repaired once looked at, one after
+    /// the other (see [`State::complete`]), and those repaired so far.
+    completing: BTreeMap<PathBuf, BTreeSet<String>>,
     /// What the last work did.
     done: Option<Work>,
     /// Downloads from GitHub signed in, when there is a login.
     github: Option<github::Signed>,
+    /// Where the mods' downloads are kept, so installing a release again
+    /// needs no download: none in tests.
+    cache: Option<PathBuf>,
 }
 
 /// Work on a mod in a client folder, and what it is or did, for people.
@@ -116,20 +138,21 @@ pub struct Seen {
     /// The mods it holds, as they are.
     pub held: BTreeMap<String, Status>,
     /// The files of something else where each mod's newest release puts its
-    /// own (see [`mods::foreign`]): they keep it from being installed or
-    /// updated.
+    /// own (see [`mods::foreign`]): installing or updating it sets them
+    /// aside, once the player says yes.
     pub foreign: BTreeMap<String, Vec<String>>,
     /// The mods that don't suit it, which it isn't offered (see
     /// [`mods::fits`]): editions made for an HD model pack it doesn't have,
     /// say.
     pub unfit: BTreeSet<String>,
-    /// The mods whose required files it has only some of (see
-    /// [`mods::partly`]): an HD model pack in part.
-    pub partly: BTreeMap<String, Partly>,
+    /// The files in conflict with each mod that it has (see
+    /// [`mods::excluded`]): half an HD model pack. Installing it asks first.
+    pub excluded: BTreeMap<String, Vec<String>>,
+    /// Its languages each mod doesn't come in (see [`mods::lacking`]):
+    /// installing it puts another of the mod's there, as the player
+    /// chooses.
+    pub lacking: BTreeMap<String, Vec<Locale>>,
 }
-
-/// The files a mod requires that a client has, and those it lacks.
-pub type Partly = (Vec<String>, Vec<String>);
 
 /// Interactions with the banners and the section, and what their work comes
 /// back with. Mods go by id.
@@ -141,15 +164,20 @@ pub enum Message {
     OpenPage(String),
     /// Its page couldn't be opened: why.
     Unopened(String),
-    /// Install, or update to the newest release, was pressed.
+    /// Install, or update to the newest release, was pressed: files in
+    /// conflict with it ask first.
     Install(String),
+    /// Installing it over the files in conflict with it was confirmed.
+    ConfirmInstall,
+    /// Installing it over them was thought better of.
+    CancelInstall,
+    /// A language of the mod was picked for the client's languages it
+    /// doesn't come in.
+    Instead(String, Locale),
     /// Repair was pressed.
     Repair(String),
     /// Uninstall was pressed: ask first.
     Remove(String),
-    /// Set aside was pressed: the files the mod requires that the client
-    /// has only some of.
-    SetAside(String),
     /// The box deleting the player's files too was ticked or unticked.
     DeleteSettings(bool),
     /// Removing it was confirmed.
@@ -228,8 +256,13 @@ pub fn look(root: &Path, list: &Mods) -> Seen {
         if !mods::fits(root, listed) {
             let _ = seen.unfit.insert(listed.id.clone());
         }
-        if let Some(partly) = mods::partly(root, listed) {
-            let _ = seen.partly.insert(listed.id.clone(), partly);
+        let excluded = mods::excluded(root, listed, &alternatives);
+        if !excluded.is_empty() {
+            let _ = seen.excluded.insert(listed.id.clone(), excluded);
+        }
+        let lacking = mods::lacking(root, listed);
+        if !lacking.is_empty() {
+            let _ = seen.lacking.insert(listed.id.clone(), lacking);
         }
     }
 
@@ -248,6 +281,11 @@ impl State {
         self.github = github;
     }
 
+    /// The mods' downloads are kept in `folder` from now on (see [`cache`]).
+    pub fn keep_downloads_in(&mut self, folder: PathBuf) {
+        self.cache = Some(folder);
+    }
+
     /// Takes `list` as the list of mods, those for this system, and looks at
     /// the client folder at `current` again with it.
     pub fn list(&mut self, list: Mods, current: Option<&Path>) -> Task<Message> {
@@ -263,7 +301,8 @@ impl State {
         self.found.clear();
         self.foreign.clear();
         self.unfit.clear();
-        self.partly.clear();
+        self.excluded.clear();
+        self.lacking.clear();
         // What is being looked at with the old list is looked at again.
         for again in self.finding.values_mut() {
             *again = true;
@@ -301,6 +340,13 @@ impl State {
         }
     }
 
+    /// Repairs the mods in the client folder at `root` that need it, once
+    /// it is next looked at, one after the other, each once: a language
+    /// came, and the mods with files in each language want theirs in it.
+    pub fn complete(&mut self, root: &Path) {
+        let _ = self.completing.insert(root.to_path_buf(), BTreeSet::new());
+    }
+
     /// Looks at the client folder at `root`, which the dialog shows, if it
     /// wasn't yet and isn't being.
     pub fn shown(&mut self, root: &Path) -> Task<Message> {
@@ -323,26 +369,64 @@ impl State {
     }
 
     /// Whether the client folder at `root` is offered `listed`: it holds it,
-    /// it suits the mod, or it has only part of what the mod requires, which
-    /// a repair sets aside. A mod that suits only some clients waits for the
+    /// or it suits the mod. A mod that suits only some clients waits for the
     /// folder to be looked at.
     fn offered(&self, root: &Path, listed: &Mod) -> bool {
         self.status(root, &listed.id).is_some()
-            || self.partial(root, &listed.id).is_some()
             || match self.unfit.get(root) {
                 Some(unfit) => !unfit.contains(&listed.id),
                 None => listed.requires.is_empty() && listed.excludes.is_empty(),
             }
     }
 
-    /// The files the mod `id` requires that the client folder at `root`
-    /// has, and those it lacks, when it has only some and doesn't hold the
-    /// mod (see [`mods::partly`]).
-    fn partial(&self, root: &Path, id: &str) -> Option<&Partly> {
-        self.status(root, id)
-            .is_none()
-            .then(|| self.partly.get(root)?.get(id))
-            .flatten()
+    /// The files in the client folder at `root` in conflict with `listed`:
+    /// those of something else where its newest release puts its own,
+    /// which installing it sets aside, and those it isn't made for, which
+    /// stay. Installing or updating it asks first.
+    fn conflicting(&self, root: &Path, listed: &Mod) -> (&[String], &[String]) {
+        fn of<'a>(
+            files: &'a BTreeMap<PathBuf, BTreeMap<String, Vec<String>>>,
+            root: &Path,
+            id: &str,
+        ) -> &'a [String] {
+            files
+                .get(root)
+                .and_then(|files| files.get(id))
+                .map_or(&[], Vec::as_slice)
+        }
+
+        (
+            of(&self.foreign, root, &listed.id),
+            of(&self.excluded, root, &listed.id),
+        )
+    }
+
+    /// The language of `listed` chosen for the languages of the client
+    /// folder at `root` it doesn't come in, if it lacks some: the one the
+    /// player picked, or [`mods::fallback`].
+    fn instead(&self, root: &Path, listed: &Mod) -> Option<Locale> {
+        self.lacking
+            .get(root)
+            .and_then(|lacking| lacking.get(&listed.id))
+            .filter(|lacking| !lacking.is_empty())?;
+
+        self.instead
+            .get(root)
+            .and_then(|chosen| chosen.get(&listed.id))
+            .copied()
+            .or_else(|| mods::fallback(listed))
+    }
+
+    /// Whether installing the newest release of the mod `id` in the client
+    /// folder at `root` updates it: it holds a release of the list, not a
+    /// copy installed by hand, which is installed over.
+    fn updating(&self, root: &Path, id: &str) -> bool {
+        self.status(root, id).is_some_and(|status| {
+            !status
+                .problems
+                .iter()
+                .any(|problem| matches!(problem, Problem::Unknown { .. }))
+        })
     }
 
     /// The alternative to `listed` the client folder at `root` holds, which
@@ -358,7 +442,7 @@ impl State {
 
     /// Why `listed` can't be installed in the client folder at `root`, or
     /// updated there, if it can't: another mod there it can't be beside, but
-    /// its alternatives, or files of something else where it puts its own.
+    /// its alternatives.
     fn blocked(&self, root: &Path, listed: &Mod) -> Option<String> {
         let held = self.found.get(root);
         let installing = !held.is_some_and(|held| held.contains_key(&listed.id));
@@ -379,30 +463,16 @@ impl State {
                 let shared = mods::conflicts(listed, other);
                 (!shared.is_empty()).then_some((other, shared))
             });
-        if let Some((other, shared)) = beside {
-            return Some(format!(
-                "It can't be beside {}, which this client holds: both use {}. Uninstall {} to \
-                 install {}.",
+        beside.map(|(other, shared)| {
+            format!(
+                "It can't be beside “{}”, which this client holds: both use {}. Uninstall “{}” \
+                 to install “{}”.",
                 other.name,
                 names(&shared),
                 other.name,
                 listed.name,
-            ));
-        }
-
-        let foreign = self.foreign.get(root)?.get(&listed.id)?;
-        let (is, it) = if foreign.len() == 1 {
-            ("isn't", "it")
-        } else {
-            ("aren't", "them")
-        };
-        Some(format!(
-            "{} here {is} {}'s: another mod may use {it}. Remove {it} to {} {}.",
-            names(foreign),
-            listed.name,
-            if installing { "install" } else { "update" },
-            listed.name,
-        ))
+            )
+        })
     }
 
     /// What is being done to a mod that quitting would cut short, for
@@ -481,12 +551,46 @@ impl State {
                 let _ = self.found.insert(root.clone(), seen.held);
                 let _ = self.foreign.insert(root.clone(), seen.foreign);
                 let _ = self.unfit.insert(root.clone(), seen.unfit);
-                let _ = self.partly.insert(root.clone(), seen.partly);
+                let _ = self.excluded.insert(root.clone(), seen.excluded);
+                let _ = self.lacking.insert(root.clone(), seen.lacking);
                 // Asked meanwhile: the folder may have changed since.
                 if self.finding.remove(&root) == Some(true) {
                     return Action::task(self.find(&root));
                 }
-                Action::none()
+
+                // The next mod to repair after a language came, in the
+                // client shown; once done, it is looked at again.
+                let Some(repaired) = self.completing.get(&root) else {
+                    return Action::none();
+                };
+                let next = self.found.get(&root).and_then(|found| {
+                    found
+                        .iter()
+                        .find(|(id, status)| need(status).is_some() && !repaired.contains(*id))
+                        .map(|(id, _)| id.clone())
+                });
+                match next {
+                    Some(id) if current == Some(root.as_path()) && self.busy.is_none() => {
+                        if let Some(repaired) = self.completing.get_mut(&root) {
+                            let _ = repaired.insert(id.clone());
+                        }
+                        log::info!("Repairing {id} in {}: a language came", root.display());
+                        self.update(
+                            Message::Repair(id),
+                            current,
+                            installation,
+                            config,
+                            playing,
+                            client,
+                            errors,
+                        )
+                    }
+                    Some(_) => Action::none(),
+                    None => {
+                        let _ = self.completing.remove(&root);
+                        Action::none()
+                    }
+                }
             }
             Message::OpenPage(page) => {
                 log::info!("Opening {page}");
@@ -497,37 +601,63 @@ impl State {
                 Action::none()
             }
             Message::Install(id) => {
-                let Some(listed) = self.listed(&id).cloned() else {
+                let (Some(root), Some(listed)) = (current, self.listed(&id)) else {
                     return Action::none();
                 };
                 // As the section says, with no button to press.
-                if current.is_some_and(|root| self.blocked(root, &listed).is_some()) {
+                if self.blocked(root, listed).is_some() {
                     return Action::none();
                 }
-                let Some(release) = listed.newest().cloned() else {
+                let (foreign, excluded) = self.conflicting(root, listed);
+                if !foreign.is_empty() || !excluded.is_empty() {
+                    self.removing = None;
+                    self.confirming = Some((root.to_path_buf(), id));
                     return Action::none();
-                };
-                let replaced = current.and_then(|root| self.replaced(root, &listed));
-                let busy = match replaced {
-                    Some(other) => format!(
-                        "Installing {} {} in place of {}",
-                        listed.name, release.version, other.name
-                    ),
-                    None => format!("Installing {} {}", listed.name, release.version),
-                };
-                let done = format!("{} {} is installed.", listed.name, release.version);
+                }
 
-                self.start(
+                self.install(
+                    &id,
+                    false,
+                    current,
                     installation,
                     config,
                     playing,
                     client,
                     errors,
-                    listed,
-                    release,
-                    busy,
-                    done,
                 )
+            }
+            Message::ConfirmInstall => {
+                let Some((root, id)) = self.confirming.take() else {
+                    return Action::none();
+                };
+                if current != Some(root.as_path()) {
+                    return Action::none();
+                }
+
+                self.install(
+                    &id,
+                    true,
+                    current,
+                    installation,
+                    config,
+                    playing,
+                    client,
+                    errors,
+                )
+            }
+            Message::CancelInstall => {
+                self.confirming = None;
+                Action::none()
+            }
+            Message::Instead(id, language) => {
+                if let Some(root) = current {
+                    let _ = self
+                        .instead
+                        .entry(root.to_path_buf())
+                        .or_default()
+                        .insert(id, language);
+                }
+                Action::none()
             }
             Message::Repair(id) => {
                 let Some(listed) = self.listed(&id).cloned() else {
@@ -540,8 +670,8 @@ impl State {
                 else {
                     return Action::none();
                 };
-                let busy = format!("Repairing {}", listed.name);
-                let done = format!("{} is repaired.", listed.name);
+                let busy = format!("Repairing “{}”", listed.name);
+                let done = format!("“{}” is repaired.", listed.name);
 
                 self.start(
                     installation,
@@ -551,52 +681,19 @@ impl State {
                     errors,
                     listed,
                     release,
+                    false,
+                    // As its marker says.
+                    None,
                     busy,
                     done,
                 )
             }
             Message::Remove(id) => {
                 if let Some(installation) = installation {
+                    self.confirming = None;
                     self.removing = Some((installation.root().to_path_buf(), id, false));
                 }
                 Action::none()
-            }
-            Message::SetAside(id) => {
-                let Some(installation) = installation.filter(|_| !playing && self.busy.is_none())
-                else {
-                    return Action::none();
-                };
-                let root = installation.root().to_path_buf();
-                let Some((present, _)) = self
-                    .partly
-                    .get(&root)
-                    .and_then(|partly| partly.get(&id))
-                    .cloned()
-                else {
-                    return Action::none();
-                };
-                let files = names(&present);
-                log::info!("Setting {files} aside in {}", root.display());
-                self.busy = Some(Work {
-                    root: root.clone(),
-                    id: id.clone(),
-                    said: format!("Setting {files} aside"),
-                    stage: None,
-                    steps: 0,
-                });
-                self.removing = None;
-                self.done = None;
-
-                let installation = installation.clone();
-                let done = format!(
-                    "{files} {} set aside: renamed to end in {}.",
-                    if present.len() == 1 { "is" } else { "are" },
-                    mods::ASIDE
-                );
-                Action::task(Task::perform(
-                    blocking(move || mods::set_aside(&installation, &present)),
-                    move |result| Message::Done(root, id, result.map(|()| done)),
-                ))
             }
             Message::DeleteSettings(delete) => {
                 if let Some((_, _, deleting)) = &mut self.removing {
@@ -630,14 +727,14 @@ impl State {
                 self.busy = Some(Work {
                     root: root.clone(),
                     id: id.clone(),
-                    said: format!("Removing {}", listed.name),
+                    said: format!("Removing “{}”", listed.name),
                     stage: None,
                     steps: 0,
                 });
                 self.done = None;
 
                 let installation = installation.clone();
-                let removed = format!("{} is removed.", listed.name);
+                let removed = format!("“{}” is removed.", listed.name);
                 Action::task(Task::perform(
                     blocking(move || mods::uninstall(&installation, &listed, !delete)),
                     move |result| Message::Done(root, id, result.map(|()| removed)),
@@ -666,7 +763,7 @@ impl State {
                             steps: 0,
                         });
                     }
-                    Err(error) => errors.report(format!("{}: {error}", self.name(&id))),
+                    Err(error) => errors.report(format!("“{}”: {error}", self.name(&id))),
                 }
 
                 Action::instruction(Instruction::Changed(root))
@@ -680,12 +777,69 @@ impl State {
             .map_or_else(|| id.to_owned(), |listed| listed.name.clone())
     }
 
+    /// Installs the newest release of the mod `id` in `installation`, the
+    /// `current` client, `over` the files of something else where it goes
+    /// or not (see [`State::start`]).
+    #[allow(clippy::too_many_arguments)]
+    fn install(
+        &mut self,
+        id: &str,
+        over: bool,
+        current: Option<&Path>,
+        installation: Option<&Installation>,
+        config: &Config,
+        playing: bool,
+        client: Result<&reqwest::Client, &str>,
+        errors: &mut Errors,
+    ) -> Action<Instruction, Message> {
+        let Some(listed) = self.listed(id).cloned() else {
+            return Action::none();
+        };
+        let Some(release) = listed.newest().cloned() else {
+            return Action::none();
+        };
+        let updating = current.is_some_and(|root| self.updating(root, id));
+        let replaced = current.and_then(|root| self.replaced(root, &listed));
+        let (name, version) = (&listed.name, &release.version);
+        let (busy, done) = match replaced {
+            _ if updating => (
+                format!("Updating “{name}” to {version}"),
+                format!("“{name}” is updated to {version}."),
+            ),
+            Some(other) => (
+                format!("Installing “{name}” {version} in place of “{}”", other.name),
+                format!("“{name}” {version} is installed."),
+            ),
+            None => (
+                format!("Installing “{name}” {version}"),
+                format!("“{name}” {version} is installed."),
+            ),
+        };
+        let instead = current.and_then(|root| self.instead(root, &listed));
+
+        self.start(
+            installation,
+            config,
+            playing,
+            client,
+            errors,
+            listed,
+            release,
+            over,
+            instead,
+            busy,
+            done,
+        )
+    }
+
     /// Installs `release` of `listed` in `installation`, the current client,
     /// which starts as `config` says, in place of what is there, its
-    /// alternatives too, then runs its setup, unless its game runs
-    /// (`playing`) or something else is being done. `busy` says what is
-    /// being done meanwhile, with how far it got, and `done` what was once
-    /// it is.
+    /// alternatives too, and `over` the files of something else where it
+    /// goes, backing them up, or not; then runs its setup. The client's
+    /// languages it doesn't come in get those of `instead`, or of the one
+    /// its marker names. Not while its game runs (`playing`) or something
+    /// else is being done. `busy` says what is being done meanwhile, with
+    /// how far it got, and `done` what was once it is.
     #[allow(clippy::too_many_arguments)]
     fn start(
         &mut self,
@@ -696,6 +850,8 @@ impl State {
         errors: &mut Errors,
         listed: Mod,
         release: Release,
+        over: bool,
+        instead: Option<Locale>,
         busy: String,
         done: String,
     ) -> Action<Instruction, Message> {
@@ -705,13 +861,14 @@ impl State {
         let client = match client {
             Ok(client) => client.clone(),
             Err(error) => {
-                errors.report(format!("Could not download {}: {error}", listed.name));
+                errors.report(format!("Could not download “{}”: {error}", listed.name));
                 return Action::none();
             }
         };
         let root = installation.root().to_path_buf();
         let id = listed.id.clone();
         self.removing = None;
+        self.confirming = None;
         self.done = None;
 
         log::info!(
@@ -747,6 +904,9 @@ impl State {
                 listed,
                 release,
                 alternatives,
+                over,
+                instead,
+                self.cache.clone(),
             ),
             move |stage| Message::Progressed(progressed.0.clone(), progressed.1.clone(), stage),
             move |result| Message::Done(worked.0, worked.1, result.map(|()| done)),
@@ -805,7 +965,7 @@ impl State {
 
                 (
                     text(format!(
-                        "The launcher needs to repair {} before starting the game. {}",
+                        "The launcher needs to repair “{}” before starting the game. {}",
                         listed.name,
                         why.join(" ")
                     ))
@@ -869,6 +1029,53 @@ impl State {
         .width(Fill)
     }
 
+    /// The warning that `listed` doesn't come in some of the languages of
+    /// the client folder at `root`, beside the pick of the one of its that
+    /// goes there instead, when installing it (`installing`).
+    fn elsewhere<'a>(
+        &'a self,
+        root: &Path,
+        listed: &'a Mod,
+        installing: bool,
+    ) -> Option<Element<'a, Message>> {
+        let lacking = self
+            .lacking
+            .get(root)?
+            .get(&listed.id)
+            .filter(|lacking| installing && !lacking.is_empty())?;
+        let id = listed.id.clone();
+        let picker = pick_list(
+            self.instead(root, listed),
+            mods::editions(listed),
+            Locale::to_string,
+        )
+        .style(style::picker)
+        .menu_style(style::choices)
+        .text_size(13)
+        .padding([2, 8])
+        .on_select(move |language| Message::Instead(id.clone(), language));
+
+        Some(
+            row![
+                text(format!(
+                    "“{}” doesn't come in {}: it goes there in",
+                    listed.name,
+                    Locale::codes(lacking)
+                ))
+                .size(13)
+                .style(text::warning),
+                picker,
+                text("instead, its text in that language.")
+                    .size(13)
+                    .style(text::warning),
+            ]
+            .spacing(6)
+            .align_y(Center)
+            .wrap()
+            .boxed(),
+        )
+    }
+
     /// What the section says of `listed` in the client folder at `root`.
     fn view_of<'a>(
         &'a self,
@@ -894,10 +1101,13 @@ impl State {
             })
         });
         let idle = self.busy.is_none();
+        // Not there, older, or a copy installed by hand: the newest release
+        // is offered.
+        let installable = status.is_none() || newer.is_some() || by_hand.is_some();
         // Only once the folder was looked at, and when there is something
         // to install.
         let blocked = found
-            .filter(|_| status.is_none() || newer.is_some())
+            .filter(|_| installable)
             .and_then(|_| self.blocked(root, listed));
         // The edition there that installing this one takes the place of.
         let replaced = status
@@ -942,29 +1152,14 @@ impl State {
         } else {
             newer.map(|release| (format!("Update to {}", release.version), release))
         };
-        // What it requires is there only in part: the repair sets that
-        // aside, as its hint says.
-        let partial = self.partial(root, &listed.id).map(|(present, missing)| {
-            let button = button(text("Repair").size(13))
-                .style(style::secondary)
-                .padding([4, 12]);
-            let hint = format!(
-                "{} {} missing: sets {} aside.",
-                file_names(missing),
-                if missing.len() == 1 { "is" } else { "are" },
-                file_names(present),
-            );
+        // Files in conflict with it, when there is something to install:
+        // installing asks first.
+        let (foreign, excluded) = found
+            .filter(|_| installable)
+            .map_or((&[][..], &[][..]), |_| self.conflicting(root, listed));
+        let conflicts: Vec<String> = foreign.iter().chain(excluded).cloned().collect();
 
-            match &self.busy {
-                _ if playing => style::tip(button, CLOSE_THE_GAME).boxed(),
-                Some(work) => style::tip(button, wait(work)).boxed(),
-                None => {
-                    style::tip(button.on_press(Message::SetAside(listed.id.clone())), hint).boxed()
-                }
-            }
-        });
         let buttons = match status {
-            None if partial.is_some() => row![partial],
             None => row![newest.filter(|_| blocked.is_none()).map(|release| action(
                 format!("Install {}", release.version),
                 Message::Install(listed.id.clone()),
@@ -1030,7 +1225,7 @@ impl State {
             .map(|(_, _, delete)| {
                 container(
                     column![
-                        text(format!("Remove {} from this client?", listed.name)).size(14),
+                        text(format!("Remove “{}” from this client?", listed.name)).size(14),
                         row![
                             (!listed.settings.is_empty()).then(|| {
                                 checkbox(*delete)
@@ -1054,6 +1249,51 @@ impl State {
                 )
                 .padding([6, 12])
                 .style(style::banner(style::Tone::Danger))
+            });
+
+        let confirmation = self
+            .confirming
+            .as_ref()
+            .filter(|(from, id)| from == root && *id == listed.id && !conflicts.is_empty())
+            .map(|_| {
+                let (verb, doing) = if self.updating(root, &listed.id) {
+                    ("Update", "updating")
+                } else {
+                    ("Install", "installing")
+                };
+                // Each is backed up, those of something else where it goes
+                // and those it isn't made for alike.
+                let files = conflicts.iter().map(|path| {
+                    text(format!(
+                        "{path} belongs to something else: {doing} “{}” overrides it safely \
+                         (backed up).",
+                        listed.name,
+                    ))
+                    .size(13)
+                    .boxed()
+                });
+
+                container(
+                    column![
+                        column(files).spacing(4),
+                        row![
+                            text(format!("{verb} “{}” anyway?", listed.name))
+                                .size(14)
+                                .width(Fill),
+                            button("Cancel")
+                                .style(style::quiet)
+                                .on_press(Message::CancelInstall),
+                            button(text(format!("{verb} anyway")))
+                                .style(style::primary)
+                                .on_press_maybe(idle.then_some(Message::ConfirmInstall)),
+                        ]
+                        .spacing(8)
+                        .align_y(Center),
+                    ]
+                    .spacing(6),
+                )
+                .padding([6, 12])
+                .style(style::banner(style::Tone::Warning))
             });
 
         column![
@@ -1081,9 +1321,15 @@ impl State {
             ]
             .spacing(12),
             blocked.map(|why| text(why).size(13).style(text::warning)),
+            (!conflicts.is_empty()).then(|| {
+                text(format!("In conflict with {}.", names(&conflicts)))
+                    .size(13)
+                    .style(text::warning)
+            }),
+            self.elsewhere(root, listed, installable && newer.is_none()),
             replaced.map(|other| {
                 text(format!(
-                    "Installing it takes the place of {}, which this client holds.",
+                    "Installing it takes the place of “{}”, which this client holds.",
                     other.name
                 ))
                 .size(13)
@@ -1092,6 +1338,7 @@ impl State {
             column(problems).spacing(4),
             note,
             removal,
+            confirmation,
         ]
         .spacing(8)
         .boxed()
@@ -1198,17 +1445,6 @@ fn sentence(listed: &Mod, problem: &Problem) -> String {
     }
 }
 
-/// The file names of `paths`, without their folders, as a sentence (see
-/// [`names`]).
-fn file_names(paths: &[String]) -> String {
-    let files: Vec<String> = paths
-        .iter()
-        .map(|path| path.rsplit('/').next().unwrap_or(path).to_owned())
-        .collect();
-
-    names(&files)
-}
-
 /// `names` as a sentence: `A`, `A and B`, `A, B and C`.
 fn names(names: &[String]) -> String {
     match names {
@@ -1219,9 +1455,16 @@ fn names(names: &[String]) -> String {
 }
 
 /// Installs `release` of `listed` in `installation`'s folder, in place of
-/// what is there and of its `alternatives` there, downloading with
-/// `client`, or signed in to GitHub with `github`, then runs its setup the
-/// way `launch` starts the game, saying how far it got.
+/// what is there and of its `alternatives` there, and `over` the files of
+/// something else where it goes or not, then runs its setup the way
+/// `launch` starts the game, saying how far it got. Each of its downloads
+/// (one, or one per language: see [`Release::downloads`]) comes from the
+/// copy kept in `cache`, if there is one, or else is downloaded with
+/// `client`, or signed in to GitHub with `github`, and kept there once
+/// installed. Copies kept that aren't the release (cut short, or changed
+/// on disk) are downloaded again. The client's languages it doesn't come in
+/// get those of `instead`, or of the one its marker names.
+#[allow(clippy::too_many_arguments)]
 fn work(
     client: reqwest::Client,
     github: Option<github::Signed>,
@@ -1230,27 +1473,199 @@ fn work(
     listed: Mod,
     release: Release,
     alternatives: Vec<Mod>,
+    over: bool,
+    instead: Option<Locale>,
+    cache: Option<PathBuf>,
 ) -> impl Straw<(), Stage, String> {
     sipper(async move |mut progress| {
-        // Downloaded before anything changes.
-        let download = get(&client, github.as_ref(), &release.url, &mut progress).await?;
+        let instead = instead.or_else(|| {
+            listed
+                .marker(installation.root())
+                .and_then(|marker| marker.instead)
+        });
+        // As it goes in this client: its downloads, and its setup.
+        let placed = release
+            .placed(installation.locale(), &installation.locales(), instead)
+            .ok_or_else(|| describe(&crate::core::Error::NoLanguage))?;
+        let urls: Vec<String> = placed.downloads().into_iter().map(|(url, _)| url).collect();
+        let copy_of = |url: &str| {
+            cache
+                .as_deref()
+                .map(|cache| kept(cache, &listed, &release, url))
+        };
+
+        // Downloaded before anything changes, but those kept.
+        let mut downloads = BTreeMap::new();
+        let mut cached = Vec::new();
+        for url in &urls {
+            let copy = match copy_of(url) {
+                Some(path) => tokio::fs::read(path).await.ok(),
+                None => None,
+            };
+            let download = match copy {
+                Some(copy) => {
+                    log::info!("{url}: as kept");
+                    cached.push(url.clone());
+                    copy
+                }
+                None => get(&client, github.as_ref(), url, &mut progress).await?,
+            };
+            let _ = downloads.insert(url.clone(), download);
+        }
 
         progress.send(Stage::Installing).await;
-        let (target, installed, set) = (installation.clone(), release.clone(), listed.clone());
-        blocking(move || {
-            let alternatives: Vec<&Mod> = alternatives.iter().collect();
-            mods::install(&target, &listed, &installed, &download, &alternatives)
-        })
-        .await?;
+        // What installing says, and the downloads back, to keep.
+        let install = |downloads: BTreeMap<String, Vec<u8>>| {
+            let (target, listed, release, alternatives) = (
+                installation.clone(),
+                listed.clone(),
+                release.clone(),
+                alternatives.clone(),
+            );
+            tokio::task::spawn_blocking(move || {
+                let alternatives: Vec<&Mod> = alternatives.iter().collect();
+                let installed = mods::install_downloaded(
+                    &target,
+                    &listed,
+                    &release,
+                    &downloads,
+                    &alternatives,
+                    over,
+                    instead,
+                );
+                (installed, downloads)
+            })
+        };
+        let (installed, mut downloads) = install(downloads)
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut fresh: Vec<&String> = urls.iter().filter(|url| !cached.contains(url)).collect();
+        match installed {
+            Ok(()) => {}
+            Err(error) if !cached.is_empty() && spoilt(&error) => {
+                log::warn!(
+                    "The copies kept of {} {} are no good ({}): downloading them again",
+                    listed.name,
+                    release.version,
+                    describe(&error)
+                );
+                for url in &cached {
+                    if let Some(path) = copy_of(url) {
+                        let _ = tokio::fs::remove_file(path).await;
+                    }
+                    let download = get(&client, github.as_ref(), url, &mut progress).await?;
+                    let _ = downloads.insert(url.clone(), download);
+                }
+                fresh = urls.iter().collect();
+                progress.send(Stage::Installing).await;
+                let (installed, again) = install(downloads)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                installed.map_err(|error| describe(&error))?;
+                downloads = again;
+            }
+            Err(error) => return Err(describe(&error)),
+        }
+        for url in fresh {
+            if let (Some(path), Some(download)) = (copy_of(url), downloads.get(url)) {
+                keep(&path, download, &release.version).await;
+            }
+        }
 
         // Its setup runs what it put where the client's language has it.
-        let placed = release
-            .placed(installation.locale())
-            .ok_or_else(|| describe(&crate::core::Error::NoLanguage))?;
         set_up(&installation, &launch, &placed, &mut progress).await?;
         // Only now: until then, the marker says the setup didn't finish.
-        blocking(move || mods::finish_setup(&installation, &set, &release)).await
+        blocking(move || mods::finish_setup(&installation, &listed, &release)).await
     })
+}
+
+/// Where the mods' downloads are kept: in the launcher's cache, one folder
+/// per mod.
+pub fn cache() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_default()
+        .join("old_launcher")
+        .join("mods")
+}
+
+/// Where the download at `url` of `release` of `listed` is kept in `cache`:
+/// in the mod's folder, named after the release's version and the file the
+/// address names.
+fn kept(cache: &Path, listed: &Mod, release: &Release, url: &str) -> PathBuf {
+    let file = url
+        .split(['?', '#'])
+        .next()
+        .and_then(|url| url.rsplit('/').next())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("download");
+
+    cache.join(plain(&listed.id)).join(format!(
+        "{}-{}",
+        plain(&release.version),
+        plain(file).trim_start_matches('.')
+    ))
+}
+
+/// `name` with plain characters alone, to name a file: names come from the
+/// list of mods.
+fn plain(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Keeps `download`, of the release of `version`, at `path`, in place of
+/// the mod's downloads of other releases kept beside it: one release a mod
+/// is enough. Written beside its place and renamed over it, so a copy cut
+/// short never passes for whole. That it can't be kept changes nothing
+/// else.
+async fn keep(path: &Path, download: &[u8], version: &str) {
+    let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
+        return;
+    };
+    let partial = folder.join(format!("{}.partial", name.to_string_lossy()));
+    let written = async {
+        tokio::fs::create_dir_all(folder).await?;
+        tokio::fs::write(&partial, download).await?;
+        tokio::fs::rename(&partial, path).await
+    };
+    if let Err(error) = written.await {
+        log::warn!("Could not keep {}: {error}", path.display());
+        let _ = tokio::fs::remove_file(&partial).await;
+        return;
+    }
+
+    let this = format!("{}-", plain(version));
+    if let Ok(mut entries) = tokio::fs::read_dir(folder).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if !entry.file_name().to_string_lossy().starts_with(&this) {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
+}
+
+/// Whether `error`, installing a download, says it isn't the release: a
+/// copy kept of it is no good.
+fn spoilt(error: &crate::core::Error) -> bool {
+    use crate::core::Error;
+
+    matches!(
+        error,
+        Error::UnknownArchive
+            | Error::Zip(_)
+            | Error::SevenZip(_)
+            | Error::Rar(_)
+            | Error::UnsafeEntry(_)
+            | Error::Checksum(_)
+            | Error::NotInRelease(_)
+    )
 }
 
 /// Runs the setup of `release` in `installation`'s folder, the way `launch`
@@ -1278,7 +1693,7 @@ async fn set_up(
                     .locale()
                     .ok_or("the client has no language data in its Data folder")?;
 
-                Ok(argument.replace("{locale}", locale))
+                Ok(argument.replace("{locale}", locale.code()))
             })
             .collect::<Result<Vec<_>, String>>()?;
 
@@ -1430,6 +1845,11 @@ async fn get(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use iced::task::Sipper;
     use iced_test::simulator;
 
     use super::*;
@@ -1456,6 +1876,7 @@ mod tests {
                 arguments: vec!["--locale".to_owned(), "{locale}".to_owned()],
                 creates: "glow.bin".to_owned(),
             }],
+            languages: BTreeMap::new(),
         };
 
         Mod {
@@ -1473,6 +1894,7 @@ mod tests {
             platforms: Vec::new(),
             requires: Vec::new(),
             excludes: Vec::new(),
+            conflicts: Vec::new(),
             alternatives: Vec::new(),
             version_in: None,
         }
@@ -1622,8 +2044,8 @@ mod tests {
         assert!(shows(
             &state,
             false,
-            "It can't be beside Glow, which this client holds: both use Version.dll. Uninstall \
-             Glow to install Glare."
+            "It can't be beside “Glow”, which this client holds: both use Version.dll. \
+             Uninstall “Glow” to install “Glare”."
         ));
         assert!(!shows(&state, false, "Install 0.5"));
         let _ = update(&mut state, Message::Install("glare".to_owned()), None);
@@ -1687,9 +2109,9 @@ mod tests {
         assert!(shows(
             &state,
             false,
-            "Installing it takes the place of Glow, which this client holds."
+            "Installing it takes the place of “Glow”, which this client holds."
         ));
-        assert!(!shows(&state, false, "It can't be beside Glow"));
+        assert!(!shows(&state, false, "It can't be beside “Glow”"));
         assert_eq!(
             state
                 .replaced(Path::new(ROOT), &glow())
@@ -1700,49 +2122,101 @@ mod tests {
     }
 
     #[test]
-    fn what_a_mod_requires_there_only_in_part_is_repaired_by_setting_it_aside() {
+    fn files_a_mod_isnt_made_for_are_named_and_installing_asks_first() {
         let mut state = found(None);
-        state.list.mods.push(glare());
-        let _ = state
-            .unfit
-            .insert(ROOT.into(), BTreeSet::from(["glare".to_owned()]));
-        let _ = state.partly.insert(
+        let _ = state.excluded.insert(
             ROOT.into(),
-            BTreeMap::from([(
-                "glare".to_owned(),
-                (
-                    vec!["Data/patch-f.mpq".to_owned()],
-                    vec!["Data/enUS/patch-enUS-F.MPQ".to_owned()],
-                ),
-            )]),
+            BTreeMap::from([("glow".to_owned(), vec!["Data/patch-f.mpq".to_owned()])]),
         );
 
-        assert!(shows(&state, false, "Glare"), "listed, to be repaired");
-        assert!(shows(&state, false, "Not installed."));
-        assert!(!shows(&state, false, "Install 0.5"));
-        let press = |playing: bool| {
-            let mut ui = simulator(state.view(Path::new(ROOT), playing));
-            let _ = ui.click("Repair").unwrap();
-            ui.into_messages().collect::<Vec<_>>()
-        };
-        assert!(matches!(&press(false)[..], [Message::SetAside(id)] if id == "glare"));
-        assert!(press(true).is_empty(), "the game runs");
+        assert!(shows(&state, false, "In conflict with Data/patch-f.mpq."));
+        let _ = update(&mut state, Message::Install("glow".to_owned()), None);
+        assert!(state.busy.is_none(), "it asks first");
+        for wanted in [
+            "Install “Glow” anyway?",
+            "Data/patch-f.mpq belongs to something else: installing “Glow” overrides it safely \
+             (backed up).",
+            "Install anyway",
+        ] {
+            assert!(shows(&state, false, wanted), "{wanted}");
+        }
+        assert!(!shows(&state, false, "belongs to something else"));
 
-        // Held, it is what it is.
+        let _ = update(&mut state, Message::CancelInstall, None);
+        assert!(!shows(&state, false, "Install “Glow” anyway?"));
+        assert!(shows(&state, false, "Install 2.0"), "still offered");
+    }
+
+    #[test]
+    fn a_mod_not_in_a_language_of_the_client_goes_there_in_another_as_picked() {
+        let mut state = found(None);
+        let maps = &mut state.list.mods[0];
+        maps.name = "Maps".to_owned();
+        maps.releases.truncate(1);
+        maps.releases[0].files.clear();
+        maps.releases[0].setup.clear();
+        maps.releases[0].url = "https://example.com/patch-{locale}-M.MPQ".to_owned();
+        maps.releases[0].languages = [Locale::DeDe, Locale::EnUs]
+            .into_iter()
+            .map(|language| (language, Vec::new()))
+            .collect();
+        let maps = maps.clone();
+        let _ = state.lacking.insert(
+            ROOT.into(),
+            BTreeMap::from([("glow".to_owned(), vec![Locale::EsMx])]),
+        );
+
+        for wanted in [
+            "“Maps” doesn't come in esMX: it goes there in",
+            "enUS",
+            "instead, its text in that language.",
+            "Install 2.0",
+        ] {
+            assert!(shows(&state, false, wanted), "{wanted}");
+        }
+        assert_eq!(state.instead(Path::new(ROOT), &maps), Some(Locale::EnUs));
+
+        let _ = update(
+            &mut state,
+            Message::Instead("glow".to_owned(), Locale::DeDe),
+            None,
+        );
+        assert_eq!(state.instead(Path::new(ROOT), &maps), Some(Locale::DeDe));
+        assert!(shows(&state, false, "deDE"));
+
+        // Installed, it goes on as its marker says.
         let _ = state.found.insert(
             ROOT.into(),
-            BTreeMap::from([("glare".to_owned(), status(Some("0.5"), Vec::new()))]),
+            BTreeMap::from([("glow".to_owned(), status(Some("2.0"), Vec::new()))]),
         );
-        assert!(!shows(&state, false, "Repair"));
-        assert!(shows(&state, false, "Version 0.5 installed."));
+        assert!(!shows(&state, false, "doesn't come in"));
+    }
+
+    #[test]
+    fn after_a_language_came_each_mod_needing_it_is_repaired_once() {
+        let mut state = found(None);
+        let seen = || Seen {
+            held: BTreeMap::from([(
+                "glow".to_owned(),
+                status(
+                    Some("2.0"),
+                    vec![Problem::Missing(vec!["Data/frFR/glow.mpq".to_owned()])],
+                ),
+            )]),
+            ..Seen::default()
+        };
+
+        state.complete(Path::new(ROOT));
+        let _ = update(&mut state, Message::Found(ROOT.into(), seen()), None);
         assert_eq!(
-            file_names(&[
-                "Data/patch-f.mpq".to_owned(),
-                "Data/enUS/patch-enUS-F.MPQ".to_owned()
-            ]),
-            "patch-f.mpq and patch-enUS-F.MPQ",
-            "what its hint names"
+            state.completing.get(Path::new(ROOT)),
+            Some(&BTreeSet::from(["glow".to_owned()])),
+            "repaired"
         );
+
+        // Looked at again after, the same: once is enough.
+        let _ = update(&mut state, Message::Found(ROOT.into(), seen()), None);
+        assert!(state.completing.is_empty());
     }
 
     #[test]
@@ -1782,7 +2256,7 @@ mod tests {
     }
 
     #[test]
-    fn files_of_something_else_where_it_goes_keep_it_out_until_removed() {
+    fn files_of_something_else_where_it_goes_are_set_aside_once_confirmed() {
         let foreign = |state: &mut State| {
             let _ = state.foreign.insert(
                 ROOT.into(),
@@ -1792,25 +2266,66 @@ mod tests {
 
         let mut absent = found(None);
         foreign(&mut absent);
+        assert!(shows(&absent, false, "In conflict with version.dll."));
+        let mut ui = simulator(absent.view(Path::new(ROOT), false));
+        let _ = ui.click("Install 2.0").unwrap();
+        assert!(matches!(
+            &ui.into_messages().collect::<Vec<_>>()[..],
+            [Message::Install(id)] if id == "glow"
+        ));
+        let _ = update(&mut absent, Message::Install("glow".to_owned()), None);
+        assert!(absent.busy.is_none(), "it asks first");
         assert!(shows(
             &absent,
             false,
-            "version.dll here isn't Glow's: another mod may use it. Remove it to install Glow."
+            "version.dll belongs to something else: installing “Glow” overrides it safely \
+             (backed up)."
         ));
-        assert!(!shows(&absent, false, "Install 2.0"));
+        let mut ui = simulator(absent.view(Path::new(ROOT), false));
+        let _ = ui.click("Install anyway").unwrap();
+        assert!(matches!(
+            &ui.into_messages().collect::<Vec<_>>()[..],
+            [Message::ConfirmInstall]
+        ));
+        let _ = update(&mut absent, Message::ConfirmInstall, None);
+        assert!(absent.confirming.is_none());
 
         let mut older = found(Some(status(Some("1.0"), Vec::new())));
         foreign(&mut older);
-        assert!(shows(
-            &older,
-            false,
-            "version.dll here isn't Glow's: another mod may use it. Remove it to update Glow."
-        ));
-        assert!(!shows(&older, false, "Update to 2.0"));
+        assert!(shows(&older, false, "Update to 2.0"));
+        let _ = update(&mut older, Message::Install("glow".to_owned()), None);
+        assert!(shows(&older, false, "Update “Glow” anyway?"));
+        assert!(shows(&older, false, "Update anyway"));
         assert!(
             shows(&older, false, "Uninstall"),
             "what is there stays manageable"
         );
+        assert!(shows(
+            &older,
+            false,
+            "version.dll belongs to something else: updating “Glow” overrides it safely \
+                 (backed up)."
+        ));
+
+        // A copy installed by hand is installed over, as its button says.
+        let mut by_hand = found(Some(status(
+            None,
+            vec![Problem::Unknown {
+                version: Some("0.9".to_owned()),
+                natives: Vec::new(),
+            }],
+        )));
+        foreign(&mut by_hand);
+        assert!(shows(&by_hand, false, "Install 2.0"));
+        let _ = update(&mut by_hand, Message::Install("glow".to_owned()), None);
+        assert!(shows(&by_hand, false, "Install “Glow” anyway?"));
+        assert!(!by_hand.updating(Path::new(ROOT), "glow"));
+        assert!(older.updating(Path::new(ROOT), "glow"));
+
+        // Up to date: nothing to install, nothing in conflict.
+        let mut current = found(Some(status(Some("2.0"), Vec::new())));
+        foreign(&mut current);
+        assert!(!shows(&current, false, "In conflict with"));
     }
 
     #[test]
@@ -1843,7 +2358,7 @@ mod tests {
         assert!(banner_shows(
             &state,
             false,
-            "The launcher needs to repair Glow before starting the game. Not as released: \
+            "The launcher needs to repair “Glow” before starting the game. Not as released: \
              Glow.dll. Its setup needs to run to make glow.bin. Config.wtf sets gxApi to d3d9ex; \
              it needs d3d9."
         ));
@@ -2017,7 +2532,7 @@ mod tests {
 
         let messages: Vec<Message> = {
             let mut ui = simulator(state.view(&root, false));
-            assert!(ui.find("Remove Glow from this client?").is_ok());
+            assert!(ui.find("Remove “Glow” from this client?").is_ok());
             let _ = ui.click("Delete its settings too").unwrap();
             ui.into_messages().collect()
         };
@@ -2036,7 +2551,7 @@ mod tests {
             BTreeMap::from([("glow".to_owned(), status(Some("2.0"), Vec::new()))]),
         );
         let mut ui = simulator(state.view(other, false));
-        assert!(ui.find("Remove Glow from this client?").is_err());
+        assert!(ui.find("Remove “Glow” from this client?").is_err());
         drop(ui);
 
         let action = update(&mut state, Message::ConfirmRemove, Some(&installation));
@@ -2098,6 +2613,211 @@ mod tests {
         assert_eq!(
             set_up(&installation, &failing, &release, &mut progress).await,
             Err("its setup failed: out of memory".to_owned())
+        );
+    }
+
+    /// Serves `body` at any address on this computer, counting the
+    /// requests.
+    async fn serve(body: Vec<u8>) -> (String, Arc<AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+
+        // The server lives as long as the test's runtime.
+        drop(tokio::spawn({
+            let requests = requests.clone();
+            async move {
+                loop {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut request = vec![0; 4096];
+                    let _ = stream.read(&mut request).await.unwrap();
+                    let _ = requests.fetch_add(1, Ordering::SeqCst);
+                    let mut response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .into_bytes();
+                    response.extend(&body);
+                    stream.write_all(&response).await.unwrap();
+                }
+            }
+        }));
+
+        (format!("http://{address}"), requests)
+    }
+
+    #[tokio::test]
+    async fn a_release_downloaded_once_installs_again_from_the_copy_kept() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = crate::http_client().build().unwrap();
+        let patch = b"MPQ\x1a".to_vec();
+        let (server, requests) = serve(patch.clone()).await;
+        let mut listed = glow();
+        listed.id = "patch-4".to_owned();
+        listed.settings.clear();
+        listed.releases.truncate(1);
+        listed.releases[0] = Release {
+            version: "1".to_owned(),
+            url: format!("{server}/files/patch-4.MPQ?raw=1"),
+            files: vec![("Data/patch-4.MPQ".to_owned(), mods::sha256(&patch))],
+            setup: Vec::new(),
+            ..listed.releases[0].clone()
+        };
+        let release = listed.releases[0].clone();
+        let (_root, installation) = crate::core::testing::client(&["Data/enUS/locale-enUS.MPQ"]);
+        let cache = tempfile::tempdir().unwrap();
+        let copy = kept(cache.path(), &listed, &release, &release.url);
+        assert_eq!(copy, cache.path().join("patch-4").join("1-patch-4.MPQ"));
+        // Another release kept before.
+        fs::create_dir_all(copy.parent().unwrap()).unwrap();
+        fs::write(copy.with_file_name("0-patch-4.MPQ"), b"old").unwrap();
+
+        let installed = || {
+            let (progress, _) = Sender::channel(64);
+            work(
+                client.clone(),
+                None,
+                installation.clone(),
+                Launch::default(),
+                listed.clone(),
+                release.clone(),
+                Vec::new(),
+                false,
+                None,
+                Some(cache.path().to_path_buf()),
+            )
+            .run(progress)
+        };
+
+        installed().await.unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        assert_eq!(fs::read(&copy).unwrap(), patch, "kept");
+        assert_eq!(
+            fs::read_dir(copy.parent().unwrap()).unwrap().count(),
+            1,
+            "in place of the other"
+        );
+
+        // Installed again: no download.
+        fs::remove_file(installation.root().join("Data/patch-4.MPQ")).unwrap();
+        installed().await.unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            fs::read(installation.root().join("Data/patch-4.MPQ")).unwrap(),
+            patch
+        );
+
+        // A copy gone bad is downloaded again.
+        fs::write(&copy, b"MPQ\x00").unwrap();
+        installed().await.unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+        assert_eq!(fs::read(&copy).unwrap(), patch);
+    }
+
+    #[tokio::test]
+    async fn a_release_of_a_file_per_language_downloads_those_of_the_client() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = crate::http_client().build().unwrap();
+        let patch = b"MPQ\x1a maps".to_vec();
+        let (server, requests) = serve(patch.clone()).await;
+        let path = "Data/{locale}/patch-{locale}-M.MPQ".to_owned();
+        let mut listed = glow();
+        listed.id = "maps".to_owned();
+        listed.settings.clear();
+        listed.releases.truncate(1);
+        listed.releases[0] = Release {
+            version: "2.4.5".to_owned(),
+            url: format!("{server}/download/patch-{{locale}}-M.MPQ"),
+            files: Vec::new(),
+            setup: Vec::new(),
+            languages: [Locale::DeDe, Locale::EnUs, Locale::EsEs]
+                .into_iter()
+                .map(|language| (language, vec![(path.clone(), mods::sha256(&patch))]))
+                .collect(),
+            ..listed.releases[0].clone()
+        };
+        let release = listed.releases[0].clone();
+        let (_root, installation) = crate::core::testing::client(&[
+            "Data/enUS/locale-enUS.MPQ",
+            "Data/esES/locale-esES.MPQ",
+        ]);
+        let root = installation.root();
+        let cache = tempfile::tempdir().unwrap();
+
+        let (progress, _) = Sender::channel(64);
+        work(
+            client.clone(),
+            None,
+            installation.clone(),
+            Launch::default(),
+            listed.clone(),
+            release.clone(),
+            Vec::new(),
+            false,
+            None,
+            Some(cache.path().to_path_buf()),
+        )
+        .run(progress)
+        .await
+        .unwrap();
+
+        assert_eq!(requests.load(Ordering::SeqCst), 2, "its languages alone");
+        for language in ["enUS", "esES"] {
+            assert_eq!(
+                fs::read(root.join(format!("Data/{language}/patch-{language}-M.MPQ"))).unwrap(),
+                patch
+            );
+            assert!(
+                cache
+                    .path()
+                    .join(format!("maps/2.4.5-patch-{language}-M.MPQ"))
+                    .is_file(),
+                "each kept"
+            );
+        }
+        assert!(!root.join("Data/deDE").exists());
+        assert_eq!(
+            mods::status(root, &listed, &[]).unwrap().problems,
+            [],
+            "as released"
+        );
+
+        // In a language it doesn't come in: another's, as picked, which its
+        // repairs keep to.
+        let (_root, mexican) = crate::core::testing::client(&["Data/esMX/locale-esMX.MPQ"]);
+        let (progress, _) = Sender::channel(64);
+        work(
+            client,
+            None,
+            mexican.clone(),
+            Launch::default(),
+            listed.clone(),
+            release,
+            Vec::new(),
+            false,
+            Some(Locale::EnUs),
+            Some(cache.path().to_path_buf()),
+        )
+        .run(progress)
+        .await
+        .unwrap();
+
+        assert_eq!(requests.load(Ordering::SeqCst), 2, "enUS's, as kept");
+        assert_eq!(
+            fs::read(mexican.root().join("Data/esMX/patch-esMX-M.MPQ")).unwrap(),
+            patch
+        );
+        assert_eq!(
+            listed
+                .marker(mexican.root())
+                .and_then(|marker| marker.instead),
+            Some(Locale::EnUs)
+        );
+        assert_eq!(
+            mods::status(mexican.root(), &listed, &[]).unwrap().problems,
+            []
         );
     }
 
@@ -2182,7 +2902,7 @@ mod tests {
         let download = get(&client, None, &newest.url, &mut progress)
             .await
             .unwrap();
-        mods::install(&installation, &lumenveil, &newest, &download, &[]).unwrap();
+        mods::install(&installation, &lumenveil, &newest, &download, &[], false).unwrap();
 
         assert_eq!(
             mods::status(installation.root(), &lumenveil, &[]),
@@ -2225,17 +2945,20 @@ mod tests {
                 newest,
                 &download,
                 &list.alternatives(game_mod),
+                false,
             )
             .unwrap();
         };
 
         assert!(mods::fits(root, non_hd) && !mods::fits(root, original));
         install(non_hd).await;
-        assert!(
-            root.join("Data/enUS/patch-enUS-Y.MPQ").is_file(),
-            "the language the game picks"
-        );
-        assert!(!root.join("Data/deDE/patch-deDE-Y.MPQ").exists());
+        for locale in ["enUS", "deDE"] {
+            assert!(
+                root.join(format!("Data/{locale}/patch-{locale}-Y.MPQ"))
+                    .is_file(),
+                "every language the client has"
+            );
+        }
 
         // Given the HD models, the client suits the HD editions instead.
         std::fs::write(root.join("Data/patch-f.mpq"), "").unwrap();

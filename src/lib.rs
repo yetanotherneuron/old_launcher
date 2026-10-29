@@ -46,7 +46,7 @@ use iced::{
 
 use crate::catalog::Catalog;
 use crate::core::mods::Mods;
-use crate::core::{Config, Installation, Snapshot};
+use crate::core::{Config, Installation, Locale, Snapshot};
 use crate::errors::Errors;
 
 /// Where the launcher's code lives, as `Cargo.toml` says.
@@ -341,6 +341,7 @@ impl App {
             latest: None,
             quitting: false,
         };
+        app.clients.keep_mod_downloads_in(clients::mods::cache());
         // No client is open yet to look at with it.
         let _ = app.clients.list_mods(mods, None);
 
@@ -537,9 +538,26 @@ impl App {
                         self.setup = Some(setup::State::new(true));
                         Task::batch([task, operation::focus(setup::PATH)])
                     }
-                    Some(clients::Instruction::Torrent(root)) => {
+                    Some(clients::Instruction::Check(root)) => {
                         let start = self.download.start(
                             download::Request::Check(root),
+                            &self.config,
+                            self.client.as_ref().map_err(String::as_str),
+                        );
+
+                        Task::batch([task, start.map(Message::Download)])
+                    }
+                    Some(clients::Instruction::Languages {
+                        root,
+                        locales,
+                        locale,
+                    }) => {
+                        let start = self.download.start(
+                            download::Request::Languages {
+                                root,
+                                locales,
+                                locale,
+                            },
                             &self.config,
                             self.client.as_ref().map_err(String::as_str),
                         );
@@ -594,7 +612,7 @@ impl App {
                             log::info!(
                                 "{} plays in {} from now on",
                                 switched.root().display(),
-                                switched.locale().unwrap_or("no language")
+                                switched.locale().map_or("no language", Locale::code)
                             );
                             *installation = switched;
                         }
@@ -653,28 +671,27 @@ impl App {
                     // Unless the client was removed meanwhile.
                     Some(
                         download::Instruction::Saved(root, _)
-                        | download::Instruction::Updated { root, .. },
+                        | download::Instruction::Repaired { root, .. }
+                        | download::Instruction::LanguageAdded { root, .. }
+                        | download::Instruction::LanguageDeleted(root),
                     ) if !self.config.installations.contains(&root) => task,
                     Some(download::Instruction::Saved(root, torrent)) => {
                         let _ = self.config.torrents.insert(root, torrent);
                         Task::batch([task, self.save()])
                     }
-                    Some(download::Instruction::Updated { root, notice }) => {
+                    Some(download::Instruction::Repaired { root, notice }) => {
                         self.notice = Some(notice);
-                        // Its files changed: what the clients dialog says of
-                        // it, and its addons, if it is shown.
-                        let current = self.selected.path().map(Path::to_path_buf);
-                        let changed = self
-                            .clients
-                            .changed(&root, current.as_deref())
-                            .map(Message::Clients);
-                        let rescan = if current.as_deref() == Some(root.as_path()) {
-                            self.rescan()
-                        } else {
-                            Task::none()
-                        };
-
-                        Task::batch([task, changed, rescan, self.save()])
+                        Task::batch([task, self.files_changed(&root), self.save()])
+                    }
+                    Some(download::Instruction::LanguageAdded { root, notice }) => {
+                        self.notice = Some(notice);
+                        // The mods in it want their files in the language
+                        // too.
+                        self.clients.complete_mods(&root);
+                        Task::batch([task, self.files_changed(&root)])
+                    }
+                    Some(download::Instruction::LanguageDeleted(root)) => {
+                        Task::batch([task, self.files_changed(&root)])
                     }
                     None => task,
                 }
@@ -1203,7 +1220,7 @@ impl App {
                 style::badge(installation.version().to_string(), style::Tone::Primary),
                 installation
                     .locale()
-                    .map(|locale| style::badge(locale, style::Tone::Primary)),
+                    .map(|locale| style::badge(locale.code(), style::Tone::Primary)),
                 text(installation.root().display().to_string())
                     .size(13)
                     .style(text::secondary)
@@ -1343,6 +1360,9 @@ impl App {
                             installation,
                             game.is_some(),
                             self.download.is_running(),
+                            self.selected
+                                .path()
+                                .and_then(|root| self.download.integrity(root)),
                         )
                         .map(Message::Clients)
                         .boxed(),
@@ -1500,6 +1520,23 @@ impl App {
             }),
             Message::Opened.with(path),
         )
+    }
+
+    /// The files of the client at `root` changed: what the clients dialog
+    /// says of it is read again, and its addons, if it is shown.
+    fn files_changed(&mut self, root: &Path) -> Task<Message> {
+        let current = self.selected.path().map(Path::to_path_buf);
+        let changed = self
+            .clients
+            .changed(root, current.as_deref())
+            .map(Message::Clients);
+        let rescan = if current.as_deref() == Some(root) {
+            self.rescan()
+        } else {
+            Task::none()
+        };
+
+        Task::batch([changed, rescan])
     }
 
     /// Reads the selected client's addons and data again.
@@ -1908,7 +1945,7 @@ mod tests {
     }
 
     #[test]
-    fn a_client_from_a_torrent_is_checked_for_updates_and_one_downloading_resumed() {
+    fn a_client_from_a_torrent_has_its_files_checked_and_one_downloading_resumed() {
         let (_root, installation) = core::testing::client(&[]);
         let root = installation.root().to_path_buf();
         let mut app = opened(installation);
@@ -1949,7 +1986,7 @@ mod tests {
         let _ = app.update(Message::ManageClients);
         let messages: Vec<Message> = {
             let mut ui = simulator(app.view());
-            let _ = ui.click("Check for updates").unwrap();
+            let _ = ui.click("Check").unwrap();
             ui.into_messages().collect()
         };
         for message in messages {
@@ -1958,7 +1995,7 @@ mod tests {
 
         assert!(app.download.is_open());
         let mut ui = simulator(app.view());
-        assert!(ui.find("Updates for WotLK").is_ok());
+        assert!(ui.find("The files of WotLK").is_ok());
         assert!(ui.find("Finding the torrent…").is_ok());
     }
 
@@ -2367,10 +2404,10 @@ mod tests {
         let mut app = opened(installation.clone());
         let _ = app.update(Message::ManageClients);
         let mut switched = installation;
-        switched.set_locale("esES").unwrap();
+        switched.set_locale(Locale::EsEs).unwrap();
 
         let _ = app.update(Message::Clients(clients::Message::Switched(
-            "esES".into(),
+            Locale::EsEs,
             Ok(switched),
         )));
         let _ = app.update(Message::Escape);
@@ -2520,7 +2557,8 @@ mod tests {
                     )]),
                     foreign: std::collections::BTreeMap::new(),
                     unfit: Default::default(),
-                    partly: Default::default(),
+                    excluded: Default::default(),
+                    lacking: Default::default(),
                 },
             )))
         };
@@ -2539,7 +2577,7 @@ mod tests {
         ));
         let mut ui = simulator(app.view());
         assert!(
-            ui.find("The launcher needs to repair Lumenveil before starting the game. Missing: version.dll.")
+            ui.find("The launcher needs to repair “Lumenveil” before starting the game. Missing: version.dll.")
                 .is_ok()
         );
         drop(ui);

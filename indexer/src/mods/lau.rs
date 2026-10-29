@@ -53,6 +53,11 @@ const PLACES: &[(&str, &[&str])] = &[
 /// An HD model pack's archives, which the HD editions are made for.
 const HD_MODELS: [&str; 2] = ["Data/patch-f.mpq", "Data/{locale}/patch-{locale}-F.MPQ"];
 
+/// The new spell visuals' pair, which the editions with the original ones
+/// can't be beside: Lau's manual install guide has them moved out of
+/// `Data` for those (the HD client ships a `patch-s.mpq` of its own).
+const NEW_SPELLS: [&str; 2] = ["Data/patch-s.mpq", "Data/{locale}/patch-{locale}-S.MPQ"];
+
 /// What every edition is for, which its releases don't change: what each
 /// release brings is its notes' to say. Which client an edition is for goes
 /// unsaid, since a client is offered only those it suits.
@@ -168,6 +173,11 @@ impl Edition {
             platforms: Vec::new(),
             requires,
             excludes,
+            conflicts: if self.spells {
+                Vec::new()
+            } else {
+                NEW_SPELLS.iter().copied().map(str::to_owned).collect()
+            },
             alternatives: EDITIONS
                 .iter()
                 .filter(|other| other.id != self.id)
@@ -289,6 +299,7 @@ async fn release(
         from,
         inside: None,
         setup: Vec::new(),
+        languages: BTreeMap::new(),
     })
 }
 
@@ -506,5 +517,9 @@ mod tests {
         assert!(mods[1].excludes.is_empty());
         assert_eq!(mods[2].excludes, HD_MODELS);
         assert!(mods[2].requires.is_empty());
+        // The new spell visuals' pair can't be beside the original ones.
+        assert!(mods[0].conflicts.is_empty());
+        assert_eq!(mods[1].conflicts, NEW_SPELLS);
+        assert_eq!(mods[2].conflicts, NEW_SPELLS);
     }
 }

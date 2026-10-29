@@ -40,6 +40,10 @@ const FORKS: &[&str] = &[
 /// Collections of addons, which are read through their own index instead.
 const EXCLUDED: &[&str] = &["NoM0Re/WoW-3.3.5a-Addons", "NoM0Re/WoW-3.3.5a-Addons2"];
 
+/// Repositories whose releases attach each addon as a zip of its own:
+/// Trimitor's, made for his Dungeon Maps.
+pub const COLLECTIONS: &[&str] = &["Trimitor/WDM-addons"];
+
 /// Repositories bigger than this (in KB, as GitHub reports it) are
 /// collections or asset dumps, not an addon.
 const MAX_SIZE: u64 = 150_000;
@@ -64,6 +68,79 @@ impl Source for Maintainer {
 
         repositories(client, owner).await
     }
+}
+
+/// A repository whose releases attach each addon as a zip of its own, by
+/// its full name (`owner/name`): those of its latest stable release are
+/// listed.
+pub struct Collection(pub &'static str);
+
+impl Source for Collection {
+    fn info(&self) -> catalog::Source {
+        let Self(repository) = self;
+        let owner = repository.split('/').next().unwrap_or(repository);
+
+        catalog::Source {
+            id: format!("github-{}", repository.to_lowercase().replace('/', "-")),
+            name: format!("{owner} on GitHub"),
+            homepage: format!("https://github.com/{repository}"),
+        }
+    }
+
+    /// Lists the zips of the latest stable release.
+    async fn list(&self, client: &reqwest::Client) -> anyhow::Result<Vec<Listing>> {
+        let Self(repository) = self;
+        let latest: Latest = api(client, &format!("repos/{repository}/releases/latest")).await?;
+
+        Ok(listings(repository, latest))
+    }
+}
+
+/// A release, as GitHub's API describes it, with what a listing needs.
+#[derive(Deserialize)]
+struct Latest {
+    html_url: String,
+    published_at: Option<String>,
+    assets: Vec<Attached>,
+}
+
+/// A file attached to a release.
+#[derive(Deserialize)]
+struct Attached {
+    name: String,
+    browser_download_url: String,
+}
+
+/// The addons of the `repository`'s release `latest`: its zips, each named
+/// after its file, with the release's date. A release's files never
+/// change.
+fn listings(repository: &str, latest: Latest) -> Vec<Listing> {
+    let day = latest
+        .published_at
+        .as_deref()
+        .and_then(|date| date.get(..10))
+        .map(str::to_owned);
+
+    latest
+        .assets
+        .into_iter()
+        .filter_map(|asset| {
+            let name = asset.name.strip_suffix(".zip")?.to_owned();
+
+            Some(Listing {
+                name,
+                description: String::new(),
+                download: asset.browser_download_url,
+                image: None,
+                page: Some(format!("https://github.com/{repository}")),
+                links: Vec::new(),
+                changes: Some(latest.html_url.clone()),
+                updated: Updated::Given(day.clone()),
+                require_wotlk: true,
+                immutable: true,
+            })
+        })
+        .collect()
 }
 
 /// Every repository of `owner`'s that may hold an addon: their own (not
@@ -166,4 +243,45 @@ pub async fn api<T: DeserializeOwned>(client: &reqwest::Client, path: &str) -> a
         .await?;
 
     serde_json::from_slice(&body).with_context(|| format!("reading {url}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_collection_lists_each_zip_of_its_latest_release() {
+        let latest: Latest = serde_json::from_str(
+            r#"{
+                "html_url": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+                "published_at": "2026-06-11T09:30:00Z",
+                "assets": [
+                    { "name": "WDM.zip", "browser_download_url": "https://example.com/WDM.zip" },
+                    { "name": "Astrolabe.zip", "browser_download_url": "https://example.com/Astrolabe.zip" },
+                    { "name": "notes.txt", "browser_download_url": "https://example.com/notes.txt" }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let listed = listings("Trimitor/WDM-addons", latest);
+
+        assert_eq!(
+            listed
+                .iter()
+                .map(|listing| listing.name.as_str())
+                .collect::<Vec<_>>(),
+            ["WDM", "Astrolabe"]
+        );
+        assert_eq!(listed[0].download, "https://example.com/WDM.zip");
+        assert_eq!(
+            listed[0].updated,
+            Updated::Given(Some("2026-06-11".to_owned()))
+        );
+        assert!(listed[0].immutable && listed[0].require_wotlk);
+        assert_eq!(
+            Collection("Trimitor/WDM-addons").info().id,
+            "github-trimitor-wdm-addons"
+        );
+    }
 }

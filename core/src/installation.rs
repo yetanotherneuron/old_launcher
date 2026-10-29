@@ -8,8 +8,8 @@ use std::time::Duration;
 use crate::config::ClientTorrent;
 use crate::error::io_at;
 use crate::{
-    Addon, Adoption, Error, Marker, SavedVariables, Snapshot, Toc, Version, archive, layout,
-    torrent,
+    Addon, Adoption, Error, Locale, Marker, SavedVariables, Snapshot, Toc, Version, archive,
+    layout, torrent,
 };
 
 /// A validated 3.3.5a client directory.
@@ -22,7 +22,7 @@ pub struct Installation {
     root: PathBuf,
     executable: PathBuf,
     version: Version,
-    locale: Option<String>,
+    locale: Option<Locale>,
 }
 
 /// What a client folder holds, for people; see [`Details::read`].
@@ -30,10 +30,10 @@ pub struct Installation {
 pub struct Details {
     /// Every file in the folder, in bytes.
     pub size: u64,
-    /// The languages the client has data for (`enUS`, `esES`, …), sorted.
-    pub locales: Vec<String>,
+    /// The languages the client has data for, sorted.
+    pub locales: Vec<Locale>,
     /// The one it plays in; see [`Installation::locale`].
-    pub locale: Option<String>,
+    pub locale: Option<Locale>,
     /// Which server the client connects to, when it has a `realmlist.wtf`.
     pub realmlist: Option<Realmlist>,
     /// Whether `Wow.exe` may use 4 GB of memory, not just 2; see
@@ -110,23 +110,44 @@ impl Installation {
         self.version
     }
 
-    /// The language the client plays in (`enUS`, `esES`, …), as its game
-    /// picks it: the one `WTF/Config.wtf` sets, or `enUS`, when installed,
-    /// else the next installed in the game's own order.
-    pub fn locale(&self) -> Option<&str> {
-        self.locale.as_deref()
+    /// The language the client plays in, as its game picks it: the one
+    /// `WTF/Config.wtf` sets, or `enUS`, when installed, else the next
+    /// installed in the game's own order.
+    pub fn locale(&self) -> Option<Locale> {
+        self.locale
+    }
+
+    /// The languages the client has data for (see [`Details::locales`]),
+    /// read from its folder now.
+    pub fn locales(&self) -> Vec<Locale> {
+        locales(&self.root)
+    }
+
+    /// Deletes the data of `locale`, one of the client's languages: its
+    /// whole `Data` folder, with the realmlist and the mods' copies in it.
+    /// Not the language the game plays in, as it picks it now.
+    pub fn remove_locale(&self, locale: Locale) -> Result<(), Error> {
+        if !locales(&self.root).contains(&locale) {
+            return Err(Error::NoLocale(locale));
+        }
+        if self::locale(&self.root) == Some(locale) {
+            return Err(Error::PlayedLocale(locale));
+        }
+
+        let folder = locale.folder(&self.root);
+        fs::remove_dir_all(&folder).map_err(io_at(&folder))
     }
 
     /// Makes the client play in `locale`, one it has data for, from its next
     /// start, as [`Installation::set`] sets it.
-    pub fn set_locale(&mut self, locale: &str) -> Result<(), Error> {
-        if !locales(&self.root).iter().any(|known| known == locale) {
-            return Err(Error::NoLocale(locale.to_owned()));
+    pub fn set_locale(&mut self, locale: Locale) -> Result<(), Error> {
+        if !locales(&self.root).contains(&locale) {
+            return Err(Error::NoLocale(locale));
         }
 
-        self.set("locale", locale)?;
+        self.set("locale", locale.code())?;
 
-        self.locale = Some(locale.to_owned());
+        self.locale = Some(locale);
         Ok(())
     }
 
@@ -494,8 +515,7 @@ impl Realmlist {
     /// realmlist, the last one wins; the other lines (`set patchlist`, …)
     /// are about something else.
     pub fn of(root: &Path) -> Option<Self> {
-        let locale = locale(root)?;
-        let path = child(&child(&child(root, "Data"), &locale), "realmlist.wtf");
+        let path = child(&locale(root)?.folder(root), "realmlist.wtf");
 
         path.is_file().then(|| Self {
             server: setting(&path, "realmlist"),
@@ -569,44 +589,34 @@ fn write_over(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     fs::rename(&partial, path).map_err(io_at(path))
 }
 
-/// The languages 3.3.5a's `Wow.exe` (build 12340) knows, in the order it
-/// looks through them for one installed.
-const GAME_LOCALES: [&str; 12] = [
-    "deDE", "enGB", "enUS", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU",
-];
-
 /// The language the client at `root` plays in, as its game picks it. In a
-/// whole client (with `Data/common.MPQ`), the first of [`GAME_LOCALES`]
-/// installed (with `Data/<code>/locale-<code>.MPQ`), looking from the one
-/// `WTF/Config.wtf` sets onward and around; from `enUS` when it sets none,
-/// or one the game doesn't know. The game then writes it into
-/// `Config.wtf`. Otherwise, or with none of those installed: the one
+/// whole client (with `Data/common.MPQ`), the first installed (see
+/// [`Locale::installed`]) in the game's order ([`Locale::GAME_ORDER`]),
+/// looking from the one `WTF/Config.wtf` sets onward and around; from
+/// `enUS` when it sets none, or one the game doesn't know. The game then
+/// writes it into `Config.wtf`. Otherwise, or with none installed: the one
 /// `Config.wtf` sets when the client has data for it, or else the first it
 /// has data for.
-pub(crate) fn locale(root: &Path) -> Option<String> {
-    let data = child(root, "Data");
-    let set = setting(&child(&child(root, "WTF"), "Config.wtf"), "locale");
+pub(crate) fn locale(root: &Path) -> Option<Locale> {
+    let set = setting(&child(&child(root, "WTF"), "Config.wtf"), "locale")
+        .as_deref()
+        .and_then(Locale::parse);
 
-    if child(&data, "common.MPQ").is_file() {
-        let known = |code: &str| {
-            GAME_LOCALES
-                .iter()
-                .position(|known| known.eq_ignore_ascii_case(code))
-        };
-        let start = set
-            .as_deref()
-            .and_then(known)
-            .or_else(|| known("enUS"))
-            .unwrap_or_default();
-        let installed = GAME_LOCALES
+    if child(&child(root, "Data"), "common.MPQ").is_file() {
+        let start = set.unwrap_or(Locale::EnUs);
+        let from = Locale::GAME_ORDER
             .iter()
+            .position(|locale| *locale == start)
+            .unwrap_or_default();
+        let installed = Locale::GAME_ORDER
+            .into_iter()
             .cycle()
-            .skip(start)
-            .take(GAME_LOCALES.len())
-            .find(|code| child(&child(&data, code), &format!("locale-{code}.MPQ")).is_file());
+            .skip(from)
+            .take(Locale::GAME_ORDER.len())
+            .find(|locale| locale.installed(root));
 
-        if let Some(code) = installed {
-            return Some((*code).to_owned());
+        if installed.is_some() {
+            return installed;
         }
     }
 
@@ -615,31 +625,22 @@ pub(crate) fn locale(root: &Path) -> Option<String> {
         .or_else(|| locales.into_iter().next())
 }
 
-/// The languages the client at `root` has data for: the `Data` folders
-/// named like `enUS`, sorted.
-fn locales(root: &Path) -> Vec<String> {
+/// The languages the client at `root` has data for: its `Data` folders of a
+/// language, whatever their case, sorted.
+pub(crate) fn locales(root: &Path) -> Vec<Locale> {
     let Ok(entries) = fs::read_dir(child(root, "Data")) else {
         return Vec::new();
     };
 
-    let mut locales: Vec<String> = entries
+    let mut locales: Vec<Locale> = entries
         .filter_map(Result::ok)
         .filter(|entry| entry.path().is_dir())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| is_locale(name))
+        .filter_map(|entry| Locale::parse(&entry.file_name().to_string_lossy()))
         .collect();
     locales.sort();
+    locales.dedup();
 
     locales
-}
-
-/// Whether `name` is a `Data` folder's of a language: `enUS`, `esES`, …
-pub(crate) fn is_locale(name: &str) -> bool {
-    let bytes = name.as_bytes();
-
-    bytes.len() == 4
-        && bytes[..2].iter().all(u8::is_ascii_lowercase)
-        && bytes[2..].iter().all(u8::is_ascii_uppercase)
 }
 
 /// What `WTF/Config.wtf` of the client at `root` sets `name` to, if
@@ -964,7 +965,7 @@ mod tests {
         let (_root, installation) = client();
 
         assert_eq!(installation.version(), WOTLK);
-        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(installation.locale(), Some(Locale::EsEs));
     }
 
     #[test]
@@ -980,8 +981,8 @@ mod tests {
 
         let details = Details::read(installation.root()).unwrap();
 
-        assert_eq!(details.locales, ["enUS", "esES"]);
-        assert_eq!(details.locale.as_deref(), Some("enUS"));
+        assert_eq!(details.locales, [Locale::EnUs, Locale::EsEs]);
+        assert_eq!(details.locale, Some(Locale::EnUs));
         let size = [
             "Wow.exe",
             "Data/enUS/realmlist.wtf",
@@ -1060,7 +1061,7 @@ mod tests {
 
         let installation = Installation::open(root.path()).unwrap();
 
-        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(installation.locale(), Some(Locale::EsEs));
         assert_eq!(
             Realmlist::of(installation.root()),
             Some(Realmlist {
@@ -1075,7 +1076,7 @@ mod tests {
         fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"deDE\"\n").unwrap();
         assert_eq!(
             Installation::open(root.path()).unwrap().locale(),
-            Some("enUS")
+            Some(Locale::EnUs)
         );
         assert_eq!(Realmlist::of(installation.root()), None);
     }
@@ -1097,9 +1098,13 @@ mod tests {
         )
         .unwrap();
         let mut installation = Installation::open(root.path()).unwrap();
-        assert_eq!(installation.locale(), Some("enUS"), "enGB has no data");
+        assert_eq!(
+            installation.locale(),
+            Some(Locale::EnUs),
+            "enGB has no data"
+        );
 
-        installation.set_locale("esES").unwrap();
+        installation.set_locale(Locale::EsEs).unwrap();
 
         assert_eq!(
             fs::read_to_string(root.path().join("wtf/config.wtf")).unwrap(),
@@ -1107,10 +1112,10 @@ mod tests {
              SET realmName \"Icecrown\"\r\nSET accountName \"PLAYER\"",
             "in place of the first, the others gone, the file spelled as it was"
         );
-        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(installation.locale(), Some(Locale::EsEs));
         assert_eq!(
             Installation::open(root.path()).unwrap().locale(),
-            Some("esES")
+            Some(Locale::EsEs)
         );
         assert_eq!(
             Realmlist::of(installation.root()).and_then(|realmlist| realmlist.server),
@@ -1128,14 +1133,14 @@ mod tests {
     fn a_language_is_set_in_a_config_wtf_made_or_extended_for_it() {
         let (root, mut installation) = client();
 
-        installation.set_locale("esES").unwrap();
+        installation.set_locale(Locale::EsEs).unwrap();
         assert_eq!(
             fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
             "SET locale \"esES\"\n"
         );
 
         fs::write(root.path().join("WTF/Config.wtf"), "SET gxWindow \"1\"").unwrap();
-        installation.set_locale("esES").unwrap();
+        installation.set_locale(Locale::EsEs).unwrap();
         assert_eq!(
             fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
             "SET gxWindow \"1\"\nSET locale \"esES\"\n",
@@ -1154,7 +1159,7 @@ mod tests {
         fs::write(&path, "SET locale \"enUS\"\n").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o777)).unwrap();
 
-        installation.set_locale("esES").unwrap();
+        installation.set_locale(Locale::EsEs).unwrap();
 
         assert_eq!(
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
@@ -1181,7 +1186,7 @@ mod tests {
                 .collect();
             let (_root, installation) = crate::testing::client_with(&files);
 
-            installation.locale().map(str::to_owned)
+            installation.locale()
         };
         let whole = |locales: &[&str]| -> Vec<String> {
             locales
@@ -1195,35 +1200,41 @@ mod tests {
         }
 
         let both = whole(&["deDE", "enUS"]);
-        assert_eq!(picked(&files(&both), None).as_deref(), Some("enUS"));
+        assert_eq!(picked(&files(&both), None), Some(Locale::EnUs));
         let no_english = whole(&["deDE", "enGB"]);
         assert_eq!(
-            picked(&files(&no_english), None).as_deref(),
-            Some("deDE"),
+            picked(&files(&no_english), None),
+            Some(Locale::DeDe),
             "from enUS onward, and around"
         );
         let two = whole(&["enUS", "ruRU"]);
         assert_eq!(
-            picked(&files(&two), Some("frFR")).as_deref(),
-            Some("ruRU"),
+            picked(&files(&two), Some("frFR")),
+            Some(Locale::RuRu),
             "set without data: the next installed"
         );
         let brazilian = whole(&["enUS", "ptBR"]);
         assert_eq!(
-            picked(&files(&brazilian), Some("ptBR")).as_deref(),
-            Some("enUS"),
+            picked(&files(&brazilian), Some("ptBR")),
+            Some(Locale::EnUs),
             "one the game doesn't know"
         );
         let only_brazilian = whole(&["ptBR"]);
         assert_eq!(
-            picked(&files(&only_brazilian), Some("ptBR")).as_deref(),
-            Some("ptBR"),
-            "the only one there"
+            picked(&files(&only_brazilian), Some("ptBR")),
+            None,
+            "no folder of a language the game knows"
+        );
+        let lowercase = whole(&["enus"]);
+        assert_eq!(
+            picked(&files(&lowercase), None),
+            Some(Locale::EnUs),
+            "found whatever its case"
         );
 
         // Not a whole client: the first it has data for.
         let partial = ["Data/deDE/locale-deDE.MPQ", "Data/enUS/locale-enUS.MPQ"];
-        assert_eq!(picked(&partial, None).as_deref(), Some("deDE"));
+        assert_eq!(picked(&partial, None), Some(Locale::DeDe));
     }
 
     #[test]
@@ -1233,14 +1244,36 @@ mod tests {
         fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"esES\"\n").unwrap();
 
         assert!(matches!(
-            installation.set_locale("deDE"),
-            Err(Error::NoLocale(locale)) if locale == "deDE"
+            installation.set_locale(Locale::DeDe),
+            Err(Error::NoLocale(Locale::DeDe))
         ));
         assert_eq!(
             fs::read_to_string(root.path().join("WTF/Config.wtf")).unwrap(),
             "SET locale \"esES\"\n"
         );
-        assert_eq!(installation.locale(), Some("esES"));
+        assert_eq!(installation.locale(), Some(Locale::EsEs));
+    }
+
+    #[test]
+    fn a_language_is_deleted_whole_but_the_one_the_game_plays_in() {
+        let (root, installation) = client();
+        fs::create_dir_all(root.path().join("Data/frFR")).unwrap();
+        fs::write(root.path().join("Data/frFR/realmlist.wtf"), "").unwrap();
+        fs::create_dir_all(root.path().join("WTF")).unwrap();
+        fs::write(root.path().join("WTF/Config.wtf"), "SET locale \"esES\"\n").unwrap();
+
+        assert!(matches!(
+            installation.remove_locale(Locale::EsEs),
+            Err(Error::PlayedLocale(Locale::EsEs))
+        ));
+        assert!(matches!(
+            installation.remove_locale(Locale::DeDe),
+            Err(Error::NoLocale(_))
+        ));
+
+        installation.remove_locale(Locale::FrFr).unwrap();
+        assert!(!root.path().join("Data/frFR").exists());
+        assert_eq!(installation.locales(), [Locale::EsEs]);
     }
 
     #[test]

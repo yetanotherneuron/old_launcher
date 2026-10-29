@@ -67,6 +67,7 @@ pub async fn gather(
         platforms: vec!["windows".to_owned()],
         requires: Vec::new(),
         excludes: Vec::new(),
+        conflicts: Vec::new(),
         alternatives: Vec::new(),
         // Its DLL says Windows' own version in its version resource, to
         // pass for Windows' DLL, and its own in the line it logs at start.
@@ -118,6 +119,7 @@ fn release(
         from: BTreeMap::new(),
         inside: Some(inside),
         setup: Vec::new(),
+        languages: BTreeMap::new(),
     })
 }
 
@@ -151,6 +153,7 @@ mod tests {
             assets: vec![Asset {
                 name: "dxvk-native-3.1.1-steamrt-sniper.tar.gz".to_owned(),
                 browser_download_url: "https://example.com/native.tar.gz".to_owned(),
+                digest: None,
             }],
         }
     }

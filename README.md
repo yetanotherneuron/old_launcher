@@ -29,10 +29,10 @@ It's a portable program: nothing to install, just run it.
 - **Recognizes** the addons you installed before the launcher, and tells when you changed one it installed.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
-- **Download a client** from a torrent, in the languages you choose, and check any client for updates against one.
+- **Download a client** from a torrent, in the languages you choose; later check its files and repair them, or download or delete languages.
 - **Switch the language** of a client that has more than one.
 - **4 GB of memory** for a client's game (Large Address Aware), for HD textures and long view distances.
-- **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water), [Patch Y](https://github.com/CRSD-Lau/Lau-Setup) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
+- **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water), [Patch Y](https://github.com/CRSD-Lau/Lau-Setup), [Dungeon Maps](https://github.com/Trimitor/WDM-patch) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
 - **Show on Discord** that you're playing, if you want.
 
 ![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
@@ -55,6 +55,8 @@ every week:
   a curated collection of backports.
 - Backport maintainers on GitHub: ElvUI-WotLK, bkader, Bunny67, Zidras,
   s0h2x, KhalGH, Sattva-108, Xurkon, Wrath-AddOns.
+- [Trimitor/WDM-addons](https://github.com/Trimitor/WDM-addons), addons
+  made for the Dungeon Maps mod.
 - Addon authors on GitLab: juxuanu (Kekator).
 - [CurseForge](https://www.curseforge.com/wow), for the addons with a file
   for patch 3.3.5 whose authors let other apps download it.
@@ -77,8 +79,9 @@ or on [Discord](https://discord.gg/tS35paspnf).
   `%APPDATA%\old_launcher\config.toml` on Windows, and a cache in
   `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`: a copy of the
   addon list, so it doesn't need to be downloaded every time you open the
-  launcher, and a copy of each client's torrent, fetched again from its
-  peers if missing.
+  launcher, a copy of each client's torrent, fetched again from its peers
+  if missing, and each mod's last download, so installing it again
+  downloads nothing.
 - A client downloading from a torrent goes into a `.download` folder
   inside the folder you chose, its files into place once complete.
   It is shared with the others downloading it, as BitTorrent works, until

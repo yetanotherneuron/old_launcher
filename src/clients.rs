@@ -1,6 +1,6 @@
 //! The clients dialog: which client the launcher shows, what its folder
-//! holds, where its updates come from, outside Windows how the game starts,
-//! and its mods.
+//! holds, the torrent it comes from, which its files are checked against,
+//! outside Windows how the game starts, and its mods.
 
 pub mod mods;
 
@@ -17,7 +17,7 @@ use crate::action::Action;
 use crate::core::config::ClientTorrent;
 use crate::core::launch;
 use crate::core::mods::Mods;
-use crate::core::{Config, Details, Installation, Realmlist};
+use crate::core::{Config, Details, Installation, Locale, Realmlist};
 use crate::errors::Errors;
 use crate::torrent::Source;
 use crate::{blocking, game, github, size, style};
@@ -37,7 +37,7 @@ pub const ENV: &str = "clients-env";
 /// The id of the command field.
 pub const COMMAND: &str = "clients-command";
 
-/// The id of the update source field.
+/// The id of the field giving the client its torrent.
 pub const SOURCE: &str = "clients-source";
 
 /// The warning under a realmlist that sets no server: empty, or without a
@@ -68,7 +68,7 @@ pub struct State {
     edited: bool,
     /// Whether the client shown is about to be removed, pending a yes.
     removing: bool,
-    /// The update source being given to the client shown, as typed so far,
+    /// The torrent being given to the client shown, as typed so far,
     /// while the field for it shows.
     source: Option<String>,
     /// Whether a `.torrent` file is being chosen for it.
@@ -93,9 +93,9 @@ pub enum Message {
     /// The realmlist of a client folder was read again.
     Reread(PathBuf, Result<Option<Realmlist>, String>),
     /// A language was picked for the client shown.
-    Locale(String),
+    Locale(Locale),
     /// The client shown was switched to this language, or couldn't be.
-    Switched(String, Result<Installation, String>),
+    Switched(Locale, Result<Installation, String>),
     /// The box letting the game use 4 GB of memory was ticked or unticked.
     LargeAddressAware(bool),
     /// `Wow.exe` of a client folder was changed to let the game use 4 GB of
@@ -105,12 +105,14 @@ pub enum Message {
     Env(String),
     /// The command was edited.
     Command(String),
-    /// "Check for updates" was pressed.
-    Torrent,
-    /// "Set update source" or "Change source" was pressed: the field for it
+    /// "Check" was pressed beside the file integrity.
+    Check,
+    /// "Manage…" was pressed beside the languages.
+    Languages,
+    /// "Set…" or "Change…" was pressed beside the torrent: the field for it
     /// shows.
     SetSource,
-    /// The update source was edited.
+    /// The torrent given was edited.
     SourceChanged(String),
     /// "Choose file…" beside it was pressed.
     ChooseSource,
@@ -141,11 +143,18 @@ pub enum Instruction {
     Select(PathBuf),
     /// Open the form that adds a client.
     Add,
-    /// Check the client at this folder for updates, against its torrent.
-    Torrent(PathBuf),
-    /// Update the client at `root` from the torrent of `source` from now
-    /// on, checking it against it now.
+    /// Check the files of the client at this folder against its torrent.
+    Check(PathBuf),
+    /// Check the client at `root` against the torrent of `source` from now
+    /// on, and now.
     Adopt { root: PathBuf, source: Source },
+    /// Show the languages of the client at `root`, which has `locales` and
+    /// whose game plays in `locale`, to download others or delete them.
+    Languages {
+        root: PathBuf,
+        locales: Vec<Locale>,
+        locale: Option<Locale>,
+    },
     /// The client at this folder comes from this torrent, as its folder
     /// notes, which the launcher didn't know (the client was forgotten and
     /// added back): keep it.
@@ -184,6 +193,12 @@ impl State {
         self.mods.sign_in(github);
     }
 
+    /// The mods' downloads are kept in `folder` from now on (see
+    /// [`mods::cache`]).
+    pub fn keep_mod_downloads_in(&mut self, folder: PathBuf) {
+        self.mods.keep_downloads_in(folder);
+    }
+
     /// Takes `list` as the list of mods, and looks at the `current` client
     /// again with it.
     pub fn list_mods(&mut self, list: Mods, current: Option<&Path>) -> Task<Message> {
@@ -218,6 +233,12 @@ impl State {
         };
 
         Task::batch([read, self.mods.find(root).map(Message::Mods)])
+    }
+
+    /// Repairs the mods in the client at `root` that need it once it is
+    /// next looked at: a language came, which they want their files in.
+    pub fn complete_mods(&mut self, root: &Path) {
+        self.mods.complete(root);
     }
 
     /// Whether starting the game of the client at `root` waits for the
@@ -296,7 +317,7 @@ impl State {
                         size(details.size),
                         match details.locales.as_slice() {
                             [] => "no language".to_owned(),
-                            locales => locales.join(", "),
+                            locales => Locale::codes(locales),
                         },
                         details
                             .realmlist
@@ -360,7 +381,7 @@ impl State {
             Message::Reread(_, Err(_)) => Action::none(),
             Message::Locale(locale) => {
                 let Some(mut installation) = installation
-                    .filter(|installation| installation.locale() != Some(locale.as_str()))
+                    .filter(|installation| installation.locale() != Some(locale))
                     .filter(|_| !playing)
                     .cloned()
                 else {
@@ -369,17 +390,14 @@ impl State {
                 log::info!("Switching {} to {locale}", installation.root().display());
 
                 Action::task(Task::perform(
-                    blocking({
-                        let locale = locale.clone();
-                        move || installation.set_locale(&locale).map(|()| installation)
-                    }),
+                    blocking(move || installation.set_locale(locale).map(|()| installation)),
                     Message::Switched.with(locale),
                 ))
             }
             Message::Switched(_, Ok(installation)) => {
                 let root = installation.root().to_path_buf();
                 if let Some(Some(Ok(details))) = self.details.get_mut(&root) {
-                    details.locale = installation.locale().map(str::to_owned);
+                    details.locale = installation.locale();
                 }
 
                 // The realmlist is the new language's.
@@ -435,10 +453,24 @@ impl State {
                 }
                 Action::none()
             }
-            Message::Torrent => match current {
-                Some(root) => Action::instruction(Instruction::Torrent(root.to_path_buf())),
-                None => Action::none(),
+            Message::Check => match current {
+                Some(root) if config.torrents.contains_key(root) => {
+                    Action::instruction(Instruction::Check(root.to_path_buf()))
+                }
+                _ => Action::none(),
             },
+            Message::Languages => {
+                let Some((root, Some(Some(Ok(details))))) =
+                    current.map(|root| (root, self.details.get(root)))
+                else {
+                    return Action::none();
+                };
+                Action::instruction(Instruction::Languages {
+                    root: root.to_path_buf(),
+                    locales: details.locales.clone(),
+                    locale: details.locale,
+                })
+            }
             Message::SetSource => {
                 if current.is_none() {
                     return Action::none();
@@ -539,9 +571,10 @@ impl State {
     }
 
     /// The dialog, showing the `current` client of `config`; `installation`
-    /// is that client, once it opened, `playing` whether its game runs, and
-    /// `downloading` whether a client is being downloaded or checked for
-    /// updates.
+    /// is that client, once it opened, `playing` whether its game runs,
+    /// `downloading` whether a client is being downloaded, checked, or
+    /// given languages, and `integrity` what is known of its files.
+    #[allow(clippy::too_many_arguments)]
     pub fn view<'a>(
         &'a self,
         config: &'a Config,
@@ -549,6 +582,7 @@ impl State {
         installation: Option<&'a Installation>,
         playing: bool,
         downloading: bool,
+        integrity: Option<String>,
     ) -> impl Widget<Message> + 'a {
         let title = row![
             style::heading("Clients", 20.0),
@@ -624,10 +658,11 @@ impl State {
         });
 
         let about = current.map(|root| {
+            let torrent = config.torrents.get(root);
             // What the folder holds, or why it isn't known (yet).
             let details: Element<'a, Message> = match self.details.get(root) {
                 Some(Some(Ok(details))) => column![
-                    languages(details, playing),
+                    languages(details, playing, torrent.is_some(), downloading),
                     match &details.realmlist {
                         Some(realmlist) => fact(
                             "Realmlist",
@@ -684,7 +719,8 @@ impl State {
                     fact("Folder", root.display().to_string()),
                     installation
                         .map(|installation| fact("Version", installation.version().to_string())),
-                    self.updates(config.torrents.contains_key(root), downloading),
+                    self.torrent(torrent, downloading),
+                    integrity_of(torrent.is_some(), downloading, integrity),
                     details,
                 ]
                 .spacing(6),
@@ -767,27 +803,24 @@ impl State {
             .style(style::card)
     }
 
-    /// Where the updates of the client shown come from: its torrent, if it
-    /// has one (`torrent`), which it is checked against on request; and the
-    /// field giving it one, while it shows. Neither while a client is being
-    /// downloaded or checked (`downloading`).
-    fn updates(&self, torrent: bool, downloading: bool) -> Column<Element<'_, Message>> {
+    /// The torrent the client shown comes from, if it has one, which its
+    /// files are checked against; and the field giving it one, while it
+    /// shows. Not while a client is being downloaded, checked, or given
+    /// languages (`downloading`).
+    fn torrent(
+        &self,
+        torrent: Option<&ClientTorrent>,
+        downloading: bool,
+    ) -> Column<Element<'_, Message>> {
         let set = (self.source.is_none() && !downloading).then_some(Message::SetSource);
 
-        let fact = if torrent {
-            fact("Updates", "From its torrent".to_owned())
-                .push(small(
-                    "Check for updates",
-                    style::secondary,
-                    (!downloading).then_some(Message::Torrent),
-                ))
-                .push(small("Change source", style::quiet, set))
-        } else {
-            fact("Updates", "Not set".to_owned()).push(small(
-                "Set update source",
-                style::secondary,
-                set,
-            ))
+        let fact = match torrent {
+            Some(torrent) => {
+                fact("Torrent", torrent.name.clone()).push(small("Change…", style::quiet, set))
+            }
+            None => {
+                fact("Torrent", "Not set".to_owned()).push(small("Set…", style::secondary, set))
+            }
         };
 
         let field = self.source.as_ref().map(|source| {
@@ -810,8 +843,10 @@ impl State {
                 ]
                 .spacing(8),
                 text(
-                    "A magnet link, the address of a .torrent file, or the file. The launcher \
-                     compares the client with that torrent, and offers to download what differs."
+                    "A magnet link, the address of a .torrent file, or the file: the torrent \
+                     the client was downloaded with. The launcher checks the client's files \
+                     against it, repairs those missing or changed, and downloads its other \
+                     languages."
                 )
                 .size(13)
                 .style(text::secondary),
@@ -860,26 +895,78 @@ fn reread(root: PathBuf) -> Task<Message> {
 
 /// The languages the client has data for. With two or more, the one it
 /// plays in is picked among them, but not while its game runs (`playing`).
-fn languages(details: &Details, playing: bool) -> Row<Element<'_, Message>> {
-    match details.locales.as_slice() {
+fn languages(
+    details: &Details,
+    playing: bool,
+    torrent: bool,
+    downloading: bool,
+) -> Row<Element<'_, Message>> {
+    let row = match details.locales.as_slice() {
         [] => fact("Languages", "None found".to_owned()),
-        [locale] => fact("Languages", locale.clone()),
+        [locale] => fact("Languages", locale.to_string()),
         locales => {
-            let picker = pick_list(details.locale.clone(), locales, String::clone)
+            let picker = pick_list(details.locale, locales, Locale::to_string)
                 .style(style::picker)
                 .menu_style(style::choices)
                 .text_size(14)
                 .padding([2, 10]);
 
-            let language = if playing {
+            if playing {
                 labelled("Language", style::tip(picker, game::KEEPS_CONFIG))
             } else {
                 labelled("Language", picker.on_select(Message::Locale))
-            };
-
-            language.align_y(Center)
+            }
         }
+    };
+
+    // Others to download from its torrent, or its own to delete.
+    let manageable = torrent || details.locales.len() > 1;
+    if manageable {
+        row.push(small(
+            "Manage…",
+            style::secondary,
+            (!downloading).then_some(Message::Languages),
+        ))
+    } else {
+        row
     }
+    .align_y(Center)
+}
+
+/// What is known of the files of the client shown, `integrity`, beside the
+/// button checking them against its torrent: without one (`torrent`), it
+/// says it takes one; while a client is being downloaded, checked, or given
+/// languages (`downloading`), it waits.
+fn integrity_of<'a>(
+    torrent: bool,
+    downloading: bool,
+    integrity: Option<String>,
+) -> Row<Element<'a, Message>> {
+    let check = button(text("Check").size(13))
+        .style(style::secondary)
+        .padding([2, 10]);
+    let check: Element<'a, Message> = if torrent {
+        check
+            .on_press_maybe((!downloading).then_some(Message::Check))
+            .boxed()
+    } else {
+        style::tip(
+            check,
+            "Set the client's torrent first: its files are checked against it.",
+        )
+        .boxed()
+    };
+
+    row![
+        text("File integrity")
+            .size(14)
+            .width(100)
+            .style(text::secondary),
+        check,
+        integrity.map(|said| text(said).size(14)),
+    ]
+    .spacing(12)
+    .align_y(Center)
 }
 
 /// Whether the game may use 4 GB of memory (`on`), as `Wow.exe` says, which
@@ -955,8 +1042,8 @@ mod tests {
     fn details(realmlist: Option<Realmlist>) -> Details {
         Details {
             size: 18_576_000_000,
-            locales: vec!["enUS".into()],
-            locale: Some("enUS".into()),
+            locales: vec![Locale::EnUs],
+            locale: Some(Locale::EnUs),
             realmlist,
             large_address_aware: Some(false),
             torrent: None,
@@ -1008,7 +1095,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         assert!(ui.find("Reading the folder…").is_ok());
         drop(ui);
 
@@ -1021,7 +1108,7 @@ mod tests {
             ),
         );
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         for line in [WOTLK, "Languages", "enUS", "logon.example.com", "17.3 GB"] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
@@ -1034,7 +1121,7 @@ mod tests {
         let label = "Up to 4 GB (Large Address Aware)";
 
         let messages: Vec<Message> = {
-            let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+            let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
             assert!(ui.find("Memory").is_ok());
             let _ = ui.click(label).unwrap();
             ui.into_messages().collect()
@@ -1042,7 +1129,7 @@ mod tests {
         assert!(matches!(messages[..], [Message::LargeAddressAware(true)]));
 
         let messages: Vec<Message> = {
-            let mut ui = simulator(state.view(&config, Some(root), None, true, false));
+            let mut ui = simulator(state.view(&config, Some(root), None, true, false, None));
             let _ = ui.click(label).unwrap();
             ui.into_messages().collect()
         };
@@ -1082,7 +1169,7 @@ mod tests {
         let mut ui = iced_test::simulator::Simulator::with_size(
             iced::Settings::default(),
             crate::App::MIN_SIZE,
-            iced::widget::center(state.view(&config, Some(root), None, false, false)),
+            iced::widget::center(state.view(&config, Some(root), None, false, false, None)),
         );
         let title = ui.find("Clients").unwrap().bounds();
         assert!(title.y >= 0.0, "the title is in the window: {title:?}");
@@ -1128,19 +1215,20 @@ mod tests {
         let root = installation.root();
         let mut errors = Errors::default();
 
-        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), false, false));
+        let mut ui =
+            simulator(state.view(&config, Some(root), Some(&installation), false, false, None));
         assert!(ui.find("Language").is_ok());
         assert!(ui.find("us.example.com").is_ok());
         let _ = ui.click("enUS").unwrap();
         let _ = ui.click("esES").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
         assert!(
-            matches!(messages.as_slice(), [Message::Locale(locale)] if locale == "esES"),
+            matches!(messages.as_slice(), [Message::Locale(Locale::EsEs)]),
             "{messages:?}"
         );
 
         let switch = state.update(
-            Message::Locale("esES".into()),
+            Message::Locale(Locale::EsEs),
             &mut config,
             Some(root),
             Some(&installation),
@@ -1153,9 +1241,9 @@ mod tests {
 
         // What the task does.
         let mut switched = installation.clone();
-        switched.set_locale("esES").unwrap();
+        switched.set_locale(Locale::EsEs).unwrap();
         let done = state.update(
-            Message::Switched("esES".into(), Ok(switched)),
+            Message::Switched(Locale::EsEs, Ok(switched)),
             &mut config,
             Some(root),
             Some(&installation),
@@ -1165,7 +1253,7 @@ mod tests {
         );
         assert!(matches!(
             done.instruction,
-            Some(Instruction::Switched(switched)) if switched.locale() == Some("esES")
+            Some(Instruction::Switched(switched)) if switched.locale() == Some(Locale::EsEs)
         ));
         assert!(done.task.units() > 0, "the realmlist is read again");
         let _ = state.update(
@@ -1178,7 +1266,8 @@ mod tests {
             &mut errors,
         );
 
-        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), false, false));
+        let mut ui =
+            simulator(state.view(&config, Some(root), Some(&installation), false, false, None));
         assert!(ui.find("esES").is_ok());
         assert!(ui.find("es.example.com").is_ok());
         assert!(errors.messages().is_empty(), "{:?}", errors.messages());
@@ -1189,7 +1278,7 @@ mod tests {
         let (_folder, installation, mut state, mut config) = bilingual();
 
         let action = state.update(
-            Message::Locale("enUS".into()),
+            Message::Locale(Locale::EnUs),
             &mut config,
             Some(installation.root()),
             Some(&installation),
@@ -1207,7 +1296,8 @@ mod tests {
         let (_folder, installation, state, config) = bilingual();
         let root = installation.root();
 
-        let mut ui = simulator(state.view(&config, Some(root), Some(&installation), true, false));
+        let mut ui =
+            simulator(state.view(&config, Some(root), Some(&installation), true, false, None));
         let picker = ui.find("enUS").unwrap().bounds().center();
         ui.point_at(picker);
         let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
@@ -1226,7 +1316,7 @@ mod tests {
 
         let action = state.update(
             Message::Switched(
-                "esES".into(),
+                Locale::EsEs,
                 Err("/games/wotlk/WTF/Config.wtf: Permission denied".into()),
             ),
             &mut config,
@@ -1309,7 +1399,8 @@ mod tests {
             )]),
             foreign: BTreeMap::new(),
             unfit: Default::default(),
-            partly: BTreeMap::new(),
+            excluded: BTreeMap::new(),
+            lacking: BTreeMap::new(),
         };
         let _ = update(
             &mut state,
@@ -1321,7 +1412,7 @@ mod tests {
         let mut ui = simulator(state.banner(Some(root), false).expect("a banner"));
         assert!(
             ui.find(
-                "The launcher needs to repair Lumenveil before starting the game. Missing: \
+                "The launcher needs to repair “Lumenveil” before starting the game. Missing: \
                  CoAVolFog.dll."
             )
             .is_ok()
@@ -1339,7 +1430,7 @@ mod tests {
         let (mut state, mut config) = opened(Some(details(Some(realmlist(None)))));
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         assert!(ui.find("Not set").is_ok());
         assert!(ui.find(NO_SERVER).is_ok(), "warned");
         let _ = ui.click(selector::id(EDIT_REALMLIST)).unwrap();
@@ -1357,7 +1448,7 @@ mod tests {
             Message::Reread(root.into(), Ok(Some(realmlist(Some("logon.example.com"))))),
         );
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         assert!(ui.find("logon.example.com").is_ok());
         assert!(ui.find(NO_SERVER).is_err(), "nothing to warn about");
     }
@@ -1366,7 +1457,8 @@ mod tests {
     fn a_client_without_a_realmlist_offers_nothing_to_edit_and_is_warned() {
         let (state, config) = opened(Some(details(None)));
 
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
+        let mut ui =
+            simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false, None));
 
         assert!(ui.find("No realmlist.wtf").is_ok());
         assert!(ui.find(NO_REALMLIST).is_ok());
@@ -1378,7 +1470,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         let _ = ui.click(WOTLK).unwrap();
         let _ = ui.click("/games/warmane").unwrap();
         let message = ui.into_messages().next().unwrap();
@@ -1397,7 +1489,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         let _ = ui.click(selector::id(REMOVE)).unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
         for message in messages {
@@ -1405,7 +1497,7 @@ mod tests {
             assert!(action.instruction.is_none(), "not yet");
         }
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         assert!(
             ui.find("Remove /games/wotlk from the launcher? Its folder is left as it is.")
                 .is_ok()
@@ -1418,7 +1510,7 @@ mod tests {
         assert!(!state.removing);
 
         let _ = update(&mut state, &mut config, Message::Remove);
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         let _ = ui.click("Remove").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
         let instructions: Vec<Instruction> = messages
@@ -1433,7 +1525,8 @@ mod tests {
     fn adding_and_closing_are_left_to_the_launcher() {
         let (mut state, mut config) = opened(None);
 
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
+        let mut ui =
+            simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false, None));
         let _ = ui.click(selector::id(ADD)).unwrap();
         let _ = ui.click("Close").unwrap();
         let messages: Vec<Message> = ui.into_messages().collect();
@@ -1453,8 +1546,14 @@ mod tests {
     /// What clicking `label` in the dialog sends, the dialog showing the
     /// wotlk client, maybe while a client is `downloading`.
     fn clicked(state: &State, config: &Config, label: &str, downloading: bool) -> Vec<Message> {
-        let mut ui =
-            simulator(state.view(config, Some(Path::new(WOTLK)), None, false, downloading));
+        let mut ui = simulator(state.view(
+            config,
+            Some(Path::new(WOTLK)),
+            None,
+            false,
+            downloading,
+            None,
+        ));
         let _ = ui.click(label).unwrap();
         ui.into_messages().collect()
     }
@@ -1470,23 +1569,34 @@ mod tests {
     }
 
     #[test]
-    fn a_client_is_given_where_its_updates_come_from() {
+    fn a_client_is_given_its_torrent() {
         let (mut state, mut config) = opened(Some(details(None)));
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
+        let mut ui =
+            simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false, None));
         assert!(ui.find("Not set").is_ok());
+        assert!(ui.find("File integrity").is_ok());
+        assert!(
+            ui.find("Manage…").is_err(),
+            "one language, nowhere to get others"
+        );
         drop(ui);
         assert!(
-            clicked(&state, &config, "Set update source", true).is_empty(),
+            clicked(&state, &config, "Check", false).is_empty(),
+            "nothing to check its files against"
+        );
+        assert!(
+            clicked(&state, &config, "Set…", true).is_empty(),
             "not while a client downloads"
         );
 
-        for message in clicked(&state, &config, "Set update source", false) {
+        for message in clicked(&state, &config, "Set…", false) {
             let action = update(&mut state, &mut config, message);
             assert!(action.task.units() > 0, "the field takes the keys");
         }
         assert!(clicked(&state, &config, "Set", false).is_empty(), "empty");
         let messages: Vec<Message> = {
-            let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
+            let mut ui =
+                simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false, None));
             let _ = ui.click(selector::id(SOURCE)).unwrap();
             let _ = ui.typewrite(" magnet:?xt=urn:btih:abc ");
             ui.into_messages().collect()
@@ -1525,24 +1635,50 @@ mod tests {
     }
 
     #[test]
-    fn a_client_with_a_torrent_is_checked_against_it_or_given_another() {
+    fn a_client_with_a_torrent_has_its_files_checked_or_is_given_another() {
         let (mut state, mut config) = opened(Some(details(None)));
         let _ = config.torrents.insert(WOTLK.into(), torrent());
 
-        let mut ui = simulator(state.view(&config, Some(Path::new(WOTLK)), None, false, false));
-        assert!(ui.find("From its torrent").is_ok());
+        let mut ui = simulator(state.view(
+            &config,
+            Some(Path::new(WOTLK)),
+            None,
+            false,
+            false,
+            Some("Every file is intact.".to_owned()),
+        ));
+        for wanted in [
+            "Torrent",
+            "WotLK",
+            "File integrity",
+            "Every file is intact.",
+        ] {
+            assert!(ui.find(wanted).is_ok(), "{wanted}");
+        }
         drop(ui);
-        let instructions: Vec<Instruction> = clicked(&state, &config, "Check for updates", false)
+        let instructions: Vec<Instruction> = clicked(&state, &config, "Check", false)
             .into_iter()
             .filter_map(|message| update(&mut state, &mut config, message).instruction)
             .collect();
         assert!(matches!(
             instructions.as_slice(),
-            [Instruction::Torrent(root)] if root == Path::new(WOTLK)
+            [Instruction::Check(root)] if root == Path::new(WOTLK)
         ));
-        assert!(clicked(&state, &config, "Check for updates", true).is_empty());
+        assert!(clicked(&state, &config, "Check", true).is_empty());
 
-        for message in clicked(&state, &config, "Change source", false) {
+        // Its languages: others from its torrent, or its own to delete.
+        let instructions: Vec<Instruction> = clicked(&state, &config, "Manage…", false)
+            .into_iter()
+            .filter_map(|message| update(&mut state, &mut config, message).instruction)
+            .collect();
+        assert!(matches!(
+            instructions.as_slice(),
+            [Instruction::Languages { root, locales, locale }]
+                if root == Path::new(WOTLK) && locales == &[Locale::EnUs] && *locale == Some(Locale::EnUs)
+        ));
+        assert!(clicked(&state, &config, "Manage…", true).is_empty());
+
+        for message in clicked(&state, &config, "Change…", false) {
             let _ = update(&mut state, &mut config, message);
         }
         assert_eq!(state.source.as_deref(), Some(""));
@@ -1584,7 +1720,7 @@ mod tests {
         let heading = "Automatically added environment variables (define again to override):";
         let prefix = "- WINEPREFIX=/games/wotlk/.prefix";
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         for line in [heading, prefix] {
             assert!(ui.find(line).is_ok(), "{line}");
         }
@@ -1606,7 +1742,8 @@ mod tests {
             )]),
             foreign: BTreeMap::new(),
             unfit: Default::default(),
-            partly: BTreeMap::new(),
+            excluded: BTreeMap::new(),
+            lacking: BTreeMap::new(),
         };
         let _ = update(
             &mut state,
@@ -1619,7 +1756,7 @@ mod tests {
             .map(|dll| format!("{dll}=n,b"))
             .collect();
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         for line in [
             heading,
             prefix,
@@ -1637,7 +1774,7 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         for default in ["WINEPREFIX=/games/wotlk/.prefix", launch::default_command()] {
             assert!(ui.find(default).is_ok(), "what is set instead: {default}");
         }
@@ -1662,7 +1799,7 @@ mod tests {
             config.launch(Path::new("/games/warmane")),
             Launch::default()
         );
-        let mut ui = simulator(state.view(&config, Some(root), None, false, false));
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         assert!(ui.find("umu-run is not a NAME=value pair.").is_ok());
         drop(ui);
 

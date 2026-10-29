@@ -34,8 +34,9 @@ use crate::Error;
 use crate::config::ClientTorrent;
 use crate::error::io_at;
 use crate::installation::{
-    LARGE_ADDRESS_AWARE, characteristics, is_locale, large_address_aware, set_large_address_aware,
+    LARGE_ADDRESS_AWARE, characteristics, large_address_aware, set_large_address_aware,
 };
+use crate::locale::Locale;
 use crate::notes::Notes;
 
 /// What a file being copied across disks is named after, beside where it
@@ -219,7 +220,7 @@ impl Torrent {
             if files.contains(&index) && !file.padding && file.length > 0 {
                 let first = start / self.piece_length;
                 let last = (start + file.length - 1) / self.piece_length;
-                pieces.extend(first..=last);
+                pieces.extend(first as usize..=last as usize);
             }
             start += file.length;
         }
@@ -276,11 +277,10 @@ impl Torrent {
     }
 
     /// The languages the client has data for: its `Data/<language>`
-    /// folders (`enUS`, `esES`, …), sorted.
-    pub fn languages(&self) -> Vec<String> {
-        let mut languages: Vec<String> = (0..self.files.len())
+    /// folders, whatever their case, sorted.
+    pub fn languages(&self) -> Vec<Locale> {
+        let mut languages: Vec<Locale> = (0..self.files.len())
             .filter_map(|index| self.language_of(index))
-            .map(str::to_owned)
             .collect();
         languages.sort();
         languages.dedup();
@@ -289,8 +289,8 @@ impl Torrent {
     }
 
     /// The language the file at `index` is the data of, if it is in a
-    /// `Data/<language>` folder of the client.
-    pub fn language_of(&self, index: usize) -> Option<&str> {
+    /// `Data/<language>` folder of the client, whatever its case.
+    pub fn language_of(&self, index: usize) -> Option<Locale> {
         let client = self.client().unwrap_or_default();
         let mut parts = self.files[index].path.strip_prefix(&client)?.split('/');
 
@@ -298,26 +298,35 @@ impl Torrent {
             .next()
             .filter(|folder| folder.eq_ignore_ascii_case("Data"))
             .and(parts.next())
-            .filter(|folder| is_locale(folder) && parts.next().is_some())
+            .filter(|_| parts.next().is_some())
+            .and_then(Locale::parse)
     }
 
     /// The data of `language`, by index.
-    pub fn files_of(&self, language: &str) -> Vec<usize> {
+    pub fn files_of(&self, language: Locale) -> Vec<usize> {
         (0..self.files.len())
             .filter(|index| self.language_of(*index) == Some(language))
+            .collect()
+    }
+
+    /// The files no language's data, by index: what a client of it has in
+    /// whatever language.
+    pub fn shared(&self) -> Vec<usize> {
+        (0..self.files.len())
+            .filter(|index| self.language_of(*index).is_none())
             .collect()
     }
 
     /// The files to download for a client in `languages`, by index: all but
     /// the data of its other languages; all of them when `languages` is
     /// empty.
-    pub fn files_in(&self, languages: &[String]) -> Vec<usize> {
+    pub fn files_in(&self, languages: &[Locale]) -> Vec<usize> {
         (0..self.files.len())
             .filter(|index| {
                 languages.is_empty()
                     || self
                         .language_of(*index)
-                        .is_none_or(|language| languages.iter().any(|chosen| chosen == language))
+                        .is_none_or(|language| languages.contains(&language))
             })
             .collect()
     }
@@ -536,8 +545,8 @@ enum Found {
 /// differ. The player's files and the launcher's own (see
 /// [`Torrent::untouched`]) are neither: a piece shared with one that changed
 /// blames no other file. Nor is the data of a language the client has no
-/// `Data` folder for: it was left out of the download, and an update
-/// brings no language. A piece that differs and is shared by other files
+/// `Data` folder for: it was left out of the download, or deleted, and a
+/// repair brings no language. A piece that differs and is shared by other files
 /// blames them all, unless one of them differs anyway: downloading it
 /// writes the piece whole. `Wow.exe` with the Large Address Aware flag set
 /// otherwise than the torrent's is as released, the flag being the
@@ -570,7 +579,7 @@ pub fn check(
         .filter(|index| {
             torrent
                 .language_of(*index)
-                .is_some_and(|language| !root.join("Data").join(language).is_dir())
+                .is_some_and(|language| !language.folder(&root).is_dir())
         })
         .collect();
 
@@ -770,10 +779,11 @@ pub fn record(folder: &Path, torrent: &Torrent, downloaded: &[usize]) -> Result<
     record.write(folder, torrent)
 }
 
-/// Readies `staging`, the folder an update downloads into, with copies of
-/// the `files` of `torrent` that `folder` has, for the download to fetch
-/// only their pieces that differ; those it doesn't have download whole. A
-/// file `staging` has already, from an update cut short, stays as it is.
+/// Readies `staging`, the folder a repair or a language downloads into,
+/// with copies of the `files` of `torrent` that `folder` has, for the
+/// download to fetch only their pieces that differ; those it doesn't have
+/// download whole. A file `staging` has already, from a download cut short,
+/// stays as it is.
 pub fn stage(
     staging: &Path,
     folder: &Path,
@@ -1048,16 +1058,16 @@ mod tests {
         ));
         let (folder, torrent) = downloaded(&files);
 
-        assert_eq!(torrent.languages(), ["enUS", "esES"]);
+        assert_eq!(torrent.languages(), [Locale::EnUs, Locale::EsEs]);
         assert_eq!(torrent.language_of(0), None, "Wow.exe");
         assert_eq!(torrent.language_of(1), None, "Data/common.MPQ");
-        assert_eq!(torrent.language_of(2), Some("enUS"));
+        assert_eq!(torrent.language_of(2), Some(Locale::EnUs));
         assert_eq!(
-            named(&torrent, &torrent.files_of("esES")),
+            named(&torrent, &torrent.files_of(Locale::EsEs)),
             ["Data/esES/locale-esES.MPQ", "Data/esES/realmlist.wtf"]
         );
         assert_eq!(
-            named(&torrent, &torrent.files_in(&["esES".to_owned()])),
+            named(&torrent, &torrent.files_in(&[Locale::EsEs])),
             [
                 "Wow.exe",
                 "Data/common.MPQ",
@@ -1069,7 +1079,7 @@ mod tests {
             "all but the data of the other language"
         );
         assert_eq!(torrent.files_in(&[]), (0..8).collect::<Vec<_>>(), "all");
-        assert_eq!(torrent.size_of(&torrent.files_of("esES")), 8 + 31);
+        assert_eq!(torrent.size_of(&torrent.files_of(Locale::EsEs)), 8 + 31);
 
         // Downloaded in Spanish alone: nothing is missing.
         fs::remove_dir_all(folder.path().join("Data/enUS")).unwrap();
@@ -1085,6 +1095,30 @@ mod tests {
             "the realmlist is the player's"
         );
         assert!(check.different.is_empty());
+    }
+
+    #[test]
+    fn lowercase_language_folders_are_languages_as_the_game_spells_them() {
+        // As the HD client's torrent has them.
+        let files: Vec<(&str, Vec<u8>)> = vec![
+            ("wow.exe", fake_executable(WOTLK)),
+            ("data/common.MPQ", vec![7; 40]),
+            ("data/enus/locale-enus.mpq", b"words".to_vec()),
+            ("data/dede/locale-dede.mpq", b"worter".to_vec()),
+            ("data/test/notes.txt", b"not a language".to_vec()),
+        ];
+        let (folder, torrent) = downloaded(&files);
+
+        assert_eq!(torrent.languages(), [Locale::DeDe, Locale::EnUs]);
+        assert_eq!(
+            named(&torrent, &torrent.files_of(Locale::DeDe)),
+            ["data/dede/locale-dede.mpq"]
+        );
+
+        // Without German, its data is neither missing nor wanted.
+        fs::remove_dir_all(folder.path().join("data/dede")).unwrap();
+        assert!(checked(folder.path(), &torrent).is_current());
+        assert_eq!(crate::installation::locales(folder.path()), [Locale::EnUs]);
     }
 
     #[test]
@@ -1206,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn an_update_downloads_beside_the_client_and_moves_in_only_its_files() {
+    fn a_repair_downloads_beside_the_client_and_moves_in_only_its_files() {
         let (folder, torrent) = downloaded(&files());
         let root = folder.path();
         // Outdated: a game file changed, another missing, and Wow.exe
@@ -1323,7 +1357,7 @@ mod tests {
     }
 
     #[test]
-    fn staging_keeps_what_an_update_cut_short_left_and_copies_are_whole() {
+    fn staging_keeps_what_a_repair_cut_short_left_and_copies_are_whole() {
         let (folder, torrent) = downloaded(&files());
         let elsewhere = tempfile::tempdir().unwrap();
         let staging = elsewhere.path().join("staging");

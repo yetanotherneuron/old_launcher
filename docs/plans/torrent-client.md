@@ -29,6 +29,9 @@ was built differs from it:
   `Wow.exe`, so a client forgotten and added back keeps it. Any client can
   be given a torrent to update from, and a `.torrent` file given is kept as
   its magnet link, since the file may go.
+- Since 2026-10-29 it isn't called updating: a torrent never changes, so
+  the check is of the files' integrity, repairing those missing or
+  changed. The torrent also downloads the client's other languages.
 
 ## The ask
 

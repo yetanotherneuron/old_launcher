@@ -129,6 +129,7 @@ pub async fn gather(
         platforms: Vec::new(),
         requires: Vec::new(),
         excludes: Vec::new(),
+        conflicts: Vec::new(),
         alternatives: Vec::new(),
         // Its DLLs say their version in their version resource.
         version_in: None,
@@ -225,6 +226,7 @@ fn release(
         from: BTreeMap::new(),
         inside: None,
         setup: steps,
+        languages: BTreeMap::new(),
     })
 }
 

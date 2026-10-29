@@ -41,7 +41,8 @@ launcher gets again from the peers when a copy is missing.
   leaves in it), `library` (what the list shows), `catalog` and `mods`
   (the data the launcher works from), `launch` (how the game starts),
   `torrent` (comparing a client with its torrent), `config` (the settings
-  file). Tested against temporary folders.
+  file), `locale` (the game's languages, the only ones a `Data` folder can
+  be of). Tested against temporary folders.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
   shell; each screen is a module with its own `State`, `Message`, `update`
   and `view` (`setup`, `clients`, `settings`, `download`, `addons` with its
@@ -129,9 +130,12 @@ GitLab project one more path in `gitlab::AUTHORS`.
 its releases, each with every file it puts in the client folder and its
 SHA-256, what else it needs (settings, setup steps, `Config.wtf`
 settings, platforms, where its files say their version), which clients it
-suits, and the mods it is an alternative to. A path may name the client's
-language as `{locale}`. The list has a format version: a change older
-launchers would misread raises it, and they refuse the list. The same
+suits, the files it can't be beside, and the mods it is an alternative
+to. A path may name the client's language as `{locale}`, and a release
+whose files differ by language has one download per language; a client
+in a language it lacks gets another's, as the player picks. The list has
+a format version: a change older launchers would misread raises it, and
+they refuse the list. The same
 indexer run writes it (`--mods-only` writes it alone); `core/src/mods.rs`
 is the schema and what the launcher does with it, `src/clients/mods.rs`
 the dialog section and the checks before the game starts.
@@ -140,7 +144,8 @@ the dialog section and the checks before the game starts.
 `mods::gather`, which finds the releases and writes down what can't be
 read from them (Lumenveil's knows its setup scripts by checksum; DXVK's
 knows where its DLL is in the tarball; Lau's knows where each archive of
-its zips goes, and checks their manifests say the same). A release the
+its zips goes, and checks their manifests say the same; Dungeon Maps'
+takes each language's patch, with the checksum GitHub gives). A release the
 module doesn't understand is left out rather than guessed at, and the
 launcher goes on offering the last one listed; when that leaves a mod's
 newest release out, the indexer exits with code 3 after writing, and the
@@ -163,9 +168,10 @@ runs as a child of the launcher's own binary started with `--discord`
 
 `core/src/torrent.rs` says what a torrent holds, how a client folder is
 compared with it and how a download's files get into it; `src/download.rs`
-is the dialog that downloads a new client, resumes one and updates one;
-`src/torrent.rs` the engine. Downloads stage in a `.download` folder in
-the folder the files go in and move into place once whole.
+is the dialog that downloads a new client, resumes one, repairs one's
+files and downloads or deletes its languages; `src/torrent.rs` the engine.
+Downloads stage in a `.download` folder in the folder the files go in and
+move into place once whole.
 
 ## Adding a screen or a setting
 
@@ -206,17 +212,17 @@ cargo test --lib mods -- --ignored
 OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' \
     cargo test --lib download::tests::a_real_torrent -- --ignored --nocapture
 # Checks the folder that torrent downloaded into against it, twice, and
-# says what an update would download. The check notes what it found in
+# says what a repair would download. The check notes what it found in
 # that folder: point it at a folder of links (cp -rs) to keep a client
 # as it is.
 OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' OLD_LAUNCHER_TEST_TORRENT_CLIENT=/tmp/links \
     cargo test --release --lib download::tests::a_real_client_is_checked \
     -- --ignored --nocapture
-# Updates a copy of that client, changed (a file removed, a byte changed:
+# Repairs a copy of that client, changed (a file removed, a byte changed:
 # cp -a --reflink=auto makes one at no cost on btrfs and XFS), from the
 # swarm, through a staging folder, then checks it again:
 OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' OLD_LAUNCHER_TEST_TORRENT_CLIENT=/tmp/copy \
-    cargo test --release --lib download::tests::a_real_client_is_updated \
+    cargo test --release --lib download::tests::a_real_client_is_repaired \
     -- --ignored --nocapture
 # Moves a download's files from the temporary folder to a folder on
 # another disk, which renaming can't do (a tmpfs /tmp and /home will do):

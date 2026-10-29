@@ -114,6 +114,9 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
     for owner in github::MAINTAINERS {
         gathered.push(gather(client, &github::Maintainer(owner)).await?);
     }
+    for repository in github::COLLECTIONS {
+        gathered.push(gather(client, &github::Collection(repository)).await?);
+    }
     for author in gitlab::AUTHORS {
         gathered.push(gather(client, author).await?);
     }

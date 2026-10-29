@@ -3672,6 +3672,7 @@ dependencies = [
  "iced_test",
  "librqbit",
  "librqbit-core",
+ "librqbit-peer-protocol",
  "log",
  "old_launcher_core",
  "open",

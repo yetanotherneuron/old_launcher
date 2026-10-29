@@ -17,6 +17,10 @@ pub const PATH: &str = "setup-path";
 /// The id of the torrent field, for keyboard focus.
 pub const TORRENT: &str = "setup-torrent";
 
+/// The Discord of the community that makes the WotLK HD client, which
+/// shares its torrent.
+const HD_CLIENT: &str = "https://discord.gg/Gyb9Z252vt";
+
 /// The form's state.
 pub struct State {
     mode: Mode,
@@ -61,6 +65,10 @@ pub enum Message {
     TorrentChanged(String),
     /// "Choose file…" was pressed.
     ChooseTorrent,
+    /// The link to the HD client's community was pressed.
+    OpenLink(&'static str),
+    /// The link couldn't be opened: why.
+    Unopened(String),
     /// The file picker closed.
     ChoseTorrent(Option<PathBuf>),
     /// The field of the folder to download into was edited.
@@ -160,6 +168,14 @@ impl State {
                     },
                     Message::ChoseTorrent,
                 ))
+            }
+            Message::OpenLink(url) => {
+                log::info!("Opening {url}");
+                Action::task(crate::opening(url, None).map(Message::Unopened))
+            }
+            Message::Unopened(error) => {
+                self.error = Some(error);
+                Action::none()
             }
             Message::ChoseTorrent(file) => {
                 self.stage = Stage::Editing;
@@ -294,6 +310,18 @@ impl State {
                     browse("Choose file…", idle.then_some(Message::ChooseTorrent)),
                 ]
                 .spacing(8),
+                row![
+                    text("The community that makes the HD client shares its torrent on")
+                        .size(13)
+                        .style(text::secondary),
+                    button(text("Discord ↗").size(13))
+                        .style(style::link)
+                        .padding(0)
+                        .on_press(Message::OpenLink(HD_CLIENT)),
+                ]
+                .spacing(6)
+                .align_y(Center)
+                .wrap(),
                 text("Download into").size(14),
                 row![
                     text_input("/games", &self.into)
@@ -433,7 +461,12 @@ mod tests {
         let mut ui = simulator(state.view());
         assert!(ui.find("Download into").is_ok());
         assert!(ui.find("Continue").is_ok());
-        drop(ui);
+        // Where the HD client's torrent is shared.
+        let _ = ui.click("Discord ↗").unwrap();
+        assert!(matches!(
+            &ui.into_messages().collect::<Vec<_>>()[..],
+            [Message::OpenLink(HD_CLIENT)]
+        ));
 
         let _ = state.update(Message::TorrentChanged(" magnet:?xt=urn:btih:abc ".into()));
         let _ = state.update(Message::IntoChanged(String::new()));

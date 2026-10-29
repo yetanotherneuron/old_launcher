@@ -2,6 +2,92 @@
   "version": 2,
   "mods": [
     {
+      "id": "dungeon-maps",
+      "name": "Dungeon Maps",
+      "description": "Maps from later versions of the game, for the dungeons and raids that have none. Trimitor's WDM and Astrolabe addons are recommended with it.",
+      "source": {
+        "name": "Trimitor on GitHub",
+        "page": "https://github.com/Trimitor/WDM-patch"
+      },
+      "releases": [
+        {
+          "version": "2.4.5",
+          "url": "https://github.com/Trimitor/WDM-patch/releases/download/2.4.5-stable/patch-{locale}-M.MPQ",
+          "updated": "2026-06-22",
+          "changes": "https://github.com/Trimitor/WDM-patch/releases/tag/2.4.5-stable",
+          "files": [],
+          "languages": {
+            "deDE": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "8bdeef5976956945be346471311c0251503bb61de573ed5d174195f125c7f4ac"
+              ]
+            ],
+            "enCN": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "1fbe23e51aa2c05eea62d6967cc23f447533bb65a44d46fbc1891a7e9dcc5927"
+              ]
+            ],
+            "enGB": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "3b71a2c0af34909887200e7a9332c27bc2ce08db56a3abac9d2c9ba9eba67638"
+              ]
+            ],
+            "enUS": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "b69713077e19498d20efa5eeaefdba98850764db6bdc99e292bfbdf7b1c858d6"
+              ]
+            ],
+            "esES": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "9cca82740b7f7a589fae1cf8fc2304e455b101a55f0d2bbd1d4f4e49a872a838"
+              ]
+            ],
+            "esMX": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "b4dbf6d091213bb63e91de3a3fb180288662462e25bd92ea786be12eda5006a4"
+              ]
+            ],
+            "frFR": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "489dda04d852e3b7920594b6c4a36c37c2463d7ae6f8ef93df06b973018f3529"
+              ]
+            ],
+            "koKR": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "7575b3e19fab2cb109fec9d1aa0c55e8db1bfce1f8ad534a25242a0b8778cfa9"
+              ]
+            ],
+            "ruRU": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "2f26e4020ff5333f3bd7a82eb5a7e68e7674e70ba85b5a1ffecb1e7ae88c6150"
+              ]
+            ],
+            "zhCN": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "757cdcbbf2a392ff0d189651d11c24841bd640f1105fb51f95388868bc8bc9eb"
+              ]
+            ],
+            "zhTW": [
+              [
+                "Data/{locale}/patch-{locale}-M.MPQ",
+                "e99943552664974418c135f4373df713f443994d614ebada34e38a71ea177836"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
       "id": "dxvk",
       "name": "DXVK",
       "description": "Runs the game's Direct3D 9 graphics on Vulkan, which plays smoother on many modern graphics cards.",
@@ -681,6 +767,10 @@
         "Data/patch-f.mpq",
         "Data/{locale}/patch-{locale}-F.MPQ"
       ],
+      "conflicts": [
+        "Data/patch-s.mpq",
+        "Data/{locale}/patch-{locale}-S.MPQ"
+      ],
       "alternatives": [
         "lau-hd-new-spells",
         "lau-non-hd"
@@ -719,6 +809,10 @@
       "excludes": [
         "Data/patch-f.mpq",
         "Data/{locale}/patch-{locale}-F.MPQ"
+      ],
+      "conflicts": [
+        "Data/patch-s.mpq",
+        "Data/{locale}/patch-{locale}-S.MPQ"
       ],
       "alternatives": [
         "lau-hd-new-spells",

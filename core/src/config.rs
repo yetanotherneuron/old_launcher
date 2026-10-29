@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::io_at;
-use crate::{Error, Launch};
+use crate::{Error, Launch, Locale};
 
 /// The saved settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,16 +58,19 @@ pub struct ClientTorrent {
     /// keeps with its data.
     pub info_hash: String,
     /// What the player gave for it: a magnet link, the address of a
-    /// `.torrent` (fetched again when checking for updates, for a newer
-    /// one), or a file.
+    /// `.torrent` (fetched again for each check, a newer one at it then
+    /// taking its place), or a file.
     pub source: String,
     /// The folder its files go in: the client folder, or one above it.
     pub folder: PathBuf,
     /// The languages the player chose to download, when the torrent holds
-    /// several (`enUS`, `esES`, …): the data of the others stays out. All
-    /// of them when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub languages: Vec<String>,
+    /// several: the data of the others stays out. All of them when empty.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::locale::lenient::list"
+    )]
+    pub languages: Vec<Locale>,
 }
 
 impl Config {
@@ -288,7 +291,7 @@ mod tests {
                 info_hash: "decaf".repeat(8),
                 source: "/home/player/Downloads/hd.torrent".into(),
                 folder: "/games/HD".into(),
-                languages: vec!["esES".into()],
+                languages: vec![Locale::EsEs],
             }],
         };
         config.set_launch(

@@ -94,6 +94,7 @@ mod tests {
                                 version: "1.0".into(),
                                 url: "https://example.com".into(),
                                 set_up: true,
+                                instead: None,
                             },
                         );
                     })

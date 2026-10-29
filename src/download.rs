@@ -1,6 +1,7 @@
 //! Clients downloaded with BitTorrent: a new client from a torrent, the rest
-//! of one whose download was cut short, and the updates of one, found by
-//! comparing it with its torrent. One at a time, in a dialog that says how
+//! of one whose download was cut short, the repair of one, its files
+//! checked against its torrent, and its languages, those of its torrent
+//! downloaded and its own deleted. One at a time, in a dialog that says how
 //! it goes and can be hidden behind a banner while it goes on.
 //!
 //! Downloads go into a staging folder, `.download`, in the folder
@@ -10,9 +11,11 @@
 //! named after its info hash, to check the client against later, and the client folder
 //! notes where the torrent comes from, a `.torrent` file given as its magnet
 //! link: with the copy gone, or the client added back, it is found again.
-//! Any client can be given a torrent to update from, the same way.
+//! Any client can be given its torrent, the same way. A torrent never
+//! changes, but the one at a web address may be replaced: a client is
+//! checked against the one there now.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::net::SocketAddr;
@@ -29,7 +32,7 @@ use crate::action::Action;
 use crate::activity::activity;
 use crate::core::config::ClientTorrent;
 use crate::core::torrent::{Check, Torrent, client_in, folder_of_client, keep_origin, origin};
-use crate::core::{Config, Installation};
+use crate::core::{Config, Installation, Locale};
 use crate::errors::Errors;
 use crate::torrent::{self, Download, Engine, Progress, Source};
 use crate::{blocking, counted, describe, size, style};
@@ -37,10 +40,13 @@ use crate::{blocking, counted, describe, size, style};
 /// How often a download or a check is asked how it goes.
 const TICK: Duration = Duration::from_millis(500);
 
-/// Why an update waits for the game.
-const CLOSE_THE_GAME: &str = "Close the game first: an update replaces some of its files.";
+/// Why a repair waits for the game.
+const CLOSE_THE_GAME: &str = "Close the game first: repairing replaces some of its files.";
 
-/// How many of the files an update downloads it names.
+/// Why downloading or deleting a language waits for the game.
+const CLOSE_THE_GAME_FIRST: &str = "Close the game first.";
+
+/// How many of the files a repair downloads it names.
 const NAMED: usize = 8;
 
 /// The staging folder a download goes into, in the folder its files go in.
@@ -60,6 +66,19 @@ pub struct State {
     discarding: Option<String>,
     /// Peers to download from besides those found: none, but in tests.
     peers: Vec<SocketAddr>,
+    /// What the last check of each client folder found, this run.
+    checked: BTreeMap<PathBuf, Integrity>,
+}
+
+/// What a check found of a client's files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Integrity {
+    /// Every file is as its torrent has it.
+    Intact,
+    /// This many are missing or changed.
+    Damaged(usize),
+    /// Those were downloaded again: every file is as its torrent has it.
+    Repaired,
 }
 
 /// What the launcher is asked to do.
@@ -70,11 +89,19 @@ pub enum Request {
     New { source: Source, into: PathBuf },
     /// Download the rest of the client being downloaded with this info hash.
     Resume(String),
-    /// Compare the client at this folder with its torrent, to update it.
+    /// Check the files of the client at this folder against its torrent,
+    /// to repair those missing or changed.
     Check(PathBuf),
-    /// Update the client at `root` from the torrent of `source` from now
-    /// on, and compare it with it.
+    /// Check the client at `root` against the torrent of `source` from now
+    /// on, and now.
     Adopt { root: PathBuf, source: Source },
+    /// Download languages of its torrent into the client at `root`, or
+    /// delete its own: it has `locales`, and its game plays in `locale`.
+    Languages {
+        root: PathBuf,
+        locales: Vec<Locale>,
+        locale: Option<Locale>,
+    },
 }
 
 /// The work under way.
@@ -84,7 +111,7 @@ struct Job {
     /// What the launcher keeps of the client's torrent: for a new client,
     /// from when the player says to download it.
     saved: Option<ClientTorrent>,
-    /// The client folder being updated.
+    /// The client folder being checked, repaired, or given languages.
     root: Option<PathBuf>,
     /// The torrent, once found.
     found: Option<Found>,
@@ -101,13 +128,22 @@ struct Job {
     /// Whether it was stopped while waiting for something, which stops it
     /// once that comes.
     stopping: bool,
+    /// What it shows once its torrent is found: the client's languages.
+    pending: Option<Stage>,
 }
 
 #[derive(Debug, Clone)]
 enum Kind {
-    New { source: Source },
+    New {
+        source: Source,
+    },
     Resume,
     Check,
+    /// Managing the client's languages: downloading the one `adding`, once
+    /// it was chosen.
+    Languages {
+        adding: Option<Locale>,
+    },
 }
 
 enum Stage {
@@ -125,8 +161,8 @@ enum Stage {
     /// A torrent in one language or none leaves nothing to choose.
     Confirming {
         installation: Installation,
-        languages: Vec<String>,
-        chosen: BTreeSet<String>,
+        languages: Vec<Locale>,
+        chosen: BTreeSet<Locale>,
     },
     /// Comparing the client with its torrent: `read` says how far it got,
     /// and `stop` stops it.
@@ -134,10 +170,20 @@ enum Stage {
         read: Arc<AtomicU64>,
         stop: Arc<AtomicBool>,
     },
-    /// The client is as its torrent has it.
-    Current,
-    /// The client differs from its torrent.
-    Outdated(Check),
+    /// Every file of the client is as its torrent has it.
+    Intact,
+    /// Files of the client are missing, or differ from its torrent's.
+    Damaged(Check),
+    /// Showing the client's languages, those it `has`, which it can delete
+    /// but the one its game plays in (`locale`), and those of its torrent,
+    /// which it can download (none without one). The one it is `deleting`
+    /// waits for a yes, or for the deletion.
+    Languages {
+        has: Vec<Locale>,
+        locale: Option<Locale>,
+        deleting: Option<Locale>,
+        busy: bool,
+    },
     /// Copying the files that differ beside the download, for it to fetch
     /// only the pieces that do.
     Staging,
@@ -206,11 +252,21 @@ pub enum Message {
     /// Discarding it was thought better of.
     KeepDownload,
     /// A language of the new client was ticked, or unticked.
-    Language(String, bool),
+    Language(Locale, bool),
     /// "Download" was pressed: get the new client.
     Download,
-    /// "Update" was pressed.
-    Update,
+    /// "Repair" was pressed.
+    Repair,
+    /// "Download" was pressed beside a language of the torrent.
+    AddLanguage(Locale),
+    /// "Delete" was pressed beside a language of the client: ask first.
+    DeleteLanguage(Locale),
+    /// Deleting it was confirmed.
+    ConfirmDelete,
+    /// Deleting it was thought better of.
+    CancelDelete,
+    /// The language of the client was deleted, or couldn't be.
+    Deleted(u64, Locale, Result<(), String>),
     /// "Stop", "Cancel", "Not now" or "Close" was pressed.
     Stop,
     /// "Hide" was pressed, or the dialog dismissed: it goes on behind a
@@ -233,8 +289,13 @@ pub enum Instruction {
     },
     /// The client at this folder has a newer torrent.
     Saved(PathBuf, ClientTorrent),
-    /// The client at `root` was updated, as `notice` says.
-    Updated { root: PathBuf, notice: String },
+    /// The client at `root` was repaired, as `notice` says.
+    Repaired { root: PathBuf, notice: String },
+    /// A language was downloaded into the client at `root`, as `notice`
+    /// says: the mods in the client may want their files in it.
+    LanguageAdded { root: PathBuf, notice: String },
+    /// A language of the client at this folder was deleted.
+    LanguageDeleted(PathBuf),
     /// The download with this info hash was discarded.
     Discarded(String),
 }
@@ -257,6 +318,7 @@ impl State {
             jobs: 0,
             discarding: None,
             peers: Vec::new(),
+            checked: BTreeMap::new(),
         }
     }
 
@@ -315,7 +377,7 @@ impl State {
                 let Some(saved) = config.torrents.get(&root).cloned() else {
                     return Task::none();
                 };
-                log::info!("Checking {} for updates", root.display());
+                log::info!("Checking the files of {}", root.display());
                 let task = Task::perform(
                     find_again(
                         saved.clone(),
@@ -331,7 +393,7 @@ impl State {
             }
             Request::Adopt { root, source } => {
                 log::info!(
-                    "Finding the torrent of {source}, to update {} from",
+                    "Finding the torrent of {source}, to check {} against",
                     root.display()
                 );
                 let task = Task::perform(
@@ -347,30 +409,54 @@ impl State {
                 );
                 (Kind::Check, None, Some(root), task)
             }
+            Request::Languages {
+                root,
+                locales,
+                locale,
+            } => {
+                let saved = config.torrents.get(&root).cloned();
+                let languages = Stage::Languages {
+                    has: locales,
+                    locale,
+                    deleting: None,
+                    busy: false,
+                };
+                let kind = Kind::Languages { adding: None };
+                // Without a torrent, its own languages are all there is.
+                let Some(saved) = saved else {
+                    self.job = Some(Job::new(id, kind, None, Some(root), languages));
+                    return Task::none();
+                };
+                log::info!("Finding the languages of {}", saved.name);
+                let task = Task::perform(
+                    find_again(
+                        saved.clone(),
+                        root.clone(),
+                        self.store.clone(),
+                        self.engine.clone(),
+                        client,
+                        self.peers.clone(),
+                    ),
+                    Message::Found.with(id),
+                );
+                self.job = Some(Job {
+                    // Shown once the torrent is found.
+                    pending: Some(languages),
+                    ..Job::new(id, kind, Some(saved), Some(root), Stage::Finding)
+                });
+                return task;
+            }
         };
 
-        self.job = Some(Job {
-            id,
-            kind,
-            saved,
-            root,
-            found: None,
-            staging: None,
-            download: None,
-            files: Vec::new(),
-            progress: Progress::default(),
-            stage: Stage::Finding,
-            hidden: false,
-            stopping: false,
-        });
+        self.job = Some(Job::new(id, kind, saved, root, Stage::Finding));
 
         task
     }
 
     /// Deletes what a new client not yet said yes to, or turned down,
     /// downloaded: on the way out of the launcher, which runs no task
-    /// then. A client being downloaded, and an update, keep theirs to
-    /// resume.
+    /// then. A client being downloaded, a repair and a language keep
+    /// theirs to resume.
     pub fn abandon(&mut self) {
         let Some(job) = self.job.take() else {
             return;
@@ -417,7 +503,7 @@ impl State {
     pub fn is_running(&self) -> bool {
         self.job
             .as_ref()
-            .is_some_and(|job| !matches!(job.stage, Stage::Current | Stage::Failed(_)))
+            .is_some_and(|job| !matches!(job.stage, Stage::Intact | Stage::Failed(_)))
     }
 
     /// Whether the dialog shows.
@@ -425,13 +511,46 @@ impl State {
         self.job.as_ref().is_some_and(|job| !job.hidden)
     }
 
-    /// The folder of the client being updated.
+    /// The folder of the client being checked, repaired, or given
+    /// languages.
     pub fn root(&self) -> Option<&Path> {
         self.job.as_ref()?.root.as_deref()
     }
 
+    /// What is known of the files of the client at `root`, for people: how
+    /// its check or its repair goes, or what the last check found, this
+    /// run. Nothing before one.
+    pub fn integrity(&self, root: &Path) -> Option<String> {
+        let job = self
+            .job
+            .as_ref()
+            .filter(|job| job.root.as_deref() == Some(root) && matches!(job.kind, Kind::Check));
+        if let Some(job) = job {
+            match &job.stage {
+                Stage::Finding => return Some("Finding its torrent…".to_owned()),
+                Stage::Checking { .. } => {
+                    return Some(format!("Checking: {}", percent(&job.progress)));
+                }
+                Stage::Staging
+                | Stage::Beginning
+                | Stage::Downloading { .. }
+                | Stage::Moving { .. } => {
+                    return Some(format!("Repairing: {}", percent(&job.progress)));
+                }
+                _ => {}
+            }
+        }
+
+        self.checked.get(root).map(|integrity| match integrity {
+            Integrity::Intact => "Every file is intact.".to_owned(),
+            Integrity::Damaged(1) => "1 file is missing or changed.".to_owned(),
+            Integrity::Damaged(files) => format!("{files} files are missing or changed."),
+            Integrity::Repaired => "Repaired: every file is intact.".to_owned(),
+        })
+    }
+
     /// Whether starting the game of the client at `root` waits for its
-    /// update to put its files in place.
+    /// repair or language to put its files in place.
     pub fn holds_back(&self, root: &Path) -> bool {
         self.job.as_ref().is_some_and(|job| {
             job.root.as_deref() == Some(root) && matches!(job.stage, Stage::Moving { .. })
@@ -473,8 +592,9 @@ impl State {
 
     /// Handles an interaction, for the clients of `config`, fetching with
     /// `client`; `playing` says whether the game of the client being
-    /// updated runs. What a stopped job leaves that can't be cleaned up
-    /// goes to `errors`.
+    /// repaired or given languages runs. What a stopped job leaves that
+    /// can't be cleaned up, or a language that can't be deleted, goes to
+    /// `errors`.
     pub fn update(
         &mut self,
         message: Message,
@@ -561,6 +681,12 @@ impl State {
                             Message::Checked.with(id),
                         )
                     }
+                    Kind::Languages { .. } => {
+                        if let Some(languages) = job.pending.take() {
+                            job.stage = languages;
+                        }
+                        Task::none()
+                    }
                 };
 
                 Action {
@@ -586,7 +712,7 @@ impl State {
                             return Action::task(self.wind_down());
                         }
                         job.stage = match (&job.kind, &job.found) {
-                            (Kind::New { .. }, _) => Stage::Identifying,
+                            (Kind::New { .. }, _) if job.identifying() => Stage::Identifying,
                             (_, Some(found)) => Stage::Downloading {
                                 pieces: found.torrent.pieces_of(&job.files),
                             },
@@ -628,68 +754,11 @@ impl State {
                 if !job.progress.finished {
                     return Action::none();
                 }
-                let (Some(found), Some(engine), Some(staging)) =
-                    (&job.found, &self.engine, &job.staging)
-                else {
-                    return Action::none();
-                };
 
-                let id = job.id;
                 if matches!(job.stage, Stage::Identifying) {
-                    job.stage = Stage::Opening;
-                    let root = within(staging, &found.torrent.client().unwrap_or_default());
-                    return Action::task(Task::perform(
-                        blocking(move || Installation::open(root)),
-                        Message::Identified.with(id),
-                    ));
+                    return Action::task(identify(job));
                 }
-                // Its files can't change under the game.
-                if matches!(job.kind, Kind::Check) && playing {
-                    return Action::none();
-                }
-                // Stopped by `finish`, so that stopping or failing afterwards
-                // finds no download to stop again.
-                let Some(download) = job.download.take() else {
-                    return Action::none();
-                };
-
-                log::info!(
-                    "Downloaded {}: putting its files in {}",
-                    job.name(),
-                    found.folder.display()
-                );
-                let moved = Arc::new(AtomicU64::new(0));
-                let files = job.files.clone();
-                job.progress = Progress {
-                    total: files
-                        .iter()
-                        .filter_map(|index| found.torrent.files.get(*index))
-                        .filter(|file| !file.padding)
-                        .map(|file| file.length)
-                        .sum(),
-                    ..Progress::default()
-                };
-                job.stage = Stage::Moving {
-                    moved: moved.clone(),
-                };
-                let new = job
-                    .saved
-                    .clone()
-                    .filter(|_| !matches!(job.kind, Kind::Check));
-
-                Action::task(Task::perform(
-                    finish(
-                        engine.clone(),
-                        download,
-                        staging.clone(),
-                        found.folder.clone(),
-                        found.torrent.clone(),
-                        files,
-                        moved,
-                        new,
-                    ),
-                    Message::Moved.with(id),
-                ))
+                put_in_place(job, self.engine.as_ref(), playing)
             }
             Message::Identified(id, installation) => {
                 let Some(job) = self.job.as_mut().filter(|job| job.id == id) else {
@@ -712,7 +781,7 @@ impl State {
                             if languages.is_empty() {
                                 "no language".to_owned()
                             } else {
-                                languages.join(", ")
+                                Locale::codes(&languages)
                             }
                         );
                         // One language takes no choosing; several do.
@@ -770,8 +839,8 @@ impl State {
                 }
                 let torrent = found.torrent.clone();
                 // What the player chose among several; all of one.
-                let languages: Vec<String> = if languages.len() > 1 {
-                    chosen.iter().cloned().collect()
+                let languages: Vec<Locale> = if languages.len() > 1 {
+                    chosen.iter().copied().collect()
                 } else {
                     Vec::new()
                 };
@@ -790,7 +859,7 @@ impl State {
                     if languages.is_empty() {
                         String::new()
                     } else {
-                        format!(" in {}", languages.join(", "))
+                        format!(" in {}", Locale::codes(&languages))
                     },
                     found.folder.display()
                 );
@@ -856,8 +925,11 @@ impl State {
                     }
                     Ok(Some(check)) if check.is_current() => {
                         log::info!("{} is as its torrent has it", job.name());
-                        job.stage = Stage::Current;
-                        // What an update cut short downloaded is of no use.
+                        job.stage = Stage::Intact;
+                        if let Some(root) = &job.root {
+                            let _ = self.checked.insert(root.clone(), Integrity::Intact);
+                        }
+                        // What a repair cut short downloaded is of no use.
                         let left = job.staging.clone();
                         Action::task(left.map_or_else(Task::none, |staging| {
                             clean_up(None, None, After::Remove(staging))
@@ -870,21 +942,23 @@ impl State {
                             counted(check.missing.len(), "file"),
                             counted(check.different.len(), "file")
                         );
-                        job.stage = Stage::Outdated(check);
+                        if let Some(root) = &job.root {
+                            let damaged = Integrity::Damaged(check.files().len());
+                            let _ = self.checked.insert(root.clone(), damaged);
+                        }
+                        job.stage = Stage::Damaged(check);
                         Action::none()
                     }
-                    Err(error) => {
-                        Action::task(self.fail(format!("Could not check the client: {error}")))
-                    }
+                    Err(error) => Action::task(
+                        self.fail(format!("Could not check the client's files: {error}")),
+                    ),
                 }
             }
-            Message::Update => {
+            Message::Repair => {
                 let Some(job) = &mut self.job else {
                     return Action::none();
                 };
-                let (Stage::Outdated(check), Some(found), Some(staging)) =
-                    (&job.stage, &job.found, &job.staging)
-                else {
+                let Stage::Damaged(check) = &job.stage else {
                     return Action::none();
                 };
                 if playing {
@@ -892,27 +966,122 @@ impl State {
                 }
 
                 log::info!(
-                    "Updating {}: {}, {}",
+                    "Repairing {}: {}",
                     job.name(),
                     counted(check.files().len(), "file"),
-                    size(check.bytes(&found.torrent))
                 );
-                job.files = check.files();
-                job.progress = Progress::default();
-                let (staging, folder, torrent, files) = (
-                    staging.clone(),
-                    found.folder.clone(),
-                    found.torrent.clone(),
-                    job.files.clone(),
-                );
-                job.stage = Stage::Staging;
+                let files = check.files();
+                Action::task(stage(job, files))
+            }
+            Message::AddLanguage(language) => {
+                let Some(job) = &mut self.job else {
+                    return Action::none();
+                };
+                let (Stage::Languages { has, busy, .. }, Some(found)) = (&job.stage, &job.found)
+                else {
+                    return Action::none();
+                };
+                if playing || *busy || has.contains(&language) {
+                    return Action::none();
+                }
+                let files = found.torrent.files_of(language);
+                if files.is_empty() {
+                    return Action::none();
+                }
 
+                log::info!(
+                    "Downloading {language} of {}: {}",
+                    job.name(),
+                    size(found.torrent.size_of(&files))
+                );
+                job.kind = Kind::Languages {
+                    adding: Some(language),
+                };
+                Action::task(stage(job, files))
+            }
+            Message::DeleteLanguage(language) => {
+                if let Some(Job {
+                    stage: Stage::Languages { deleting, busy, .. },
+                    ..
+                }) = &mut self.job
+                    && !*busy
+                {
+                    *deleting = Some(language);
+                }
+                Action::none()
+            }
+            Message::CancelDelete => {
+                if let Some(Job {
+                    stage: Stage::Languages { deleting, busy, .. },
+                    ..
+                }) = &mut self.job
+                    && !*busy
+                {
+                    *deleting = None;
+                }
+                Action::none()
+            }
+            Message::ConfirmDelete => {
+                let Some(job) = &mut self.job else {
+                    return Action::none();
+                };
+                let (
+                    Stage::Languages {
+                        deleting: Some(language),
+                        busy,
+                        ..
+                    },
+                    Some(root),
+                ) = (&mut job.stage, &job.root)
+                else {
+                    return Action::none();
+                };
+                if playing || *busy {
+                    return Action::none();
+                }
+                *busy = true;
+
+                log::info!("Deleting {language} of {}", root.display());
+                let (id, root, language) = (job.id, root.clone(), *language);
                 Action::task(Task::perform(
-                    blocking(move || {
-                        crate::core::torrent::stage(&staging, &folder, &torrent, &files)
-                    }),
-                    Message::Staged.with(job.id),
+                    blocking(move || Installation::open(&root)?.remove_locale(language)),
+                    move |deleted| Message::Deleted(id, language, deleted),
                 ))
+            }
+            Message::Deleted(id, language, deleted) => {
+                let Some(job) = self.job.as_mut().filter(|job| job.id == id) else {
+                    return Action::none();
+                };
+                let Some(root) = job.root.clone() else {
+                    return Action::none();
+                };
+                if let Stage::Languages {
+                    has,
+                    deleting,
+                    busy,
+                    ..
+                } = &mut job.stage
+                {
+                    *busy = false;
+                    *deleting = None;
+                    if deleted.is_ok() {
+                        has.retain(|kept| *kept != language);
+                    }
+                }
+                if job.stopping {
+                    self.job = None;
+                }
+
+                match deleted {
+                    Ok(()) => {
+                        log::info!("Deleted {language} of {}", root.display());
+                        Action::instruction(Instruction::LanguageDeleted(root))
+                    }
+                    Err(error) => {
+                        errors.report(format!("Could not delete {language}: {error}"));
+                        Action::none()
+                    }
+                }
             }
             Message::Staged(id, staged) => {
                 let Some(job) = self.job.as_mut().filter(|job| job.id == id) else {
@@ -923,7 +1092,7 @@ impl State {
                 }
                 if let Err(error) = staged {
                     return Action::task(
-                        self.fail(format!("Could not ready the files to update: {error}")),
+                        self.fail(format!("Could not ready the files to download: {error}")),
                     );
                 }
                 let (Some(found), Some(staging)) = (&job.found, &job.staging) else {
@@ -969,15 +1138,25 @@ impl State {
                             notice,
                         })
                     }
-                    (None, _, Some(root)) => {
-                        let notice = format!(
-                            "Updated {}: {} downloaded.",
-                            job.name(),
-                            counted(job.files.len(), "file")
-                        );
-                        log::info!("{notice}");
-                        Action::instruction(Instruction::Updated { root, notice })
-                    }
+                    (None, _, Some(root)) => match &job.kind {
+                        Kind::Languages {
+                            adding: Some(language),
+                        } => {
+                            let notice = format!("Downloaded {language} for {}.", job.name());
+                            log::info!("{notice}");
+                            Action::instruction(Instruction::LanguageAdded { root, notice })
+                        }
+                        _ => {
+                            let notice = format!(
+                                "Repaired {}: {} downloaded.",
+                                job.name(),
+                                counted(job.files.len(), "file")
+                            );
+                            log::info!("{notice}");
+                            let _ = self.checked.insert(root.clone(), Integrity::Repaired);
+                            Action::instruction(Instruction::Repaired { root, notice })
+                        }
+                    },
                     _ => Action::none(),
                 }
             }
@@ -1078,8 +1257,8 @@ impl State {
 
     /// Stops the job: at once, unless it waits for something, which stops
     /// it when it comes. Its download stops; what a new client turned down
-    /// or an update downloaded goes, and a client being downloaded resumes
-    /// later.
+    /// goes, and a client being downloaded resumes later, and so does a
+    /// repair or a language.
     fn stop(&mut self) -> Task<Message> {
         let Some(job) = &mut self.job else {
             return Task::none();
@@ -1091,12 +1270,13 @@ impl State {
                 stop.store(true, Ordering::Relaxed);
                 true
             }
+            Stage::Languages { busy, .. } => busy,
             Stage::Finding
             | Stage::Identifying
             | Stage::Downloading { .. }
             | Stage::Confirming { .. }
-            | Stage::Current
-            | Stage::Outdated(_)
+            | Stage::Intact
+            | Stage::Damaged(_)
             | Stage::Failed(_) => false,
         };
         if waiting {
@@ -1112,7 +1292,10 @@ impl State {
         let Some(job) = self.job.take() else {
             return Task::none();
         };
-        if !matches!(job.stage, Stage::Current | Stage::Failed(_)) {
+        if !matches!(
+            job.stage,
+            Stage::Intact | Stage::Failed(_) | Stage::Languages { .. }
+        ) {
             log::info!("Stopped {}", job.name());
         }
         let after = job.after();
@@ -1134,6 +1317,10 @@ impl State {
         // Cleaned up once.
         job.staging = None;
         job.stage = Stage::Failed(error);
+        // What a check found before is not to be trusted now.
+        if let (Kind::Check, Some(root)) = (&job.kind, &job.root) {
+            let _ = self.checked.remove(root);
+        }
 
         task
     }
@@ -1219,7 +1406,7 @@ impl State {
     }
 
     /// The dialog, while it shows; `playing` says whether the game of the
-    /// client being updated runs.
+    /// client being repaired or given languages runs.
     pub fn dialog(&self, playing: bool) -> Option<impl Widget<Message> + '_> {
         let job = self.job.as_ref().filter(|job| !job.hidden)?;
         let found = job.found.as_ref();
@@ -1256,14 +1443,14 @@ impl State {
                     let choosing = languages.len() > 1;
                     // What downloads: with several languages and none chosen
                     // yet, what the languages add to.
-                    let picked: Vec<String> = if choosing {
-                        chosen.iter().cloned().collect()
+                    let picked: Vec<Locale> = if choosing {
+                        chosen.iter().copied().collect()
                     } else {
                         Vec::new()
                     };
                     let files = torrent.map_or_else(Vec::new, |torrent| {
                         if choosing && picked.is_empty() {
-                            torrent.files_in(&[String::new()])
+                            torrent.shared()
                         } else {
                             torrent.files_in(&picked)
                         }
@@ -1281,16 +1468,13 @@ impl State {
                             .to_string()
                     });
                     let choice = choosing.then(|| {
-                        let boxes = languages.iter().map(|language| {
+                        let boxes = languages.iter().map(|&language| {
                             let bytes = torrent
                                 .map_or(0, |torrent| torrent.size_of(&torrent.files_of(language)));
-                            let language = language.clone();
                             checkbox(chosen.contains(&language))
                                 .label(format!("{language} ({})", size(bytes)))
                                 .text_size(14)
-                                .on_toggle(move |ticked| {
-                                    Message::Language(language.clone(), ticked)
-                                })
+                                .on_toggle(move |ticked| Message::Language(language, ticked))
                                 .style(style::check)
                                 .boxed()
                         });
@@ -1330,24 +1514,43 @@ impl State {
                     .boxed(),
                     row![hide, stop("Stop")],
                 ),
-                Stage::Current => (
-                    text("Every file is as its torrent has it: there is nothing to download.")
+                Stage::Intact => (
+                    text("Every file is as its torrent has it: there is nothing to repair.")
                         .boxed(),
                     row![stop("Close")],
                 ),
-                Stage::Outdated(check) => {
-                    let update = button("Update").style(style::primary);
-                    let update: Element<'_, Message> = if playing {
-                        style::tip(update, CLOSE_THE_GAME).boxed()
+                Stage::Damaged(check) => {
+                    let repair = button("Repair").style(style::primary);
+                    let repair: Element<'_, Message> = if playing {
+                        style::tip(repair, CLOSE_THE_GAME).boxed()
                     } else {
-                        update.on_press(Message::Update).boxed()
+                        repair.on_press(Message::Repair).boxed()
                     };
 
-                    (outdated(check, found), row![stop("Not now"), update])
+                    (damaged(check, found), row![stop("Not now"), repair])
                 }
-                Stage::Staging => (waiting("Readying the files to update…"), row![]),
+                Stage::Languages {
+                    has,
+                    locale,
+                    deleting,
+                    busy,
+                } => (
+                    languages(
+                        job,
+                        found.map(|found| &*found.torrent),
+                        has,
+                        *locale,
+                        *deleting,
+                        *busy,
+                        playing,
+                    ),
+                    row![stop("Close")],
+                ),
+                Stage::Staging => (waiting("Readying the files to download…"), row![]),
                 Stage::Downloading { .. }
-                    if job.progress.finished && playing && matches!(job.kind, Kind::Check) =>
+                    if job.progress.finished
+                        && playing
+                        && matches!(job.kind, Kind::Check | Kind::Languages { .. }) =>
                 {
                     (
                         text("Downloaded. The files go in place once the game is closed.").boxed(),
@@ -1387,6 +1590,32 @@ impl State {
 }
 
 impl Job {
+    /// The job `id`, doing `kind` to the client at `root` whose torrent the
+    /// launcher keeps as `saved`, at `stage`.
+    fn new(
+        id: u64,
+        kind: Kind,
+        saved: Option<ClientTorrent>,
+        root: Option<PathBuf>,
+        stage: Stage,
+    ) -> Self {
+        Self {
+            id,
+            kind,
+            saved,
+            root,
+            found: None,
+            staging: None,
+            download: None,
+            files: Vec::new(),
+            progress: Progress::default(),
+            stage,
+            hidden: false,
+            stopping: false,
+            pending: None,
+        }
+    }
+
     /// What is downloaded, for people.
     fn name(&self) -> &str {
         self.saved
@@ -1397,29 +1626,37 @@ impl Job {
             .unwrap_or("the torrent")
     }
 
+    /// Whether it downloads a new client's `Wow.exe`, to tell its version:
+    /// nothing else is said yes to yet.
+    fn identifying(&self) -> bool {
+        matches!(self.kind, Kind::New { .. }) && self.saved.is_none()
+    }
+
     /// What the job does to the client, for people.
     fn verb(&self) -> &'static str {
         match self.kind {
-            Kind::New { .. } | Kind::Resume => "Downloading",
-            Kind::Check => "Updating",
+            Kind::New { .. } | Kind::Resume | Kind::Languages { .. } => "Downloading",
+            Kind::Check => "Repairing",
         }
     }
 
     /// The dialog's title.
     fn title(&self) -> String {
+        let downloading = matches!(
+            self.stage,
+            Stage::Staging | Stage::Beginning | Stage::Downloading { .. } | Stage::Moving { .. }
+        );
+
         match (&self.kind, &self.found) {
             (Kind::New { .. }, None) => "A client from a torrent".to_owned(),
-            (Kind::Check, _)
-                if !matches!(
-                    self.stage,
-                    Stage::Staging
-                        | Stage::Beginning
-                        | Stage::Downloading { .. }
-                        | Stage::Moving { .. }
-                ) =>
-            {
-                format!("Updates for {}", self.name())
-            }
+            (Kind::Check, _) if !downloading => format!("The files of {}", self.name()),
+            (
+                Kind::Languages {
+                    adding: Some(language),
+                },
+                _,
+            ) if downloading => format!("{language} for {}", self.name()),
+            (Kind::Languages { .. }, _) => format!("The languages of {}", self.name()),
             _ => self.name().to_owned(),
         }
     }
@@ -1431,12 +1668,13 @@ impl Job {
             Stage::Identifying => format!("Downloading Wow.exe of {}…", self.name()),
             Stage::Confirming { .. } => format!("{} is ready to download.", self.name()),
             Stage::Checking { .. } => format!(
-                "Checking {} for updates: {}",
+                "Checking the files of {}: {}",
                 self.name(),
                 percent(&self.progress)
             ),
-            Stage::Current => format!("{} is up to date.", self.name()),
-            Stage::Outdated(_) => format!("{} has updates.", self.name()),
+            Stage::Intact => format!("Every file of {} is intact.", self.name()),
+            Stage::Damaged(_) => format!("Files of {} are missing or changed.", self.name()),
+            Stage::Languages { .. } => format!("The languages of {}.", self.name()),
             Stage::Staging | Stage::Beginning => format!("{} {}…", self.verb(), self.name()),
             Stage::Downloading { .. } => format!(
                 "{} {}: {}, {}/s",
@@ -1463,11 +1701,103 @@ impl Job {
         match self.kind {
             // Turned down before it was kept.
             Kind::New { .. } if self.saved.is_none() => After::Remove(staging.clone()),
-            // A client being downloaded resumes later, and so does an
-            // update: what it downloaded is there for the next.
+            // A client being downloaded resumes later, and so does a
+            // repair or a language: what it downloaded is there for the
+            // next.
             _ => After::Nothing,
         }
     }
+}
+
+/// Reads the `Wow.exe` `job` downloaded, for its version.
+fn identify(job: &mut Job) -> Task<Message> {
+    let (Some(found), Some(staging)) = (&job.found, &job.staging) else {
+        return Task::none();
+    };
+    let root = within(staging, &found.torrent.client().unwrap_or_default());
+    job.stage = Stage::Opening;
+
+    Task::perform(
+        blocking(move || Installation::open(root)),
+        Message::Identified.with(job.id),
+    )
+}
+
+/// Puts what `job` downloaded in place, `engine` letting go of its
+/// download first: unless the game runs, for a repair or a language, whose
+/// files can't change under it.
+fn put_in_place(
+    job: &mut Job,
+    engine: Option<&Engine>,
+    playing: bool,
+) -> Action<Instruction, Message> {
+    let (Some(found), Some(staging)) = (&job.found, &job.staging) else {
+        return Action::none();
+    };
+    if matches!(job.kind, Kind::Check | Kind::Languages { .. }) && playing {
+        return Action::none();
+    }
+    // Stopped by `finish`, so that stopping or failing afterwards finds no
+    // download to stop again.
+    let (Some(engine), Some(download)) = (engine.cloned(), job.download.take()) else {
+        return Action::none();
+    };
+
+    log::info!(
+        "Downloaded {}: putting its files in {}",
+        job.name(),
+        found.folder.display()
+    );
+    let moved = Arc::new(AtomicU64::new(0));
+    let files = job.files.clone();
+    job.progress = Progress {
+        total: files
+            .iter()
+            .filter_map(|index| found.torrent.files.get(*index))
+            .filter(|file| !file.padding)
+            .map(|file| file.length)
+            .sum(),
+        ..Progress::default()
+    };
+    job.stage = Stage::Moving {
+        moved: moved.clone(),
+    };
+    let new = job
+        .saved
+        .clone()
+        .filter(|_| matches!(job.kind, Kind::New { .. } | Kind::Resume));
+
+    Action::task(Task::perform(
+        finish(
+            engine,
+            download,
+            staging.clone(),
+            found.folder.clone(),
+            found.torrent.clone(),
+            files,
+            moved,
+            new,
+        ),
+        Message::Moved.with(job.id),
+    ))
+}
+
+/// Readies `job` to download the `files` of its torrent into the client
+/// folder: copies of those there go beside the download first (see
+/// [`crate::core::torrent::stage`]).
+fn stage(job: &mut Job, files: Vec<usize>) -> Task<Message> {
+    let (Some(found), Some(staging)) = (&job.found, &job.staging) else {
+        return Task::none();
+    };
+    let (staging, folder, torrent) = (staging.clone(), found.folder.clone(), found.torrent.clone());
+    job.files = files.clone();
+    job.progress = Progress::default();
+    job.stage = Stage::Staging;
+
+    Task::perform(
+        blocking(move || crate::core::torrent::stage(&staging, &folder, &torrent, &files)),
+        Message::Staged.with(job.id),
+    )
 }
 
 /// Finds the torrent of `source` for a new client, fetching it with
@@ -1546,7 +1876,7 @@ async fn find_kept(
     })
 }
 
-/// Finds the torrent of `source` to update the client at `root` from, as
+/// Finds the torrent of `source` to check the client at `root` against, as
 /// [`find_new`] does: it must hold a client, in a folder named as `root`'s
 /// is when it has it in one. The launcher keeps a copy in `store`, and the
 /// client folder notes where it comes from.
@@ -1567,15 +1897,15 @@ async fn find_given(
     // Its files go where the torrent has them.
     if client_in(&root, &folder).as_deref() != Some(client.as_str()) {
         return Err(format!(
-            "This torrent has the client in a folder named {}: give {} that name to update it \
-             from this torrent.",
+            "This torrent has the client in a folder named {}: give {} that name to check it \
+             against this torrent.",
             client.trim_end_matches('/'),
             root.display()
         ));
     }
 
     log::info!(
-        "Updating {} from {} from now on",
+        "Checking {} against {} from now on",
         root.display(),
         torrent.name
     );
@@ -1865,8 +2195,9 @@ fn folder_name(name: &str, info_hash: &str) -> String {
     }
 }
 
-/// Starts `engine`, if there is none, and begins downloading the `files` of
-/// the torrent of `bytes` into `staging`, from `peers` too.
+/// Starts `engine`, if there is none or it stopped answering, and begins
+/// downloading the `files` of the torrent of `bytes` into `staging`, from
+/// `peers` too.
 async fn begin(
     engine: Option<Engine>,
     bytes: Arc<Vec<u8>>,
@@ -1874,7 +2205,7 @@ async fn begin(
     files: Vec<usize>,
     peers: Vec<SocketAddr>,
 ) -> Result<Began, String> {
-    let engine = match engine {
+    let engine = match engine.filter(Engine::answers) {
         Some(engine) => engine,
         None => Engine::start()
             .await
@@ -1898,7 +2229,6 @@ async fn begin(
 /// to be 3.3.5a's; and notes them there as the torrent has them. For a new
 /// client, `new` is what the launcher keeps of its torrent, which the
 /// client folder notes too, and the client is opened.
-#[allow(clippy::too_many_arguments)]
 async fn finish(
     engine: Engine,
     download: Download,
@@ -1912,7 +2242,7 @@ async fn finish(
     engine.forget(&download).await?;
 
     let client = torrent.client().unwrap_or_default();
-    // A torrent given to update from may hold another game.
+    // A torrent given to check a client against may hold another game.
     if torrent
         .executable()
         .is_some_and(|executable| files.contains(&executable))
@@ -2083,8 +2413,8 @@ fn transfer(job: &Job, pieces: Option<usize>) -> Element<'_, Message> {
     .boxed()
 }
 
-/// What an update downloads: how much, and which files.
-fn outdated<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Message> {
+/// What a repair downloads: how much, and which files.
+fn damaged<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Message> {
     let Some(torrent) = found.map(|found| &*found.torrent) else {
         return space::horizontal().boxed();
     };
@@ -2112,8 +2442,12 @@ fn outdated<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messa
 
     column![
         text(format!(
-            "{} to download, {}:",
-            counted(files.len(), "file"),
+            "{} missing or changed: repairing downloads {}.",
+            if files.len() == 1 {
+                "1 file is".to_owned()
+            } else {
+                format!("{} files are", files.len())
+            },
             size(check.bytes(torrent))
         )),
         container(column(named.chain(more)).spacing(2))
@@ -2123,6 +2457,136 @@ fn outdated<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messa
         text("Your settings, addons and realmlist stay as they are.")
             .size(13)
             .style(text::secondary),
+    ]
+    .spacing(10)
+    .boxed()
+}
+
+/// The languages of `job`'s client: those it `has`, each with a button
+/// deleting it but the one its game plays in (`locale`), and those of its
+/// `torrent` it doesn't, each with a button downloading it. The one it is
+/// `deleting` asks first. Nothing is done while something is (`busy`), nor
+/// while the game runs (`playing`).
+#[allow(clippy::too_many_arguments)]
+fn languages<'a>(
+    job: &'a Job,
+    torrent: Option<&'a Torrent>,
+    has: &'a [Locale],
+    locale: Option<Locale>,
+    deleting: Option<Locale>,
+    busy: bool,
+    playing: bool,
+) -> Element<'a, Message> {
+    let line = |language: Locale, what: String, action: Element<'a, Message>| {
+        row![
+            text(language.code()).size(14).width(70),
+            text(what).size(13).style(text::secondary).width(Fill),
+            action,
+        ]
+        .spacing(12)
+        .align_y(Center)
+        .boxed()
+    };
+    let small = |label: String, look: fn(&iced::Theme, button::Status) -> button::Style| {
+        button(text(label).size(13)).style(look).padding([4, 12])
+    };
+
+    let own = has.iter().map(|&language| {
+        let played = locale == Some(language);
+        let delete = small("Delete".to_owned(), style::danger);
+        let delete: Element<'a, Message> = if played {
+            style::tip(
+                delete,
+                "The game plays in it: switch to another language first.",
+            )
+            .boxed()
+        } else if playing {
+            style::tip(delete, CLOSE_THE_GAME_FIRST).boxed()
+        } else {
+            delete
+                .on_press_maybe((!busy).then_some(Message::DeleteLanguage(language)))
+                .boxed()
+        };
+        let what = if played { "The game plays in it." } else { "" };
+
+        line(language, what.to_owned(), delete)
+    });
+
+    let offered: Vec<(Locale, u64)> = torrent
+        .map(|torrent| {
+            torrent
+                .languages()
+                .into_iter()
+                .filter(|language| !has.contains(language))
+                .map(|language| (language, torrent.size_of(&torrent.files_of(language))))
+                .collect()
+        })
+        .unwrap_or_default();
+    let others = offered.into_iter().map(|(language, bytes)| {
+        let download = small("Download".to_owned(), style::primary);
+        let download: Element<'a, Message> = if playing {
+            style::tip(download, CLOSE_THE_GAME_FIRST).boxed()
+        } else {
+            download
+                .on_press_maybe((!busy).then_some(Message::AddLanguage(language)))
+                .boxed()
+        };
+
+        line(language, size(bytes), download)
+    });
+    let others: Vec<Element<'a, Message>> = others.collect();
+
+    let elsewhere: Element<'a, Message> = match torrent {
+        None => text("Set the client's torrent to download other languages.")
+            .size(13)
+            .style(text::secondary)
+            .boxed(),
+        Some(_) if others.is_empty() => text("Its torrent has no other language.")
+            .size(13)
+            .style(text::secondary)
+            .boxed(),
+        Some(_) => column(others).spacing(6).boxed(),
+    };
+
+    let confirmation = deleting.map(|language| {
+        let again = if torrent.is_some() {
+            "Its torrent has it, to download it again."
+        } else {
+            "Without the client's torrent, it can't be downloaded again."
+        };
+
+        container(
+            column![
+                text(format!(
+                    "Delete {language} from {}? Its folder in Data goes, with its realmlist. \
+                     {again}",
+                    job.name()
+                ))
+                .size(14),
+                row![
+                    space::horizontal(),
+                    button("Cancel")
+                        .style(style::quiet)
+                        .on_press_maybe((!busy).then_some(Message::CancelDelete)),
+                    button("Delete")
+                        .style(style::danger)
+                        .on_press_maybe((!busy && !playing).then_some(Message::ConfirmDelete)),
+                ]
+                .spacing(8)
+                .align_y(Center),
+            ]
+            .spacing(6),
+        )
+        .padding([6, 12])
+        .style(style::banner(style::Tone::Danger))
+    });
+
+    column![
+        text("In this client").size(14).style(style::gold),
+        column(own).spacing(6),
+        text("To download").size(14).style(style::gold),
+        elsewhere,
+        confirmation,
     ]
     .spacing(10)
     .boxed()
@@ -2327,7 +2791,7 @@ mod tests {
             moved.clone(),
             job.saved
                 .clone()
-                .filter(|_| !matches!(job.kind, Kind::Check)),
+                .filter(|_| matches!(job.kind, Kind::New { .. } | Kind::Resume)),
         )
         .await
     }
@@ -2411,13 +2875,13 @@ mod tests {
 
         let _ = update(
             &mut state,
-            Message::Language("esES".to_owned(), true),
+            Message::Language(Locale::EsEs, true),
             &config,
             false,
         );
         let _ = update(
             &mut state,
-            Message::Language("deDE".to_owned(), true),
+            Message::Language(Locale::DeDe, true),
             &config,
             false,
         );
@@ -2430,7 +2894,7 @@ mod tests {
         else {
             panic!("not kept to resume");
         };
-        assert_eq!(saved.languages, ["esES"], "not one it hasn't");
+        assert_eq!(saved.languages, [Locale::EsEs], "not one it hasn't");
         assert_eq!(
             named(&job(&state).files),
             [
@@ -2463,7 +2927,7 @@ mod tests {
         assert!(!found.folder.join("Data/enUS").exists(), "left out");
         assert_eq!(
             installation.locale(),
-            Some("esES"),
+            Some(Locale::EsEs),
             "its Config.wtf says enUS, which it hasn't"
         );
 
@@ -2658,7 +3122,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn an_update_downloads_beside_the_client_and_moves_in_what_changed() {
+    async fn a_repair_downloads_beside_the_client_and_moves_in_what_changed() {
         let files = files();
         let (bytes, _seeding, seeder) = seeded(&files).await;
         let torrent = Torrent::parse(&bytes).unwrap();
@@ -2691,8 +3155,13 @@ mod tests {
             ..Config::default()
         };
         let mut state = downloading_from(&seeder, &cache).await;
+        assert_eq!(state.integrity(&root), None, "not checked yet");
 
         let _ = state.start(Request::Check(root.clone()), &config, Err("offline"));
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("Finding its torrent…")
+        );
         let found = find_again(
             saved.clone(),
             root.clone(),
@@ -2715,24 +3184,28 @@ mod tests {
             crate::core::torrent::check(&root, &torrent, &mut |_| ControlFlow::Continue(()))
                 .map_err(|error| describe(&error));
         let _ = update(&mut state, Message::Checked(1, checked), &config, false);
-        assert!(matches!(job(&state).stage, Stage::Outdated(_)));
+        assert!(matches!(job(&state).stage, Stage::Damaged(_)));
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("1 file is missing or changed.")
+        );
         {
             let mut ui = simulator(state.dialog(true).unwrap());
             for line in [
-                "Updates for WotLK",
-                "1 file to download, 40 KB:",
+                "The files of WotLK",
+                "1 file is missing or changed: repairing downloads 40 KB.",
                 "Data/common.MPQ",
                 "Your settings, addons and realmlist stay as they are.",
             ] {
                 assert!(ui.find(line).is_ok(), "{line}");
             }
-            let _ = ui.click("Update");
+            let _ = ui.click("Repair");
             assert!(ui.into_messages().next().is_none(), "not while playing");
         }
-        let _ = update(&mut state, Message::Update, &config, true);
-        assert!(matches!(job(&state).stage, Stage::Outdated(_)));
+        let _ = update(&mut state, Message::Repair, &config, true);
+        assert!(matches!(job(&state).stage, Stage::Damaged(_)));
 
-        let _ = update(&mut state, Message::Update, &config, false);
+        let _ = update(&mut state, Message::Repair, &config, false);
         assert!(matches!(job(&state).stage, Stage::Staging));
         assert_eq!(job(&state).files, [1]);
         let staging = job(&state).staging.clone().unwrap();
@@ -2773,14 +3246,19 @@ mod tests {
         let _ = update(&mut state, Message::Tick, &config, false);
         assert!(matches!(job(&state).stage, Stage::Moving { .. }));
         assert!(state.holds_back(&root));
+        assert_eq!(state.integrity(&root).as_deref(), Some("Repairing: 0%"));
         let moved = moved(&state, download).await;
-        let Some(Instruction::Updated { notice, .. }) =
+        let Some(Instruction::Repaired { notice, .. }) =
             update(&mut state, Message::Moved(1, moved), &config, false)
         else {
-            panic!("not updated");
+            panic!("not repaired");
         };
 
-        assert_eq!(notice, "Updated WotLK: 1 file downloaded.");
+        assert_eq!(notice, "Repaired WotLK: 1 file downloaded.");
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("Repaired: every file is intact.")
+        );
         assert_eq!(
             fs::read(root.join("Data/common.MPQ")).unwrap(),
             vec![7; 40_000]
@@ -2795,6 +3273,239 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert!(check.is_current(), "{check:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_language_of_its_torrent_downloads_into_the_client() {
+        let mut files = files();
+        files.push(("Data/deDE/locale-deDE.MPQ", vec![5; 20_000]));
+        files.push(("Data/deDE/realmlist.wtf", b"set realmlist de".to_vec()));
+        let (bytes, _seeding, seeder) = seeded(&files).await;
+        let torrent = Torrent::parse(&bytes).unwrap();
+        let cache = Cache::new();
+        fs::write(
+            cache
+                .store
+                .path()
+                .join(format!("{}.torrent", torrent.info_hash)),
+            &bytes,
+        )
+        .unwrap();
+
+        // The client in English alone.
+        let client = tempfile::tempdir().unwrap();
+        let root = client.path().to_path_buf();
+        write(
+            &root,
+            &files
+                .iter()
+                .filter(|(path, _)| !path.contains("deDE"))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        let saved = ClientTorrent {
+            name: "WotLK".into(),
+            info_hash: torrent.info_hash.clone(),
+            source: format!("magnet:?xt=urn:btih:{}", torrent.info_hash),
+            folder: root.clone(),
+            languages: Vec::new(),
+        };
+        let config = Config {
+            installations: vec![root.clone()],
+            torrents: BTreeMap::from([(root.clone(), saved.clone())]),
+            ..Config::default()
+        };
+        let mut state = downloading_from(&seeder, &cache).await;
+
+        let _ = state.start(
+            Request::Languages {
+                root: root.clone(),
+                locales: vec![Locale::EnUs],
+                locale: Some(Locale::EnUs),
+            },
+            &config,
+            Err("offline"),
+        );
+        let found = find_again(
+            saved,
+            root.clone(),
+            cache.store.path().to_path_buf(),
+            state.engine.clone(),
+            Err("offline".to_owned()),
+            Vec::new(),
+        )
+        .await;
+        assert!(update(&mut state, Message::Found(1, found), &config, false).is_none());
+        assert!(matches!(job(&state).stage, Stage::Languages { .. }));
+        {
+            let mut ui = simulator(state.dialog(false).unwrap());
+            for line in [
+                "The languages of WotLK",
+                "In this client",
+                "enUS",
+                "The game plays in it.",
+                "To download",
+                "deDE",
+                "20 KB",
+            ] {
+                assert!(ui.find(line).is_ok(), "{line}");
+            }
+            let _ = ui.click("Download").unwrap();
+            assert!(matches!(
+                &ui.into_messages().collect::<Vec<_>>()[..],
+                [Message::AddLanguage(Locale::DeDe)]
+            ));
+        }
+        assert!(
+            update(
+                &mut state,
+                Message::AddLanguage(Locale::DeDe),
+                &config,
+                true
+            )
+            .is_none()
+                && matches!(job(&state).stage, Stage::Languages { .. }),
+            "not while the game runs"
+        );
+
+        let _ = update(
+            &mut state,
+            Message::AddLanguage(Locale::DeDe),
+            &config,
+            false,
+        );
+        assert!(matches!(job(&state).stage, Stage::Staging));
+        assert_eq!(job(&state).files, torrent.files_of(Locale::DeDe));
+        let staging = job(&state).staging.clone().unwrap();
+        let files_of = torrent.files_of(Locale::DeDe);
+        let staged = crate::core::torrent::stage(&staging, &root, &torrent, &files_of)
+            .map_err(|error| describe(&error));
+        let _ = update(&mut state, Message::Staged(1, staged), &config, false);
+        let began = began(&state).await;
+        let download = began.as_ref().unwrap().download.clone();
+        let _ = update(&mut state, Message::Began(1, began), &config, false);
+        assert!(
+            simulator(state.dialog(false).unwrap())
+                .find("deDE for WotLK")
+                .is_ok()
+        );
+        ticked_through(&mut state, &config).await;
+        assert!(matches!(job(&state).stage, Stage::Moving { .. }));
+
+        let moved = moved(&state, download).await;
+        let Some(Instruction::LanguageAdded { notice, .. }) =
+            update(&mut state, Message::Moved(1, moved), &config, false)
+        else {
+            panic!("no language added");
+        };
+        assert_eq!(notice, "Downloaded deDE for WotLK.");
+        assert_eq!(
+            fs::read(root.join("Data/deDE/locale-deDE.MPQ")).unwrap(),
+            vec![5; 20_000]
+        );
+        assert_eq!(
+            fs::read(root.join("Data/enUS/realmlist.wtf")).unwrap(),
+            b"set realmlist logon.example.com",
+            "the rest as it was"
+        );
+        assert!(!staging.exists());
+        assert_eq!(state.integrity(&root), None, "no check of its files");
+    }
+
+    #[test]
+    fn a_language_of_the_client_is_deleted_once_confirmed_but_the_one_it_plays_in() {
+        let (_root, installation) = crate::core::testing::client(&[
+            "Data/enUS/locale-enUS.MPQ",
+            "Data/esES/locale-esES.MPQ",
+        ]);
+        let root = installation.root().to_path_buf();
+        let config = Config::default();
+        let mut state = State::new("torrents".into());
+
+        // Without a torrent: only its own, to delete.
+        let _ = state.start(
+            Request::Languages {
+                root: root.clone(),
+                locales: vec![Locale::EnUs, Locale::EsEs],
+                locale: Some(Locale::EnUs),
+            },
+            &config,
+            Err("offline"),
+        );
+        assert!(matches!(job(&state).stage, Stage::Languages { .. }));
+        {
+            let mut ui = simulator(state.dialog(false).unwrap());
+            for line in [
+                "enUS",
+                "esES",
+                "The game plays in it.",
+                "Set the client's torrent to download other languages.",
+            ] {
+                assert!(ui.find(line).is_ok(), "{line}");
+            }
+            // The first is the one it plays in.
+            let _ = ui.click("Delete").unwrap();
+            assert_eq!(ui.into_messages().count(), 0);
+        }
+
+        let _ = update(
+            &mut state,
+            Message::DeleteLanguage(Locale::EsEs),
+            &config,
+            false,
+        );
+        // Named after its folder, without a torrent.
+        let name = root.file_name().unwrap().to_string_lossy();
+        let mut ui = simulator(state.dialog(false).unwrap());
+        assert!(
+            ui.find(format!(
+                "Delete esES from {name}? Its folder in Data goes, with its realmlist. Without \
+                 the client's torrent, it can't be downloaded again."
+            ))
+            .is_ok()
+        );
+        drop(ui);
+        let _ = update(&mut state, Message::CancelDelete, &config, false);
+        assert!(matches!(
+            job(&state).stage,
+            Stage::Languages { deleting: None, .. }
+        ));
+
+        let _ = update(
+            &mut state,
+            Message::DeleteLanguage(Locale::EsEs),
+            &config,
+            false,
+        );
+        assert!(
+            update(&mut state, Message::ConfirmDelete, &config, true).is_none()
+                && matches!(job(&state).stage, Stage::Languages { busy: false, .. }),
+            "not while the game runs"
+        );
+        let _ = update(&mut state, Message::ConfirmDelete, &config, false);
+        assert!(matches!(
+            job(&state).stage,
+            Stage::Languages { busy: true, .. }
+        ));
+
+        let deleted = installation
+            .remove_locale(Locale::EsEs)
+            .map_err(|error| describe(&error));
+        let instruction = update(
+            &mut state,
+            Message::Deleted(1, Locale::EsEs, deleted),
+            &config,
+            false,
+        );
+        assert!(matches!(
+            instruction,
+            Some(Instruction::LanguageDeleted(deleted)) if deleted == root
+        ));
+        assert!(!root.join("Data/esES").exists());
+        assert!(matches!(
+            &job(&state).stage,
+            Stage::Languages { has, busy: false, deleting: None, .. } if has == &[Locale::EnUs]
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2945,7 +3656,7 @@ mod tests {
         );
         {
             let mut ui = simulator(state.dialog(false).unwrap());
-            assert!(ui.find("Updates for WoW").is_ok());
+            assert!(ui.find("The files of WoW").is_ok());
             assert!(ui.find("Finding the torrent…").is_ok());
         }
         let given_to = |root: PathBuf| {
@@ -3010,7 +3721,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn an_update_never_puts_in_place_a_wow_exe_of_another_game() {
+    async fn a_repair_never_puts_in_place_a_wow_exe_of_another_game() {
         let mut theirs = files();
         theirs[0].1 = fake_executable(crate::core::Version {
             major: 4,
@@ -3055,12 +3766,12 @@ mod tests {
             crate::core::torrent::check(&root, &found.torrent, &mut |_| ControlFlow::Continue(()))
                 .map_err(|error| describe(&error));
         let _ = update(&mut state, Message::Checked(1, checked), &config, false);
-        let Stage::Outdated(check) = &job(&state).stage else {
-            panic!("no update");
+        let Stage::Damaged(check) = &job(&state).stage else {
+            panic!("nothing to repair");
         };
         assert!(check.different.contains(&0), "Wow.exe: {check:?}");
 
-        let _ = update(&mut state, Message::Update, &config, false);
+        let _ = update(&mut state, Message::Repair, &config, false);
         let staging = job(&state).staging.clone().unwrap();
         let staged =
             crate::core::torrent::stage(&staging, &root, &found.torrent, &job(&state).files)
@@ -3092,14 +3803,11 @@ mod tests {
         let files: Vec<(&str, &[u8])> = vec![("Wow.exe", b"MZ"), ("Data/common.MPQ", b"x")];
         let bytes = torrent_of("WotLK", &files, 1024 * 1024);
         let torrent = Torrent::parse(&bytes).unwrap();
-        let root = matches!(kind, Kind::Check).then(|| PathBuf::from("/games/WotLK"));
+        let root = matches!(kind, Kind::Check | Kind::Languages { .. })
+            .then(|| PathBuf::from("/games/WotLK"));
 
         State {
             job: Some(Job {
-                id: 1,
-                kind,
-                saved: None,
-                root,
                 staging: Some("/games/WotLK/.download".into()),
                 found: Some(Found {
                     bytes: Arc::new(bytes),
@@ -3108,12 +3816,10 @@ mod tests {
                     engine: None,
                     saved: None,
                 }),
-                download: None,
                 files: vec![0, 1],
                 progress,
-                stage,
                 hidden,
-                stopping: false,
+                ..Job::new(1, kind, None, root, stage)
             }),
             jobs: 1,
             ..State::new("torrents".into())
@@ -3351,7 +4057,7 @@ mod tests {
             "nor the folder made for it"
         );
 
-        // A client being downloaded, and an update, resume.
+        // A client being downloaded, and a repair, resume.
         for kind in [Kind::Resume, Kind::Check] {
             downloaded();
             let mut state = at(
@@ -3558,7 +4264,7 @@ mod tests {
     /// -- --ignored --nocapture`, with `OLD_LAUNCHER_TEST_TORRENT_CLIENT`
     /// too: the folder that torrent's files went in, which the check notes
     /// what it found in. Compares it with the torrent twice, saying how long
-    /// each took and what an update would download.
+    /// each took and what a repair would download.
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "joins the swarm of $OLD_LAUNCHER_TEST_TORRENT for a magnet link, and reads \
                 $OLD_LAUNCHER_TEST_TORRENT_CLIENT whole"]
@@ -3597,19 +4303,19 @@ mod tests {
         }
     }
 
-    /// `cargo test --release --lib download::tests::a_real_client_is_updated
+    /// `cargo test --release --lib download::tests::a_real_client_is_repaired
     /// -- --ignored --nocapture`, with `OLD_LAUNCHER_TEST_TORRENT_CLIENT` a
-    /// copy of the client that torrent downloads, changed: checks it for
-    /// updates and updates it as the dialog does, through a staging folder,
-    /// from the peers the launcher finds, saying how it goes, then checks
-    /// it again.
+    /// copy of the client that torrent downloads, changed: checks its files
+    /// and repairs them as the dialog does, through a staging folder, from
+    /// the peers the launcher finds, saying how it goes, then checks it
+    /// again.
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "joins the swarm of $OLD_LAUNCHER_TEST_TORRENT and updates the folder in \
+    #[ignore = "joins the swarm of $OLD_LAUNCHER_TEST_TORRENT and repairs the folder in \
                 $OLD_LAUNCHER_TEST_TORRENT_CLIENT"]
-    async fn a_real_client_is_updated_from_its_torrent() {
+    async fn a_real_client_is_repaired_from_its_torrent() {
         let root = PathBuf::from(
             std::env::var("OLD_LAUNCHER_TEST_TORRENT_CLIENT")
-                .expect("OLD_LAUNCHER_TEST_TORRENT_CLIENT is a copy of the client to update"),
+                .expect("OLD_LAUNCHER_TEST_TORRENT_CLIENT is a copy of the client to repair"),
         );
         let cache = Cache::new();
         let (bytes, _engine) = torrent::fetch(real_torrent(), None, Ok(http()), Vec::new())
@@ -3652,8 +4358,8 @@ mod tests {
         let checked = checking(root.clone(), torrent.clone()).await;
         println!("Checked in {:.1?}", started.elapsed());
         let _ = update(&mut state, Message::Checked(1, checked), &config, false);
-        let Stage::Outdated(check) = &job(&state).stage else {
-            panic!("nothing to update");
+        let Stage::Damaged(check) = &job(&state).stage else {
+            panic!("nothing to repair");
         };
         let named = |files: &[usize]| -> Vec<String> {
             files
@@ -3668,7 +4374,7 @@ mod tests {
             named(&check.different)
         );
 
-        let _ = update(&mut state, Message::Update, &config, false);
+        let _ = update(&mut state, Message::Repair, &config, false);
         let staging = job(&state).staging.clone().unwrap();
         let staged = {
             let (staging, root, torrent, files) = (
@@ -3736,10 +4442,10 @@ mod tests {
         );
 
         let moved = moved(&state, download).await;
-        let Some(Instruction::Updated { notice, .. }) =
+        let Some(Instruction::Repaired { notice, .. }) =
             update(&mut state, Message::Moved(1, moved), &config, false)
         else {
-            panic!("not updated");
+            panic!("not repaired");
         };
         println!("{notice}");
         assert!(!staging.exists(), "nothing left beside it");
