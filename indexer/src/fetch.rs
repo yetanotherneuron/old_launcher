@@ -8,18 +8,20 @@ use anyhow::Context;
 /// 429) a couple of times so one flaky moment doesn't cost the catalog an
 /// entry. Other HTTP errors (a 404) are final.
 pub async fn fetch(client: &reqwest::Client, url: &str) -> anyhow::Result<Vec<u8>> {
+    send(|| client.get(url), url).await
+}
+
+/// Sends the request `build` makes and reads the answer, retrying like
+/// [`fetch`]; `url` names it in errors. A request is built again for every
+/// attempt.
+pub async fn send(
+    build: impl Fn() -> reqwest::RequestBuilder,
+    url: &str,
+) -> anyhow::Result<Vec<u8>> {
     let mut attempt = 1;
 
     loop {
-        let download = async {
-            client
-                .get(url)
-                .send()
-                .await?
-                .error_for_status()?
-                .bytes()
-                .await
-        };
+        let download = async { build().send().await?.error_for_status()?.bytes().await };
 
         match download.await {
             Ok(bytes) => return Ok(bytes.into()),

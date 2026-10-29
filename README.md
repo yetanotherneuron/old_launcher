@@ -56,6 +56,8 @@ every week:
 - Backport maintainers on GitHub: ElvUI-WotLK, bkader, Bunny67, Zidras,
   s0h2x, KhalGH, Sattva-108, Xurkon, Wrath-AddOns.
 - Addon authors on GitLab: juxuanu (Kekator).
+- [CurseForge](https://www.curseforge.com/wow), for the addons with a file
+  for patch 3.3.5 whose authors let other apps download it.
 - [WoWInterface](https://www.wowinterface.com), for the addons whose last
   version was made for patch 3.3.
 - [Rising Gods](https://addons.rising-gods.de/addons), a server's collection

@@ -100,10 +100,17 @@ regenerates and commits it (`[skip ci]`: nothing built depends on it).
 
 ```sh
 GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer
+GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer -- --skip-curseforge
 ```
 
 The token only raises GitHub's API limits (a run makes about a hundred
-calls). The indexer lists every source, downloads every archive but the
+calls). CurseForge's API needs a key in `CURSEFORGE_API_KEY`: the
+project's is a CI variable, and CurseForge's terms forbid sharing it.
+Without one, `--skip-curseforge` leaves CurseForge out; the catalog it
+writes then lacks those addons, so don't commit it. A key goes in single
+quotes, since it has `$` signs.
+
+The indexer lists every source, downloads every archive but the
 unchanging ones it inspected before (`index/archives.json`, by URL; delete
 it after changing how archives are inspected), records the folders each
 one installs, merges the listings of the same addon, and orders each

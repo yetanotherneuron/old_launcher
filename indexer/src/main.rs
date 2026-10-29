@@ -23,7 +23,8 @@ use tokio::task::JoinSet;
 
 use crate::fetch::fetch;
 use crate::source::{
-    Listing, Source, Updated, github, gitlab, locus313, nom0re, rising_gods, wowinterface,
+    Listing, Source, Updated, curseforge, github, gitlab, locus313, nom0re, rising_gods,
+    wowinterface,
 };
 
 /// Builds the launcher's addon catalog from every upstream source.
@@ -49,6 +50,11 @@ struct Arguments {
     /// Only build the list of mods, leaving the catalog of addons as it is.
     #[arg(long)]
     mods_only: bool,
+    /// Leave CurseForge out, for a run without its API key. The catalog
+    /// written lacks its addons, and the record of archives the ones found
+    /// there before: neither is for publishing.
+    #[arg(long)]
+    skip_curseforge: bool,
 }
 
 /// A listing whose archive was downloaded and looked into.
@@ -110,6 +116,11 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
     }
     for author in gitlab::AUTHORS {
         gathered.push(gather(client, author).await?);
+    }
+    if arguments.skip_curseforge {
+        println!("CurseForge: skipped");
+    } else {
+        gathered.push(gather(client, &curseforge::Site).await?);
     }
     gathered.push(gather(client, &wowinterface::Site).await?);
     gathered.push(gather(client, &rising_gods::Collection).await?);

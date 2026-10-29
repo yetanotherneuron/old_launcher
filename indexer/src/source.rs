@@ -3,6 +3,7 @@
 //! Each source is a type implementing [`Source`], in a module of its own.
 //! Adding one means writing that module and listing the source in `main`.
 
+pub mod curseforge;
 pub mod github;
 pub mod gitlab;
 pub mod locus313;
