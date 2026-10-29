@@ -23,6 +23,7 @@ sevenz-rust2 = { workspace = true }
 rars = { workspace = true }
 tar = { workspace = true }
 flate2 = { workspace = true }
+bzip2 = { workspace = true }
 shlex = { workspace = true }
 dunce = { workspace = true }
 sha2 = { workspace = true }

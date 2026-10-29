@@ -80,6 +80,15 @@ pub enum Error {
     #[error("not a usable torrent: {0}")]
     Torrent(String),
 
+    /// An MPQ archive that can't be read, and why.
+    #[error("{}: {reason}", archive.display())]
+    Mpq {
+        /// The archive.
+        archive: PathBuf,
+        /// What is wrong with it, or with one of its files.
+        reason: String,
+    },
+
     /// Files in the client folder where a mod's release puts its own, which
     /// aren't the mod's: another mod's, say. Installing would replace them.
     #[error(

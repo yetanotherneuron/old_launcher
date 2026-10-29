@@ -40,9 +40,11 @@ launcher gets again from the peers when a copy is missing.
   `snapshot` (what it holds), `marker` and `notes` (what the launcher
   leaves in it), `library` (what the list shows), `catalog` and `mods`
   (the data the launcher works from), `launch` (how the game starts),
-  `torrent` (comparing a client with its torrent), `config` (the settings
+  `torrent` (comparing a client with its torrent), `patches` (what the
+  archives of `Data` say about each other), `config` (the settings
   file), `locale` (the game's languages, the only ones a `Data` folder can
-  be of). Tested against temporary folders.
+  be of), `mpq` (a streaming reader of the game's archives, with a writer
+  of small ones for tests). Tested against temporary folders.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
   shell; each screen is a module with its own `State`, `Message`, `update`
   and `view` (`setup`, `clients`, `settings`, `download`, `addons` with its
@@ -234,6 +236,11 @@ OLD_LAUNCHER_TEST_OTHER_DISK=~/somewhere \
 # links to it against it, twice:
 OLD_LAUNCHER_TEST_CLIENT_FILES="/path/to/World of Warcraft 3.3.5a" \
     cargo test --release -p old_launcher_core torrent::tests::a_real_client \
+    -- --ignored --nocapture
+# Opens every MPQ archive of a client folder, only reading, and reads each
+# listfile and the first and last file it names:
+OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release -p old_launcher_core mpq::tests::every_archive \
     -- --ignored --nocapture
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \

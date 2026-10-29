@@ -103,6 +103,9 @@ rars = "0.12"
 # pure-Rust zlib the zip crate uses.
 tar = { version = "0.4", default-features = false }
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# The bzip2 sectors of the game's archives, on the pure-Rust `libbz2-rs-sys`
+# its default features bring: the same one the zip crate uses.
+bzip2 = "0.6"
 # The BitTorrent engine, with none of its default features: its TLS ones
 # bring aws-lc, and reqwest gets rustls on ring from the launcher's own
 # features. `disable-upload` lets a session share nothing, for torrents it

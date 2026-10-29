@@ -3693,6 +3693,7 @@ dependencies = [
 name = "old_launcher_core"
 version = "1.1.2"
 dependencies = [
+ "bzip2",
  "dunce",
  "flate2",
  "librqbit-core",
