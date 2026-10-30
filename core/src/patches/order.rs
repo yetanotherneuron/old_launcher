@@ -415,8 +415,9 @@ mod tests {
             .iter()
             .map(|archive| (archive.path.as_str(), &archive.reason))
             .collect();
+        // Named as the folder's entries are, with the system's separators.
         let broken = Reason::Unreadable(
-            crate::mpq::Archive::open(&root.join("Data/patch-Z.MPQ"))
+            crate::mpq::Archive::open(&root.join("Data").join("patch-Z.MPQ"))
                 .unwrap_err()
                 .to_string(),
         );

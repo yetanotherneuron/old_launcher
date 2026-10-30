@@ -867,12 +867,18 @@ fn sweep_staging(folder: &Path) {
     }
 }
 
-/// The entry of `directory` named `name` ignoring case, or `directory/name`
-/// when there is none.
+/// Whether the file system finds a name whatever its case, as Windows' does
+/// (and macOS' by default): there, a name that exists may be spelled
+/// otherwise on disk.
+const CASE_BLIND: bool = cfg!(any(windows, target_os = "macos"));
+
+/// The entry of `directory` named `name` ignoring case, as it is spelled
+/// there (`name` itself first, where case tells names apart), or
+/// `directory/name` when there is none.
 pub(crate) fn child(directory: &Path, name: &str) -> PathBuf {
     let exact = directory.join(name);
 
-    if exact.exists() {
+    if !CASE_BLIND && exact.exists() {
         return exact;
     }
 

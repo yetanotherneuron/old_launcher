@@ -4040,6 +4040,23 @@ mod tests {
         bytes
     }
 
+    /// Whether the folder at `folder` holds two files named `name` but for
+    /// their case: not on Windows, which writes the second over the first.
+    fn held_apart(folder: &Path, name: &str) -> bool {
+        fs::read_dir(folder)
+            .unwrap()
+            .filter(|entry| {
+                entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(name)
+            })
+            .count()
+            > 1
+    }
+
     /// Every file under `root`, by path, with its contents.
     fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
         fn walk(root: &Path, folder: &Path, files: &mut BTreeMap<String, Vec<u8>>) {
@@ -4570,8 +4587,15 @@ mod tests {
         // Patch Y put in by hand is a mod the launcher knows: not counted.
         fs::write(root.join("Data/patch-y.mpq"), &gated.brings).unwrap();
         gated.looked();
+        // Case-twins are one file, as on Windows, which can't hold both:
+        // there, the second was written over the first.
+        let twins = held_apart(&root.join("Data"), "patch-w.mpq");
+        let w = if twins {
+            "Data/patch-W.mpq and Data/patch-w.mpq"
+        } else {
+            "Data/patch-W.mpq"
+        };
 
-        // Case-twins are one file, as on Windows.
         let mut ui = simulator(gated.state.view(&root, false));
         let notice = ui
             .find(
@@ -4586,19 +4610,15 @@ mod tests {
             position: notice,
         })]);
         assert!(
-            ui.find(
-                "Data/enUS/patch-enUS-Q.MPQ\nData/patch-G.mpq\nData/patch-W.mpq and \
-                 Data/patch-w.mpq"
-            )
-            .is_ok()
+            ui.find(format!("Data/enUS/patch-enUS-Q.MPQ\nData/patch-G.mpq\n{w}").as_str())
+                .is_ok()
         );
         drop(ui);
 
-        for gone in [
-            "Data/patch-G.mpq",
-            "Data/patch-w.mpq",
-            "Data/enUS/patch-enUS-Q.MPQ",
-        ] {
+        for gone in ["Data/patch-G.mpq", "Data/enUS/patch-enUS-Q.MPQ"]
+            .into_iter()
+            .chain(twins.then_some("Data/patch-w.mpq"))
+        {
             fs::remove_file(root.join(gone)).unwrap();
         }
         gated.looked();
@@ -4635,6 +4655,8 @@ mod tests {
         // A mod's archive, put in by hand, stays.
         fs::write(root.join("Data/patch-y.mpq"), &gated.brings).unwrap();
         gated.looked();
+        // One file on Windows, which can't hold both.
+        let twins = held_apart(&root.join("Data"), "patch-w.mpq");
         let question = "Set aside these 2 files? Each is renamed to end in .backup, which the \
                         game doesn't load; renaming one back restores it.";
 
@@ -4684,7 +4706,7 @@ mod tests {
             .flatten()
             .collect();
         let result = set_aside(gated.installation.clone(), paths).await;
-        assert_eq!(result, Ok(3));
+        assert_eq!(result, Ok(if twins { 3 } else { 2 }));
         let action = gated.go(Message::SetAside(root.clone(), result));
         assert!(
             matches!(action.instruction, Some(Instruction::Changed(changed)) if changed == root)
@@ -4692,9 +4714,11 @@ mod tests {
         for aside in [
             "Data/patch-G.mpq.backup",
             "Data/patch-W.mpq.backup",
-            "Data/patch-w.mpq.backup-1",
             "Data/patch-y.mpq",
-        ] {
+        ]
+        .into_iter()
+        .chain(twins.then_some("Data/patch-w.mpq.backup-1"))
+        {
             assert!(root.join(aside).is_file(), "{aside}");
         }
 
