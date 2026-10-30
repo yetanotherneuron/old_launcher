@@ -39,7 +39,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::action::Action;
 use crate::activity::activity;
 use crate::core::mods::{self, Mod, Mods, Problem, Release, Status};
-use crate::core::patches::Cache;
+use crate::core::patches::{Cache, is_blizzard};
 use crate::core::{Config, Installation, Launch, Locale, launch};
 use crate::errors::Errors;
 use crate::patches::Scan;
@@ -48,6 +48,16 @@ use gate::{Install, Verdict};
 
 /// What the hint of a button says while the game runs.
 const CLOSE_THE_GAME: &str = "Close the game first.";
+
+/// The widget id of the button opening the game's `Data` folder, which has
+/// no text to find it by.
+const OPEN_DATA: &str = "open-data";
+
+/// How tall the section's buttons are: a line of text 13 high, at iced's
+/// default line height (1.375), with 4 above and below. The folder button
+/// beside the notice of the archives the launcher doesn't know is a square
+/// that size.
+const BUTTON: f32 = 13.0 * 1.375 + 8.0;
 
 /// How a problem is colored.
 type Tone = fn(&iced::Theme) -> text::Style;
@@ -109,6 +119,9 @@ pub struct State {
     /// The client folder and the mod whose install in it, over the files
     /// in conflict with it, waits for a yes.
     confirming: Option<(PathBuf, String)>,
+    /// The client folder whose archives the launcher doesn't know wait for a
+    /// yes to be set aside.
+    setting_aside: Option<PathBuf>,
     /// The client folders whose mods are repaired once looked at, one after
     /// the other (see [`State::complete`]), and those repaired so far.
     completing: BTreeMap<PathBuf, BTreeSet<String>>,
@@ -283,6 +296,17 @@ pub enum Message {
     /// The work on a mod in a client folder ended: what it did, or why it
     /// failed.
     Done(PathBuf, String, Result<String, String>),
+    /// The folder button of the notice of the archives the launcher doesn't
+    /// know was pressed: the game's `Data` folder opens.
+    OpenData,
+    /// Its Set aside button was pressed: ask first.
+    AskSetAside,
+    /// Setting them aside was confirmed.
+    ConfirmSetAside,
+    /// Setting them aside was thought better of.
+    CancelSetAside,
+    /// They were set aside in a client folder, so many files, or why not.
+    SetAside(PathBuf, Result<usize, String>),
 }
 
 /// What the mods ask of the dialog.
@@ -1149,6 +1173,66 @@ impl State {
 
                 Action::instruction(Instruction::Changed(root))
             }
+            Message::OpenData => {
+                let Some(installation) = installation else {
+                    return Action::none();
+                };
+                let data = installation.data_directory();
+                log::info!("Opening {} in the file manager", data.display());
+                Action::task(crate::opening(data, None).map(Message::Unopened))
+            }
+            Message::AskSetAside => {
+                if playing || self.busy.is_some() {
+                    return Action::none();
+                }
+                self.setting_aside = current.map(Path::to_path_buf);
+                Action::none()
+            }
+            Message::CancelSetAside => {
+                self.setting_aside = None;
+                Action::none()
+            }
+            Message::ConfirmSetAside => {
+                let Some(root) = self.setting_aside.take() else {
+                    return Action::none();
+                };
+                let (Some(installation), Some(unknown)) = (installation, self.unrecognised(&root))
+                else {
+                    return Action::none();
+                };
+                if playing || self.busy.is_some() || installation.root() != root {
+                    return Action::none();
+                }
+                let paths: Vec<String> = unknown.into_iter().flatten().collect();
+                log::info!(
+                    "Setting aside {} in {}: {}",
+                    crate::counted(paths.len(), "file"),
+                    root.display(),
+                    paths.join(", ")
+                );
+                let installation = installation.clone();
+
+                Action::task(Task::perform(
+                    set_aside(installation, paths),
+                    move |result| Message::SetAside(root.clone(), result),
+                ))
+            }
+            Message::SetAside(root, result) => {
+                match result {
+                    Ok(count) => log::info!(
+                        "Set aside {} in {}",
+                        crate::counted(count, "file"),
+                        root.display()
+                    ),
+                    Err(error) => errors.report(format!("Could not set the files aside: {error}")),
+                }
+                // What was known of the client is stale, as after a mod's
+                // work.
+                let _ = self.found.remove(&root);
+                let _ = self.gates.remove(&root);
+
+                Action::instruction(Instruction::Changed(root))
+            }
         }
     }
 
@@ -1561,6 +1645,7 @@ impl State {
 
         column![
             style::heading("Mods", 16.0),
+            self.unrecognised_notice(root, playing),
             unlisted,
             column(
                 self.list
@@ -1576,6 +1661,130 @@ impl State {
         ]
         .spacing(8)
         .width(Fill)
+    }
+
+    /// The archives the game loads from the client folder at `root` that
+    /// are neither Blizzard's nor of a mod found there, each by its paths
+    /// (case-twins are one), once its patches and its mods are known.
+    fn unrecognised(&self, root: &Path) -> Option<Vec<Vec<String>>> {
+        let (scan, locale) = self
+            .scans
+            .get(root)
+            .filter(|_| !self.patches.contains(root))?;
+        let found = self.found.get(root)?;
+        let known: BTreeSet<String> = self
+            .list
+            .mods
+            .iter()
+            .filter(|listed| found.contains_key(&listed.id))
+            .flat_map(|listed| listed.paths_in(*locale))
+            .collect();
+
+        let mut unknown: Vec<Vec<String>> = scan
+            .order
+            .loaded
+            .iter()
+            .filter(|slot| {
+                !slot.paths.iter().any(|path| {
+                    is_blizzard(path, *locale) || known.contains(&path.to_ascii_lowercase())
+                })
+            })
+            .map(|slot| slot.paths.clone())
+            .collect();
+        unknown.sort_by_key(|paths| paths.concat().to_ascii_lowercase());
+
+        Some(unknown)
+    }
+
+    /// The warning above the mods of the client folder at `root` that the
+    /// game loads archives the launcher knows nothing of, which installing
+    /// a mod may override: they are named on hover, anywhere on it, since
+    /// one paragraph wraps as a whole. It stays. Beside it, a button opens
+    /// their folder, and another sets them aside, which asks first: not
+    /// while the game runs (`playing`) or a mod is worked on.
+    fn unrecognised_notice(&self, root: &Path, playing: bool) -> Option<Element<'_, Message>> {
+        let unknown = self
+            .unrecognised(root)
+            .filter(|unknown| !unknown.is_empty())?;
+        let (files, them, these) = match unknown.len() {
+            1 => (
+                "1 custom MPQ file".to_owned(),
+                "it",
+                "Set aside this file? It is renamed to end in .backup, which the game doesn't \
+                 load; renaming it back restores it."
+                    .to_owned(),
+            ),
+            count => (
+                format!("{count} custom MPQ files"),
+                "some of them",
+                format!(
+                    "Set aside these {count} files? Each is renamed to end in .backup, which \
+                     the game doesn't load; renaming one back restores it."
+                ),
+            ),
+        };
+        let says = text(format!(
+            "Your game has {files} unrecognised by this launcher. Installing mods can cause \
+             {them} to stop working."
+        ))
+        .size(13)
+        .width(Fill);
+        let named: Vec<String> = unknown.iter().map(|paths| paths.join(" and ")).collect();
+
+        let idle = !playing && self.busy.is_none();
+        // Opening the folder changes nothing: it is always there.
+        let folder = style::icon_button(
+            OPEN_DATA,
+            &style::FOLDER,
+            BUTTON,
+            style::secondary,
+            "Open the game's Data folder",
+            Some(Message::OpenData),
+        );
+        let set_aside = button(text("Set aside").size(13))
+            .style(style::secondary)
+            .padding([4, 12])
+            .on_press_maybe(idle.then_some(Message::AskSetAside));
+        let set_aside: Element<'_, Message> = match &self.busy {
+            _ if playing => style::tip(set_aside, CLOSE_THE_GAME).boxed(),
+            Some(work) => style::tip(set_aside, wait(work)).boxed(),
+            None => set_aside.boxed(),
+        };
+
+        // Setting them aside asks first, here.
+        let question = (self.setting_aside.as_deref() == Some(root)).then(|| {
+            column![
+                text(these).size(13),
+                row![
+                    space::horizontal(),
+                    button("Cancel")
+                        .style(style::quiet)
+                        .on_press(Message::CancelSetAside),
+                    button("Set aside")
+                        .style(style::primary)
+                        .on_press_maybe(idle.then_some(Message::ConfirmSetAside)),
+                ]
+                .spacing(8)
+                .align_y(Center),
+            ]
+            .spacing(6)
+        });
+
+        Some(
+            container(
+                column![
+                    row![style::tip(says, named.join("\n")), folder, set_aside]
+                        .spacing(8)
+                        .align_y(Center),
+                    question,
+                ]
+                .spacing(8),
+            )
+            .padding([6, 12])
+            .width(Fill)
+            .style(style::banner(style::Tone::Warning))
+            .boxed(),
+        )
     }
 
     /// The warning that `listed` doesn't come in some of the languages of
@@ -1944,6 +2153,17 @@ impl State {
         .spacing(8)
         .boxed()
     }
+}
+
+/// Sets the archives at `paths` in `installation`'s folder aside, backed up
+/// as installs back up what is in their way (see [`mods::back_up`]): how
+/// many.
+async fn set_aside(installation: Installation, paths: Vec<String>) -> Result<usize, String> {
+    let count = paths.len();
+
+    blocking(move || mods::back_up(&installation, &paths))
+        .await
+        .map(|()| count)
 }
 
 /// What the launcher needs to do to a mod, which a client folder holds as
@@ -2598,6 +2818,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use iced::task::Sipper;
+    use iced::widget::Id;
     use iced_test::simulator;
 
     use super::*;
@@ -4328,6 +4549,163 @@ mod tests {
         assert!(gated.shows(sentence));
         assert!(gated.shows("Install “Patch Y” anyway?"));
         assert!(!gated.root().join("Data/patch-y.mpq").exists());
+    }
+
+    #[tokio::test]
+    async fn the_players_own_archives_are_counted_above_the_mods_and_named_on_hover() {
+        let player = archive_of(&tables(&["Spell"]));
+        let brings = archive_of(&tables(&["Other"]));
+        let mut gated = Gated::new(
+            &[
+                ("Data/patch-G.mpq", &player),
+                ("Data/patch-W.mpq", &player),
+                ("Data/patch-w.mpq", &player),
+                ("Data/enUS/patch-enUS-Q.MPQ", &player),
+            ],
+            &brings,
+            &[],
+        )
+        .await;
+        let root = gated.root();
+        // Patch Y put in by hand is a mod the launcher knows: not counted.
+        fs::write(root.join("Data/patch-y.mpq"), &gated.brings).unwrap();
+        gated.looked();
+
+        // Case-twins are one file, as on Windows.
+        let mut ui = simulator(gated.state.view(&root, false));
+        let notice = ui
+            .find(
+                "Your game has 3 custom MPQ files unrecognised by this launcher. Installing mods \
+                 can cause some of them to stop working.",
+            )
+            .unwrap()
+            .bounds()
+            .center();
+        ui.point_at(notice);
+        let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: notice,
+        })]);
+        assert!(
+            ui.find(
+                "Data/enUS/patch-enUS-Q.MPQ\nData/patch-G.mpq\nData/patch-W.mpq and \
+                 Data/patch-w.mpq"
+            )
+            .is_ok()
+        );
+        drop(ui);
+
+        for gone in [
+            "Data/patch-G.mpq",
+            "Data/patch-w.mpq",
+            "Data/enUS/patch-enUS-Q.MPQ",
+        ] {
+            fs::remove_file(root.join(gone)).unwrap();
+        }
+        gated.looked();
+        let one = "Your game has 1 custom MPQ file unrecognised by this launcher. Installing \
+                   mods can cause it to stop working.";
+        assert!(gated.shows(one));
+
+        fs::remove_file(root.join("Data/patch-W.mpq")).unwrap();
+        gated.looked();
+        assert!(!gated.shows(one));
+        assert!(
+            gated
+                .state
+                .unrecognised(&root)
+                .is_some_and(|unknown| unknown.is_empty())
+        );
+    }
+
+    #[tokio::test]
+    async fn the_players_own_archives_are_set_aside_once_confirmed() {
+        let player = archive_of(&tables(&["Spell"]));
+        let brings = archive_of(&tables(&["Other"]));
+        let mut gated = Gated::new(
+            &[
+                ("Data/patch-G.mpq", &player),
+                ("Data/patch-W.mpq", &player),
+                ("Data/patch-w.mpq", &player),
+            ],
+            &brings,
+            &[],
+        )
+        .await;
+        let root = gated.root();
+        // A mod's archive, put in by hand, stays.
+        fs::write(root.join("Data/patch-y.mpq"), &gated.brings).unwrap();
+        gated.looked();
+        let question = "Set aside these 2 files? Each is renamed to end in .backup, which the \
+                        game doesn't load; renaming one back restores it.";
+
+        // Beside the notice: the folder, and Set aside, which asks first.
+        let folder = |gated: &Gated, playing: bool| {
+            let mut ui = simulator(gated.state.view(&root, playing));
+            let _ = ui.click(Id::from(OPEN_DATA)).unwrap();
+            ui.into_messages().collect::<Vec<_>>()
+        };
+        let aside = |gated: &Gated, playing: bool| {
+            let mut ui = simulator(gated.state.view(&root, playing));
+            let _ = ui.click("Set aside").unwrap();
+            ui.into_messages().collect::<Vec<_>>()
+        };
+        assert!(matches!(folder(&gated, false)[..], [Message::OpenData]));
+        assert!(matches!(aside(&gated, false)[..], [Message::AskSetAside]));
+        // The folder opens while the game runs; nothing is set aside.
+        assert!(matches!(folder(&gated, true)[..], [Message::OpenData]));
+        assert!(aside(&gated, true).is_empty());
+        // Both as tall as the section's other buttons, however tall the
+        // notice is; the folder's a square.
+        let mut ui = simulator(gated.state.view(&root, false));
+        let icon = ui.find(Id::from(OPEN_DATA)).unwrap().bounds();
+        let label = ui.find("Set aside").unwrap().bounds();
+        assert_eq!(icon.width, icon.height);
+        assert!(
+            (icon.height - (label.height + 8.0)).abs() < 0.5,
+            "{icon:?} beside {label:?}"
+        );
+        drop(ui);
+        let _ = gated.go(Message::AskSetAside);
+        assert!(gated.shows(question));
+        let _ = gated.go(Message::CancelSetAside);
+        assert!(!gated.shows(question));
+        let _ = gated.go(Message::AskSetAside);
+        let action = gated.go(Message::ConfirmSetAside);
+        assert!(action.instruction.is_none(), "it works first");
+        assert!(!gated.shows(question));
+
+        // What the work does, run here: case-twins don't take each other's
+        // backup.
+        let paths: Vec<String> = gated
+            .state
+            .unrecognised(&root)
+            .unwrap()
+            .into_iter()
+            .flatten()
+            .collect();
+        let result = set_aside(gated.installation.clone(), paths).await;
+        assert_eq!(result, Ok(3));
+        let action = gated.go(Message::SetAside(root.clone(), result));
+        assert!(
+            matches!(action.instruction, Some(Instruction::Changed(changed)) if changed == root)
+        );
+        for aside in [
+            "Data/patch-G.mpq.backup",
+            "Data/patch-W.mpq.backup",
+            "Data/patch-w.mpq.backup-1",
+            "Data/patch-y.mpq",
+        ] {
+            assert!(root.join(aside).is_file(), "{aside}");
+        }
+
+        // Looked at again, the notice is gone.
+        gated.looked();
+        assert!(
+            gated
+                .state
+                .unrecognised(&root)
+                .is_some_and(|unknown| unknown.is_empty())
+        );
     }
 
     #[tokio::test]

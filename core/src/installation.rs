@@ -222,6 +222,11 @@ impl Installation {
         child(&self.root, "WTF")
     }
 
+    /// `Data`, whatever its case: where the game's archives are.
+    pub fn data_directory(&self) -> PathBuf {
+        child(&self.root, "Data")
+    }
+
     /// Reads the installed addons and their data files. Staging folders an
     /// interrupted install left behind, in `Interface/AddOns` and beside
     /// `Wow.exe` for mods, are removed first (see [`sweep_staging`]).

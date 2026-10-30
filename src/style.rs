@@ -72,6 +72,9 @@ pub static REFRESH: Art = Art::new(include_bytes!("../assets/refresh.svg"));
 /// A cog, for the settings.
 pub static COG: Art = Art::new(include_bytes!("../assets/cog.svg"));
 
+/// A folder, for opening one in the file manager.
+pub static FOLDER: Art = Art::new(include_bytes!("../assets/folder.svg"));
+
 /// The size the icons are designed at: there, their lines fall on whole
 /// pixels, which any smaller size smears across two or three.
 const ICON: f32 = 24.0;

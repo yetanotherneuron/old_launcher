@@ -643,6 +643,14 @@ impl App {
                         log::info!("The launch settings changed");
                         Task::batch([task, self.save()])
                     }
+                    // Play, the mods and the next install's check wait for
+                    // the look.
+                    Some(clients::Instruction::Changed(root))
+                        if current.as_deref() == Some(root.as_path()) =>
+                    {
+                        Task::batch([task, self.look_at_patches()])
+                    }
+                    Some(clients::Instruction::Changed(_)) => task,
                     Some(clients::Instruction::Close { edited: false }) | None => task,
                 }
             }
@@ -1286,6 +1294,7 @@ impl App {
                     .style(text::secondary)
                     .wrapping(text::Wrapping::None)
                     .ellipsis(text::Ellipsis::Middle)
+                    .selectable(true)
                     .width(Fill),
                 // Until the first scan, the cards can't say what is installed.
                 snapshot
@@ -2889,6 +2898,28 @@ mod tests {
         assert!(pressed(&app, "Check"));
         let _ = app.update(Message::Escape);
         assert!(play_button(&app, "Play"));
+    }
+
+    #[test]
+    fn a_mod_installed_removed_or_repaired_has_the_patches_looked_at_again() {
+        let (_root, installation) = crate::testing::client(&["Data/patch-a.mpq"]);
+        let root = installation.root().to_path_buf();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        mods_looked_at(&mut app, &root);
+        looked_at_patches(&mut app, &root, folder.path());
+        assert!(!app.patches.holds_back(&root));
+
+        let _ = app.update(Message::Clients(clients::Message::Mods(
+            clients::mods::Message::Done(
+                root.clone(),
+                "dungeon-maps".to_owned(),
+                Ok("“Dungeon Maps” 2.4.5 is installed.".to_owned()),
+            ),
+        )));
+
+        assert!(app.patches.holds_back(&root), "looked at again");
+        assert!(!play_button(&app, "Play"));
     }
 
     #[test]

@@ -1186,6 +1186,23 @@ impl State {
 
                 let mods = mods_lines(&root, &self.mods, &seen.held);
                 let lines = self.checked_lines(&root, findings, mods);
+                match lines.as_deref() {
+                    None => log::info!("The patches of {} couldn't be looked at", root.display()),
+                    Some([]) => log::info!(
+                        "Nothing is wrong with the patches of {}, and every mod is as released",
+                        root.display()
+                    ),
+                    Some(lines) => {
+                        log::info!(
+                            "The patches and mods of {} have {} to look at:",
+                            root.display(),
+                            counted(lines.len(), "thing")
+                        );
+                        for line in lines {
+                            log::info!("  {line}");
+                        }
+                    }
+                }
                 let Some(job) = &mut self.job else {
                     return Action::none();
                 };

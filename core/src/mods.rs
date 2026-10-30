@@ -534,6 +534,25 @@ impl Mod {
             .collect()
     }
 
+    /// Every path its releases put files at in a client that plays in
+    /// `locale`, in lowercase, those of every language's files too (one
+    /// lacking that language gets another's at the same path): what of it
+    /// the game would load. Not the player's files.
+    pub fn paths_in(&self, locale: Locale) -> BTreeSet<String> {
+        self.releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .files
+                    .iter()
+                    .chain(release.languages.values().flatten())
+            })
+            .map(|(path, _)| path.as_str())
+            .filter(|path| !self.is_setting(path))
+            .map(|path| path.replace(LOCALE, locale.code()).to_ascii_lowercase())
+            .collect()
+    }
+
     /// Whether any release has `sum` for the file at `path`.
     fn released(&self, path: &str, sum: &str) -> bool {
         self.releases
@@ -1302,8 +1321,9 @@ pub const BACKUP: &str = ".backup";
 /// Backs up the files at `paths` in `installation`'s folder: each renamed
 /// to end in [`BACKUP`], which the game doesn't load, so renaming it back
 /// restores it. A backup made before stays: the new one ends in `.backup-1`
-/// then, or `.backup-2`, and so on.
-fn back_up(installation: &Installation, paths: &[String]) -> Result<(), Error> {
+/// then, or `.backup-2`, and so on. Installs back up what is in their way;
+/// the player sets aside the archives no mod explains.
+pub fn back_up(installation: &Installation, paths: &[String]) -> Result<(), Error> {
     for path in paths {
         let file = at(installation.root(), path);
         let folder = file.parent().unwrap_or(installation.root());
@@ -3586,6 +3606,11 @@ mod tests {
         assert_eq!(lacking(spanish.root(), &maps), [Locale::EsEs]);
         assert_eq!(fallback(&maps), Some(Locale::EnUs));
         assert_eq!(editions(&maps), [Locale::DeDe, Locale::EnUs]);
+        assert_eq!(
+            maps.paths_in(Locale::EsEs),
+            BTreeSet::from(["data/eses/patch-eses-m.mpq".to_owned()]),
+            "what of it the game would load is known in any language"
+        );
         let placed = maps.releases[0]
             .placed(Some(Locale::EsEs), &[Locale::EsEs], Some(Locale::DeDe))
             .unwrap();

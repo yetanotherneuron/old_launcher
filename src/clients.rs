@@ -180,6 +180,9 @@ pub enum Instruction {
         /// saving.
         edited: bool,
     },
+    /// A mod was installed in the client at this folder, removed or
+    /// repaired: its patches changed with it.
+    Changed(PathBuf),
 }
 
 impl State {
@@ -587,7 +590,10 @@ impl State {
                 match action.instruction {
                     Some(mods::Instruction::Changed(root)) => {
                         let read = self.changed(&root, current);
-                        Action::task(Task::batch([task, read]))
+                        Action {
+                            instruction: Some(Instruction::Changed(root)),
+                            task: Task::batch([task, read]),
+                        }
                     }
                     None => Action::task(task),
                 }
@@ -759,7 +765,13 @@ impl State {
 
             container(
                 column![
-                    fact("Folder", root.display().to_string()),
+                    labelled(
+                        "Folder",
+                        text(root.display().to_string())
+                            .size(14)
+                            .wrapping(text::Wrapping::WordOrGlyph)
+                            .selectable(true),
+                    ),
                     installation
                         .map(|installation| fact("Version", installation.version().to_string())),
                     self.torrent(torrent, downloading),
@@ -846,7 +858,7 @@ impl State {
 
         container(column![title, body].spacing(14))
             .padding(24)
-            .width(Fill.max(620))
+            .width(Fill.max(760))
             .style(style::card)
     }
 
