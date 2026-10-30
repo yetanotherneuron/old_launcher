@@ -32,11 +32,15 @@
 //! **The gate.** A [`Change`] says which archives leave and which come, and
 //! [`Graph::gate`] simulates it, putting each archive that comes at the slot
 //! its path gives it. It finds:
-//! - **breaks**: a need met before and unmet after, of a file that wins
-//!   after the change (and before it, if it is not the change's own), from a
-//!   custom archive or from one of the change's. Needs unmet already are not
-//!   breaks, and neither are Blizzard's. The check is per file, so a new
-//!   archive that provides what the old one did breaks nothing;
+//! - **breaks**: a need met before and unmet after, of a file of a custom
+//!   archive that wins both before and after the change. Needs unmet already
+//!   are not breaks, and neither are Blizzard's or the change's own. The
+//!   check is per file, so a new archive that provides what the old one did
+//!   breaks nothing. The needs of the files that stay are resolved once,
+//!   against the scene before the change, so a mod that brings only a table
+//!   that moves where a surviving table's names resolve (a lone
+//!   `CreatureModelData`, say, for a custom `CreatureDisplayInfo`'s
+//!   textures) isn't seen;
 //! - **overrides**: files of the change's archives that win after the change
 //!   where a custom archive's file won before (and stays);
 //! - **overridden**: files of the change's archives that lose to another
@@ -188,11 +192,8 @@ pub struct Presence {
 /// A need that a change would leave unmet.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Break {
-    /// The archive whose file needs, as the folder spells it, or the
-    /// change's path if it is the change's own.
+    /// The archive whose file needs, as the folder spells it.
     pub archive: String,
-    /// Whether that archive is one the change brings.
-    pub in_change: bool,
     /// The file that needs.
     pub file: Named,
     /// What it needs, and the change takes away.
@@ -922,42 +923,11 @@ impl Graph {
                 need.needs = self.named(met, None, &more, None);
                 gate.breaks.push(Break {
                     archive: need.archive,
-                    in_change: false,
                     file: need.file,
                     needs: need.needs,
                     was_provided_by: path,
                 });
             }
-        }
-
-        // The needs of the change's own files.
-        let own = resolve(&after, |layer| {
-            after
-                .layers
-                .get(layer)
-                .is_some_and(|ground| ground.added && ground.custom)
-        });
-
-        for entry in own.iter().filter(|entry| !entry.met) {
-            let was = entry.want.keys().iter().find_map(|key| {
-                let at = before.winner(*key)?;
-
-                Some((*key, self.layers.get(at)?.path.clone()))
-            });
-            let Some((met, path)) = was else {
-                continue;
-            };
-            let Some(ground) = after.layers.get(entry.layer) else {
-                continue;
-            };
-
-            gate.breaks.push(Break {
-                archive: ground.path.to_owned(),
-                in_change: true,
-                file: self.named(entry.file, entry.table, &more, Some(entry.kind)),
-                needs: self.named(met, None, &more, None),
-                was_provided_by: path,
-            });
         }
 
         // Overrides and overridden: of the game's files, not the archives'
@@ -1318,18 +1288,16 @@ mod tests {
             vec!["World\\Changed.m2", "World\\New.m2"]
         );
 
-        // And installing one that overrides what another archive had
-        // breaks it: only the rows that are new count.
+        // Installing one that names what the archive it takes the place of
+        // had is no break: its own gaps are not told.
         let (_dir, graph) = scanned(&[
             blizzards_objects(),
             ("Data/patch-H.MPQ", archive(&[("World\\New.m2", m2(0))])),
         ]);
         let table = objects_in(&[(1, "World\\Dead.mdx"), (3, "World\\New.mdx")]);
         let (change, facts) = changing(&["Data/patch-H.MPQ"], &[("Data/patch-Y.mpq", &table)]);
-        let gate = graph.gate(&change, &facts);
 
-        assert_eq!(gate.breaks.len(), 1, "{gate:?}");
-        assert_eq!(gate.breaks[0].needs.name.as_deref(), Some("World\\New.m2"));
+        assert_eq!(graph.gate(&change, &facts).breaks, Vec::new());
     }
 
     #[test]
@@ -1436,7 +1404,6 @@ mod tests {
 
         assert_eq!(gate.breaks.len(), 1, "{gate:?}");
         assert_eq!(gate.breaks[0].archive, "Data/patch-G.mpq");
-        assert!(!gate.breaks[0].in_change);
         assert_eq!(gate.breaks[0].file.kind, Kind::Models);
         assert_eq!(
             gate.breaks[0].file.name.as_deref(),
@@ -1457,22 +1424,12 @@ mod tests {
     }
 
     #[test]
-    fn an_install_whose_own_tables_need_what_it_removes_is_a_break() {
+    fn an_install_whose_own_tables_need_what_it_removes_is_no_break() {
         let (_dir, graph) = scanned(&[("Data/patch-F.mpq", gives_foo())]);
         let y = wants_foo();
         let (change, facts) = changing(&["Data/patch-F.mpq"], &[("Data/patch-y.mpq", &y)]);
-        let gate = graph.gate(&change, &facts);
 
-        assert_eq!(gate.breaks.len(), 1, "{gate:?}");
-        assert_eq!(gate.breaks[0].archive, "Data/patch-y.mpq");
-        assert!(gate.breaks[0].in_change);
-        assert_eq!(gate.breaks[0].file.kind, Kind::Tables);
-        assert_eq!(
-            gate.breaks[0].file.name.as_deref(),
-            Some("DBFilesClient\\GameObjectDisplayInfo.dbc")
-        );
-        assert_eq!(gate.breaks[0].needs.name.as_deref(), Some("World\\Foo.m2"));
-        assert_eq!(gate.breaks[0].was_provided_by, "Data/patch-F.mpq");
+        assert_eq!(graph.gate(&change, &facts).breaks, Vec::new());
 
         // Keeping it, the same release breaks nothing.
         let (change, facts) = changing(&[], &[("Data/patch-y.mpq", &y)]);

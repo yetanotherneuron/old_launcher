@@ -45,11 +45,11 @@ use iced::{Center, Element, Function, Task, Widget};
 use sha2::{Digest, Sha256};
 
 use crate::activity::activity;
-use crate::core::mods::{Mods, Problem, Status};
-use crate::core::mpq::{Key, key};
+use crate::core::mods::{self, Mods, Problem, Status};
+use crate::core::mpq::Key;
 use crate::core::patches::facts::{Entry, Opened, Source};
 use crate::core::patches::order::{Reason, order_with};
-use crate::core::patches::{Cache, Facts, Graph, Kind, Layer, Order, strip};
+use crate::core::patches::{Cache, Facts, Graph, Kind, Layer, Order, is_blizzard, strip};
 use crate::core::{Error, Locale};
 use crate::errors::Errors;
 use crate::{blocking, describe, style};
@@ -234,7 +234,12 @@ impl Findings {
                 .insert(unmet.kind);
         }
         for ((archive, instead), (kinds, reason)) in grouped {
-            let kinds = list(&kinds.into_iter().map(kind).collect::<Vec<_>>());
+            let kinds = list(
+                &kinds
+                    .into_iter()
+                    .map(|k| words(k).1.to_owned())
+                    .collect::<Vec<_>>(),
+            );
             let who = match owner(&archive.to_ascii_lowercase()) {
                 Some(name) => format!("The {kinds} of “{name}”"),
                 None => format!("Your custom {archive}'s {kinds}"),
@@ -267,9 +272,10 @@ impl Findings {
 }
 
 /// What is wrong with the files of the mods in `list` that `held` says a
-/// client folder holds, a line each: those that are missing or not as
-/// released, which Repair puts back.
-pub fn mods_lines(mods: &Mods, held: &BTreeMap<String, Status>) -> Vec<String> {
+/// client folder at `root` holds, a line each: those that are missing or not
+/// as released, which Repair puts back, the ones that are there spelled as
+/// they are.
+pub fn mods_lines(root: &Path, mods: &Mods, held: &BTreeMap<String, Status>) -> Vec<String> {
     let mut lines = Vec::new();
 
     for listed in &mods.mods {
@@ -278,8 +284,14 @@ pub fn mods_lines(mods: &Mods, held: &BTreeMap<String, Status>) -> Vec<String> {
         };
         for problem in &status.problems {
             let (files, what) = match problem {
-                Problem::Missing(files) => (files, "missing"),
-                Problem::Changed(files) => (files, "not as released"),
+                Problem::Missing(files) => (files.clone(), "missing"),
+                Problem::Changed(files) => (
+                    files
+                        .iter()
+                        .map(|path| mods::spelled(root, path))
+                        .collect::<Vec<_>>(),
+                    "not as released",
+                ),
                 _ => continue,
             };
             // The first few are named.
@@ -315,18 +327,18 @@ fn list(names: &[String]) -> String {
     }
 }
 
-/// How a message calls the files of a kind.
-fn kind(kind: Kind) -> String {
+/// How a message calls the files of a kind, in the singular and in the
+/// plural: "model", "models".
+pub fn words(kind: Kind) -> (&'static str, &'static str) {
     match kind {
-        Kind::Tables => "tables",
-        Kind::Models => "models",
-        Kind::Textures => "textures",
-        Kind::Sounds => "sounds",
-        Kind::Interface => "interface",
-        Kind::World => "world",
-        Kind::Other => "files",
+        Kind::Tables => ("table", "tables"),
+        Kind::Models => ("model", "models"),
+        Kind::Textures => ("texture", "textures"),
+        Kind::Sounds => ("sound", "sounds"),
+        Kind::Interface => ("interface file", "interface files"),
+        Kind::World => ("world file", "world files"),
+        Kind::Other => ("file", "files"),
     }
-    .to_owned()
 }
 
 /// The archive that `aside`, a backup or a switched off archive, was before:
@@ -549,16 +561,9 @@ impl State {
     }
 
     /// What the client folder at `root`'s archives add up to.
-    #[allow(dead_code, reason = "the install gate reads it")]
+    #[cfg(test)]
     pub fn graph(&self, root: &Path) -> Option<&Graph> {
         self.scan(root).map(|scan| &scan.graph)
-    }
-
-    /// The order the game loads the archives of the client folder at `root`
-    /// in.
-    #[allow(dead_code, reason = "the install gate reads it")]
-    pub fn order(&self, root: &Path) -> Option<&Order> {
-        self.scan(root).map(|scan| &scan.order)
     }
 
     /// What is amiss with the patches of the client folder at `root`, in the
@@ -645,20 +650,26 @@ pub fn look(
     // apart by the language alone: Blizzard's archives are stripped by it.
     let kept_as = locale.code();
     let mut kept = BTreeMap::new();
+    // The ones that had to be opened, to read them without opening them
+    // again.
+    let mut opened: BTreeMap<String, Opened> = BTreeMap::new();
     let order = order_with(root, locale, |full| {
         let path = relative(root, full);
 
-        // One that is kept opened once; nothing reads it again.
-        if let Some(path) = path
-            && let Some(facts) = cache.archive(root, &path, kept_as)
+        // One that is kept needs no opening.
+        if let Some(path) = &path
+            && let Some(facts) = cache.archive(root, path, kept_as)
         {
-            let _ = kept.insert(path, facts);
+            let _ = kept.insert(path.clone(), facts);
             return Ok(());
         }
 
-        Opened::open(full)
-            .map(drop)
-            .map_err(|error| describe(&error))
+        let archive = Opened::open(full).map_err(|error| describe(&error))?;
+        if let Some(path) = path {
+            let _ = opened.insert(path, archive);
+        }
+
+        Ok(())
     });
 
     let paths: Vec<(u32, String)> = order
@@ -690,7 +701,7 @@ pub fn look(
 
     let mut facts: BTreeMap<String, Facts> = BTreeMap::new();
     let mut unreadable = Vec::new();
-    let mut deferred = Vec::new();
+    let mut deferred: Vec<(String, Opened)> = Vec::new();
 
     // First round.
     for (_, path) in &paths {
@@ -701,8 +712,13 @@ pub fn look(
             continue;
         }
 
-        match Opened::open(&root.join(path)) {
-            Ok(opened) if !has_listfile(&opened) => deferred.push(path.clone()),
+        let archive = match opened.remove(path) {
+            Some(archive) => Ok(archive),
+            None => Opened::open(&root.join(path)),
+        };
+
+        match archive {
+            Ok(opened) if !opened.has("(listfile)") => deferred.push((path.clone(), opened)),
             Ok(opened) => {
                 begin(path);
                 let mut read = false;
@@ -744,15 +760,15 @@ pub fn look(
         let tag = format!("{kept_as}:{}", digest(&pool));
         let mut known: Option<Vec<String>> = None;
 
-        for path in &deferred {
-            begin(path);
+        for (path, archive) in deferred {
+            begin(&path);
             let mut read = false;
-            let done = cache.of_archive(root, path, &tag, || {
+            let done = cache.of_archive(root, &path, &tag, || {
                 read = true;
                 let known = known.get_or_insert_with(|| names_of(&facts));
-                Opened::open(&root.join(path)).map(|opened| compute(path, &opened, known))
+                Ok(compute(&path, &archive, known))
             });
-            finish(path, done, read, &say, &mut facts, &mut unreadable);
+            finish(&path, done, read, &say, &mut facts, &mut unreadable);
         }
 
         // The ones aside, through the same cache, saying nothing of how it
@@ -775,7 +791,7 @@ pub fn look(
             };
             // One without a list of its files is named by the others, and
             // kept under their names.
-            let (under, names) = if has_listfile(&opened) {
+            let (under, names) = if opened.has("(listfile)") {
                 (kept_as, &[][..])
             } else {
                 (
@@ -790,6 +806,16 @@ pub fn look(
                 Ok(own) => kept_aside.push((path, own)),
                 Err(error) => log::debug!("Can't keep {path}, aside: {}", describe(&error)),
             }
+        }
+    }
+
+    // Blizzard's names were for the pool alone: nothing tells them, and they
+    // are most of what the graph would hold.
+    for (_, path) in &paths {
+        if is_blizzard(path, locale)
+            && let Some(held) = facts.get_mut(path)
+        {
+            held.names = BTreeMap::new();
         }
     }
 
@@ -920,16 +946,6 @@ fn finish(
             say(path, Step::Ended(How::Unreadable));
         }
     }
-}
-
-/// Whether `archive` lists its files.
-fn has_listfile(archive: &Opened) -> bool {
-    let listfile = key("(listfile)");
-
-    archive
-        .entries()
-        .iter()
-        .any(|entry| entry.key == listfile && !entry.deleted)
 }
 
 /// A digest of the names `pool` holds the hashes of.
@@ -1082,6 +1098,7 @@ mod tests {
     use iced_test::simulator;
 
     use super::*;
+    use crate::core::mpq::key;
     use crate::core::mpq::writer::{Options, Writer};
 
     /// An archive holding `files`, each one byte, with a list of them.

@@ -576,8 +576,13 @@ impl App {
                         Task::batch([task, start.map(Message::Download)])
                     }
                     Some(clients::Instruction::Adopt { root, source }) => {
+                        let findings = self.patches.findings(&root);
                         let start = self.download.start(
-                            download::Request::Adopt { root, source },
+                            download::Request::Adopt {
+                                root,
+                                source,
+                                findings,
+                            },
                             &self.config,
                             self.client.as_ref().map_err(String::as_str),
                         );

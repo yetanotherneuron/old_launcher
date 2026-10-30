@@ -25,7 +25,7 @@ use crate::core::mods::{self, Mod, Mods, Release, Status};
 use crate::core::mpq::{Key, key};
 use crate::core::patches::graph::{Break, Named};
 use crate::core::patches::{Cache, Change, Facts, Gate, Graph, Kind, is_blizzard};
-use crate::patches::Scan;
+use crate::patches::{Scan, words};
 
 /// How many files or archives a sentence names before "and N more".
 const FEW: usize = 4;
@@ -176,15 +176,7 @@ fn few(items: &[String]) -> String {
 
 /// `number` files of `kind`: "1 model", "40 textures".
 fn count(number: usize, kind: Kind) -> String {
-    let (one, many) = match kind {
-        Kind::Tables => ("table", "tables"),
-        Kind::Models => ("model", "models"),
-        Kind::Textures => ("texture", "textures"),
-        Kind::Sounds => ("sound", "sounds"),
-        Kind::Interface => ("interface file", "interface files"),
-        Kind::World => ("world file", "world files"),
-        Kind::Other => ("file", "files"),
-    };
+    let (one, many) = words(kind);
 
     format!("{number} {}", if number == 1 { one } else { many })
 }
@@ -195,34 +187,21 @@ fn kinds(kinds: &BTreeSet<Kind>) -> String {
     let words: Vec<String> = ORDER
         .iter()
         .filter(|kind| kinds.contains(kind))
-        .map(|kind| {
-            match kind {
-                Kind::Tables => "tables",
-                Kind::Models => "models",
-                Kind::Textures => "textures",
-                Kind::Sounds => "sounds",
-                Kind::Interface => "interface",
-                Kind::World => "world",
-                Kind::Other => "files",
-            }
-            .to_owned()
-        })
+        .map(|kind| words(*kind).1.to_owned())
         .collect();
 
     names(&words)
 }
 
 /// What breaks, a sentence for each archive whose files would lose what they
-/// need, and for each set of kinds of file that need the same archives. The
-/// release's own archives are left out: what they name that the install
-/// replaces is the player's to know from the files it backs up, not a block.
+/// need, and for each set of kinds of file that need the same archives.
 fn breaks(breaks: &[Break], owners: &Owners, listed: &Mod) -> Vec<String> {
     // By the archive that needs, then by what it needs (and whether it is
     // the mod's own), with the kinds of the files that do.
     type Needs = BTreeMap<String, BTreeMap<(bool, String), BTreeSet<Kind>>>;
     let mut needs: Needs = BTreeMap::new();
 
-    for lost in breaks.iter().filter(|lost| !lost.in_change) {
+    for lost in breaks {
         // What the mod brings now and the new release doesn't: an archive
         // of the mod as installed. A file of something else where the
         // release goes is the player's, whatever its name.
@@ -307,12 +286,6 @@ fn overlaps(
     said
 }
 
-/// What `gate`, the simulation of installing the release of `listed` in the
-/// client folder at `root`, says.
-fn install_of(gate: &Gate, root: &Path, list: &Mods, listed: &Mod) -> Install {
-    sentences(gate, &Owners::of(list, root), listed)
-}
-
 /// What `gate`, the simulation of installing a release of `listed`, says,
 /// the archives belonging to `owners`.
 fn sentences(gate: &Gate, owners: &Owners, listed: &Mod) -> Install {
@@ -361,7 +334,6 @@ fn sentences(gate: &Gate, owners: &Owners, listed: &Mod) -> Install {
     let archives: BTreeSet<&str> = gate
         .breaks
         .iter()
-        .filter(|lost| !lost.in_change)
         .map(|lost| lost.archive.as_str())
         .collect();
 
@@ -389,17 +361,35 @@ pub fn install_in(
     graph: &Graph,
     facts: &BTreeMap<String, Facts>,
 ) -> Option<Install> {
+    install_with(&Owners::of(list, root), listed, change, graph, facts)
+}
+
+/// [`install_in`], the archives belonging to `owners`.
+fn install_with(
+    owners: &Owners,
+    listed: &Mod,
+    change: &Change,
+    graph: &Graph,
+    facts: &BTreeMap<String, Facts>,
+) -> Option<Install> {
     if change.adds.is_empty() {
         return None;
     }
 
-    Some(install_of(&graph.gate(change, facts), root, list, listed))
+    Some(sentences(&graph.gate(change, facts), owners, listed))
 }
 
 /// What installing `release` of `listed` over the client folder at `root`
-/// changes there (see [`mods::change`]).
-pub fn change_of(root: &Path, list: &Mods, listed: &Mod, release: &Release) -> Change {
-    mods::change(root, listed, release, &list.alternatives(listed))
+/// changes there, the languages it lacks being those of `instead` (see
+/// [`mods::change`]).
+pub fn change_of(
+    root: &Path,
+    list: &Mods,
+    listed: &Mod,
+    release: &Release,
+    instead: Option<Locale>,
+) -> Change {
+    mods::change(root, listed, release, &list.alternatives(listed), instead)
 }
 
 /// What overrides the archives `listed` has installed in the client folder
@@ -407,7 +397,7 @@ pub fn change_of(root: &Path, list: &Mods, listed: &Mod, release: &Release) -> C
 /// `cache`: "Data/patch-w.mpq overrides the tables it brings: …".
 fn installed_of(
     root: &Path,
-    list: &Mods,
+    owners: &Owners,
     listed: &Mod,
     graph: &Graph,
     locale: Locale,
@@ -422,7 +412,6 @@ fn installed_of(
         .into_iter()
         .map(key)
         .collect();
-    let owners = Owners::of(list, root);
     let mut winners: BTreeMap<String, Files> = BTreeMap::new();
     let mut seen = BTreeSet::new();
 
@@ -472,16 +461,19 @@ fn installed_of(
 /// What the client folder at `root`, whose mods are `found`, says of every
 /// mod of `list` with archives, from `scan`'s graph and what `cache` knows
 /// of their archives: for the newest release, once all its archives are
-/// known, and for what is installed. Mods without archives have no entry.
+/// known, and for what is installed, the languages a mod lacks being those
+/// `instead` has for it by id. Mods without archives have no entry.
 pub fn judge(
     root: &Path,
     list: &Mods,
     found: &BTreeMap<String, Status>,
     scan: &Scan,
     locale: Locale,
+    instead: &BTreeMap<String, Locale>,
     cache: &Cache,
 ) -> BTreeMap<String, Verdict> {
     let mut verdicts = BTreeMap::new();
+    let owners = Owners::of(list, root);
 
     for listed in &list.mods {
         let Some(newest) = listed.newest().filter(|release| has_archives(release)) else {
@@ -498,7 +490,7 @@ pub fn judge(
         let mut verdict = Verdict::default();
 
         if installable {
-            let change = change_of(root, list, listed, newest);
+            let change = change_of(root, list, listed, newest, instead.get(&listed.id).copied());
             let facts: Option<BTreeMap<String, Facts>> = change
                 .adds
                 .iter()
@@ -506,11 +498,11 @@ pub fn judge(
                 .map(|(_, sum)| Some((sum.clone(), cache.release(sum)?)))
                 .collect();
 
-            verdict.install = facts
-                .and_then(|facts| install_in(root, list, listed, &change, &scan.graph, &facts));
+            verdict.install =
+                facts.and_then(|facts| install_with(&owners, listed, &change, &scan.graph, &facts));
         }
         if status.is_some() {
-            verdict.installed = installed_of(root, list, listed, &scan.graph, locale, cache);
+            verdict.installed = installed_of(root, &owners, listed, &scan.graph, locale, cache);
         }
 
         if verdict.install.is_some() || !verdict.installed.is_empty() {
@@ -577,10 +569,9 @@ mod tests {
         }
     }
 
-    fn lost(archive: &str, file: &str, needs: &str, by: &str, in_change: bool) -> Break {
+    fn lost(archive: &str, file: &str, needs: &str, by: &str) -> Break {
         Break {
             archive: archive.to_owned(),
-            in_change,
             file: named(file),
             needs: named(needs),
             was_provided_by: by.to_owned(),
@@ -601,34 +592,10 @@ mod tests {
         let table = "DBFilesClient\\T.dbc";
         let gate = Gate {
             breaks: vec![
-                lost(
-                    "Data/patch-G.mpq",
-                    "a.m2",
-                    "a00.skin",
-                    "Data/patch-F.mpq",
-                    false,
-                ),
-                lost(
-                    "Data/patch-G.mpq",
-                    table,
-                    "b.blp",
-                    "Data/patch-F.mpq",
-                    false,
-                ),
-                lost(
-                    "Data/patch-G.mpq",
-                    "a.m2",
-                    "c00.skin",
-                    "Data/patch-E.mpq",
-                    false,
-                ),
-                lost(
-                    "Data/patch-G.mpq",
-                    table,
-                    "d.blp",
-                    "Data/patch-E.mpq",
-                    false,
-                ),
+                lost("Data/patch-G.mpq", "a.m2", "a00.skin", "Data/patch-F.mpq"),
+                lost("Data/patch-G.mpq", table, "b.blp", "Data/patch-F.mpq"),
+                lost("Data/patch-G.mpq", "a.m2", "c00.skin", "Data/patch-E.mpq"),
+                lost("Data/patch-G.mpq", table, "d.blp", "Data/patch-E.mpq"),
             ],
             ..Gate::default()
         };
@@ -647,7 +614,6 @@ mod tests {
                 "a.m2",
                 "a00.skin",
                 "Data/patch-F.mpq",
-                false,
             )],
             ..Gate::default()
         };
@@ -662,8 +628,7 @@ mod tests {
 
     #[test]
     fn a_block_says_in_short_how_many_patches_would_break() {
-        let one =
-            |archive: &str, file: &str| lost(archive, file, "a00.skin", "Data/patch-F.mpq", false);
+        let one = |archive: &str, file: &str| lost(archive, file, "a00.skin", "Data/patch-F.mpq");
         let short = |breaks: Vec<Break>| {
             let gate = Gate {
                 breaks,
@@ -701,26 +666,15 @@ mod tests {
             &[("dungeon-maps", "Dungeon Maps")],
         );
         let gate = Gate {
-            breaks: vec![
-                lost(
-                    "Data/enUS/patch-enUS-M.MPQ",
-                    "DBFilesClient\\DungeonMap.dbc",
-                    "x.blp",
-                    "Data/patch-F.mpq",
-                    false,
-                ),
-                lost(
-                    "Data/patch-y.mpq",
-                    "DBFilesClient\\CreatureDisplayInfo.dbc",
-                    "y.blp",
-                    "Data/patch-F.mpq",
-                    true,
-                ),
-            ],
+            breaks: vec![lost(
+                "Data/enUS/patch-enUS-M.MPQ",
+                "DBFilesClient\\DungeonMap.dbc",
+                "x.blp",
+                "Data/patch-F.mpq",
+            )],
             ..Gate::default()
         };
 
-        // The other mod's break blocks; the release's own is not told.
         let install = sentences(&gate, &owned, &patch_y());
         assert_eq!(
             details(&install),
@@ -744,7 +698,6 @@ mod tests {
                 "DBFilesClient\\CreatureDisplayInfo.dbc",
                 "y.blp",
                 "Data/patch-y.mpq",
-                false,
             )],
             ..Gate::default()
         };
@@ -761,20 +714,14 @@ mod tests {
     #[test]
     fn a_mods_own_gaps_neither_block_nor_ask() {
         // Its tables name what the file of something else where it goes
-        // has, and the install sets that file aside.
+        // has, and the install sets that file aside: the simulation finds
+        // no break in it, and nothing is told.
         let owned = owners(&[], &[("patch-y", "Patch Y")]);
-        let gate = Gate {
-            breaks: vec![lost(
-                "Data/patch-Y.mpq",
-                "DBFilesClient\\SpellVisualEffectName.dbc",
-                "Particles\\Shadow_Fizzle_Hand.m2",
-                "Data/patch-Y.mpq",
-                true,
-            )],
-            ..Gate::default()
-        };
 
-        assert_eq!(sentences(&gate, &owned, &patch_y()), Install::default());
+        assert_eq!(
+            sentences(&Gate::default(), &owned, &patch_y()),
+            Install::default()
+        );
     }
 
     #[test]

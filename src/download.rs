@@ -114,8 +114,13 @@ pub enum Request {
     /// its torrent, to repair those missing or changed, if it has one.
     Check(PathBuf, Option<Findings>),
     /// Check the client at `root` against the torrent of `source` from now
-    /// on, and now.
-    Adopt { root: PathBuf, source: Source },
+    /// on, and now, as [`Request::Check`] does, `findings` being what is
+    /// amiss with its patches.
+    Adopt {
+        root: PathBuf,
+        source: Source,
+        findings: Option<Findings>,
+    },
     /// Download languages of its torrent into the client at `root`, or
     /// delete its own: it has `locales`, and its game plays in `locale`.
     Languages {
@@ -154,10 +159,18 @@ struct Job {
     /// What a check found amiss with the client's patches and mods, a line
     /// each: none if they couldn't be looked at.
     patches: Option<Vec<String>>,
-    /// What a check waits to put in `patches` once it has read the files of
-    /// the mods, and how to fetch the torrent after.
-    verifying: Option<(Option<Findings>, Result<reqwest::Client, String>)>,
+    /// What a check waits for once it has read the files of the mods.
+    verifying: Option<Waiting>,
 }
+
+/// What a check does once it has read the files of the mods: what to put in
+/// `patches`, how to fetch the torrent after, and the torrent to check
+/// against from now on, if it was just set.
+type Waiting = (
+    Option<Findings>,
+    Result<reqwest::Client, String>,
+    Option<Source>,
+);
 
 #[derive(Debug, Clone)]
 enum Kind {
@@ -438,36 +451,12 @@ impl State {
             Request::Check(root, findings) => {
                 let saved = config.torrents.get(&root).cloned();
 
-                // The files of the mods installed are read first, all of
-                // them: a look only reads those that changed.
-                if !self.mods.mods.is_empty() {
-                    log::info!("Reading the files of the mods in {}", root.display());
-                    let _ = self.checked.remove(&root);
-                    let read = Arc::new(AtomicU64::new(0));
-                    let total = Arc::new(AtomicU64::new(0));
-                    let task = Task::perform(
-                        blocking({
-                            let (root, mods) = (root.clone(), self.mods.clone());
-                            let (read, total) = (read.clone(), total.clone());
-                            move || {
-                                total.store(clients_mods::weight(&root, &mods), Ordering::Relaxed);
-                                Ok(clients_mods::verify(&root, &mods, &mut |bytes| {
-                                    let _ = read.fetch_add(bytes, Ordering::Relaxed);
-                                }))
-                            }
-                        }),
-                        Message::Verified.with(id),
-                    );
-                    self.job = Some(Job {
-                        verifying: Some((findings, client)),
-                        ..Job::new(
-                            id,
-                            Kind::Check,
-                            saved,
-                            Some(root),
-                            Stage::Verifying { read, total },
-                        )
-                    });
+                if let Some(task) = self.verify_mods(
+                    id,
+                    &root,
+                    saved.clone(),
+                    (findings.clone(), client.clone(), None),
+                ) {
                     return task;
                 }
 
@@ -498,7 +487,21 @@ impl State {
                 );
                 (Kind::Check, Some(saved), Some(root), task)
             }
-            Request::Adopt { root, source } => {
+            Request::Adopt {
+                root,
+                source,
+                findings,
+            } => {
+                if let Some(task) = self.verify_mods(
+                    id,
+                    &root,
+                    None,
+                    (findings.clone(), client.clone(), Some(source.clone())),
+                ) {
+                    return task;
+                }
+
+                patches = self.checked_lines(&root, findings, Vec::new());
                 log::info!(
                     "Finding the torrent of {source}, to check {} against",
                     root.display()
@@ -561,6 +564,52 @@ impl State {
         });
 
         task
+    }
+
+    /// Starts reading the files of the mods installed in the client at
+    /// `root`, all of them (a look only reads those that changed), for the
+    /// check the job `id` does against its `saved` torrent, with what is
+    /// `waiting` for it. None when there are no mods to read.
+    fn verify_mods(
+        &mut self,
+        id: u64,
+        root: &Path,
+        saved: Option<ClientTorrent>,
+        waiting: Waiting,
+    ) -> Option<Task<Message>> {
+        if self.mods.mods.is_empty() {
+            return None;
+        }
+
+        log::info!("Reading the files of the mods in {}", root.display());
+        let _ = self.checked.remove(root);
+        let read = Arc::new(AtomicU64::new(0));
+        let total = Arc::new(AtomicU64::new(0));
+        let task = Task::perform(
+            blocking({
+                let (root, mods) = (root.to_path_buf(), self.mods.clone());
+                let (read, total) = (read.clone(), total.clone());
+                move || {
+                    total.store(clients_mods::weight(&root, &mods), Ordering::Relaxed);
+                    Ok(clients_mods::verify(&root, &mods, &mut |bytes| {
+                        let _ = read.fetch_add(bytes, Ordering::Relaxed);
+                    }))
+                }
+            }),
+            Message::Verified.with(id),
+        );
+        self.job = Some(Job {
+            verifying: Some(waiting),
+            ..Job::new(
+                id,
+                Kind::Check,
+                saved,
+                Some(root.to_path_buf()),
+                Stage::Verifying { read, total },
+            )
+        });
+
+        Some(task)
     }
 
     /// What `findings` about the patches of the client at `root` say, with
@@ -1121,7 +1170,7 @@ impl State {
                         _ => Action::none(),
                     };
                 }
-                let (Some((findings, client)), Some(root)) =
+                let (Some((findings, client, adopting)), Some(root)) =
                     (job.verifying.take(), job.root.clone())
                 else {
                     return Action::none();
@@ -1135,7 +1184,7 @@ impl State {
                     }
                 };
 
-                let mods = mods_lines(&self.mods, &seen.held);
+                let mods = mods_lines(&root, &self.mods, &seen.held);
                 let lines = self.checked_lines(&root, findings, mods);
                 let Some(job) = &mut self.job else {
                     return Action::none();
@@ -1143,6 +1192,31 @@ impl State {
                 let saved = job.saved.clone();
                 job.patches = lines;
                 let verified = Some(Instruction::Verified(root.clone(), seen));
+
+                // A torrent just set is found, to be kept and checked.
+                if let Some(source) = adopting {
+                    log::info!(
+                        "Finding the torrent of {source}, to check {} against",
+                        root.display()
+                    );
+                    job.stage = Stage::Finding;
+                    let task = Task::perform(
+                        find_given(
+                            source,
+                            root,
+                            self.store.clone(),
+                            self.engine.clone(),
+                            client,
+                            self.peers.clone(),
+                        ),
+                        Message::Found.with(id),
+                    );
+
+                    return Action {
+                        instruction: verified,
+                        task,
+                    };
+                }
 
                 // Without a torrent, that is all there is to check.
                 let Some(saved) = saved else {
@@ -4664,6 +4738,7 @@ mod tests {
             Request::Adopt {
                 root: root.clone(),
                 source: Source::File(path.clone()),
+                findings: None,
             },
             &config,
             Err("offline"),
@@ -4735,6 +4810,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn setting_a_torrent_then_checking_says_the_same_about_patches_and_mods_as_the_check() {
+        let (_dir, root, _) = client_with_problems();
+        fs::write(
+            root.join(".old_launcher.toml"),
+            "[mods.maps]\nversion = \"1.0\"\nurl = \"https://example.com/maps.zip\"\nset_up = true\n",
+        )
+        .unwrap();
+        let list = Mods::parse(
+            format!(
+                r#"{{"version":{},"mods":[{{"id":"maps","name":"Maps",
+                "source":{{"name":"x","page":"https://example.com"}},
+                "releases":[{{"version":"1.0","url":"https://example.com/maps.zip",
+                "files":[["Data/maps.mpq","{}"]]}}]}}]}}"#,
+                Mods::VERSION,
+                "0".repeat(64)
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let config = Config {
+            installations: vec![root.clone()],
+            ..Config::default()
+        };
+        let checked = |request: Request| {
+            let mut state = State::new(PathBuf::new());
+            state.mods(list.clone());
+
+            let _ = state.start(request, &config, Err("offline"));
+            // The files of the mods are read first.
+            assert!(matches!(job(&state).stage, Stage::Verifying { .. }));
+            let seen = crate::clients::mods::verify(&root, &list, &mut |_| {});
+            let verified = update(&mut state, Message::Verified(1, Ok(seen)), &config, false);
+            assert!(matches!(verified, Some(Instruction::Verified(..))));
+
+            state
+        };
+
+        let check = checked(Request::Check(root.clone(), Some(findings_of(&root))));
+        let adopt = checked(Request::Adopt {
+            root: root.clone(),
+            source: Source::File(root.join("client.torrent")),
+            findings: Some(findings_of(&root)),
+        });
+
+        let lines = job(&check).patches.clone().unwrap();
+        assert!(lines.iter().any(|line| line.contains(BACKUP)), "{lines:?}");
+        assert!(
+            lines.iter().any(|line| line.contains("“Maps”")),
+            "{lines:?}"
+        );
+        assert_eq!(job(&adopt).patches, Some(lines));
+        assert!(matches!(job(&adopt).stage, Stage::Finding), "its torrent");
+        assert_eq!(adopt.looked, check.looked);
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn a_repair_never_puts_in_place_a_wow_exe_of_another_game() {
         let mut theirs = files();
@@ -4762,6 +4893,7 @@ mod tests {
             Request::Adopt {
                 root: root.clone(),
                 source: Source::File(path.clone()),
+                findings: None,
             },
             &config,
             Err("offline"),

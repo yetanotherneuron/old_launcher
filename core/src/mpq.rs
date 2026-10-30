@@ -675,6 +675,13 @@ impl<R: Read + Seek> Archive<R> {
         (found == key).then(|| self.entry_of(key, block)).flatten()
     }
 
+    /// Whether the archive has the file called `name`, and not just a
+    /// delete marker of it.
+    pub fn has(&self, name: &str) -> bool {
+        self.probe(name.as_bytes())
+            .is_some_and(|entry| !entry.is_delete_marker())
+    }
+
     /// Whether the archive has the file `file` names.
     pub fn contains<'a>(&mut self, file: impl Into<Target<'a>>) -> bool {
         self.entry(file).is_some()

@@ -96,6 +96,12 @@ impl<R> Opened<R> {
 }
 
 impl<R: Read + Seek> Opened<R> {
+    /// Whether the archive has the file called `name`, and not just a
+    /// delete marker of it.
+    pub fn has(&self, name: &str) -> bool {
+        self.0.try_borrow().is_ok_and(|archive| archive.has(name))
+    }
+
     /// The names the archive's `(listfile)` gives, if it has one.
     pub fn listfile(&self) -> Result<Option<Vec<String>>, Error> {
         match self.0.try_borrow_mut() {

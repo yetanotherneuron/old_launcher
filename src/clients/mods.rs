@@ -433,7 +433,9 @@ impl State {
             return Task::none();
         }
 
-        let _ = self.gates.remove(root);
+        // Only the client shown keeps its patches' graph; the rest is let go.
+        self.gates.retain(|held, _| held == root);
+        self.scans.retain(|held, _| held == root);
         match scan {
             Some(scan) => {
                 let _ = self.scans.insert(root.to_path_buf(), (scan, locale));
@@ -461,6 +463,11 @@ impl State {
 
         let (scan, locale, found, facts) = (scan.clone(), *locale, found.clone(), facts.clone());
         let list = self.list.clone();
+        let instead: BTreeMap<String, Locale> = list
+            .mods
+            .iter()
+            .filter_map(|listed| Some((listed.id.clone(), self.instead(root, listed)?)))
+            .collect();
         let ticket = self.judged.entry(root.to_path_buf()).or_default();
         *ticket += 1;
         let ticket = *ticket;
@@ -469,7 +476,11 @@ impl State {
         Task::perform(
             blocking({
                 let root = root.clone();
-                move || Ok(gate::judge(&root, &list, &found, &scan, locale, &facts))
+                move || {
+                    Ok(gate::judge(
+                        &root, &list, &found, &scan, locale, &instead, &facts,
+                    ))
+                }
             }),
             move |verdicts| Message::Judged(root, ticket, verdicts.unwrap_or_default()),
         )
@@ -934,6 +945,16 @@ impl State {
                 };
                 let busy = format!("Repairing “{}”", listed.name);
                 let done = format!("“{}” is repaired.", listed.name);
+                // The release its marker names is the same as there: nothing
+                // to judge. One no longer listed is repaired with the newest.
+                let gated = current.is_some_and(|root| {
+                    let same = self
+                        .status(root, &id)
+                        .and_then(|status| status.release.as_deref())
+                        == Some(release.version.as_str());
+
+                    !same && self.unjudged(root, &listed)
+                });
 
                 self.start(
                     installation,
@@ -948,8 +969,7 @@ impl State {
                     None,
                     busy,
                     done,
-                    // The same release as there: nothing to judge.
-                    false,
+                    gated,
                 )
             }
             Message::Remove(id) => {
@@ -1044,16 +1064,11 @@ impl State {
 
                 let fetched = match result {
                     Ok(fetched) => fetched,
+                    // Nothing was touched: what is known of the client stays.
                     Err(error) => {
-                        return self.update(
-                            Message::Done(root, id, Err(error)),
-                            current,
-                            installation,
-                            config,
-                            playing,
-                            client,
-                            errors,
-                        );
+                        self.busy = None;
+                        errors.report(format!("“{}”: {error}", self.name(&id)));
+                        return Action::none();
                     }
                 };
                 self.busy = None;
@@ -2116,7 +2131,8 @@ fn fetch(
                     &facts,
                 );
                 let install = archives.map(|archives| {
-                    let change = gate::change_of(installation.root(), &list, &listed, &release);
+                    let change =
+                        gate::change_of(installation.root(), &list, &listed, &release, instead);
 
                     gate::install_in(
                         installation.root(),
@@ -3951,6 +3967,7 @@ mod tests {
                 &self.state.found[&root],
                 &scan,
                 locale,
+                &BTreeMap::new(),
                 self.state.facts.as_ref().unwrap(),
             );
 
@@ -4440,6 +4457,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repairing_a_mod_whose_installed_version_left_the_list_goes_through_the_gate() {
+        let brings = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let mut gated = Gated::new(&[], &brings, &[]).await;
+        let root = gated.root();
+
+        // It names a release that is no longer listed, so the newest goes
+        // in: another release, whose archives are looked at first.
+        let _ = gated.state.found.get_mut(&root).unwrap().insert(
+            "patch-y".to_owned(),
+            status(Some("0.9"), vec![mods::Problem::Unlisted("0.9".to_owned())]),
+        );
+        let _ = gated.go(Message::Repair("patch-y".to_owned()));
+        assert_eq!(gated.state.busy.as_ref().map(|work| work.looks), Some(true));
+
+        // The release it names, listed, is put back as it is.
+        let mut same = Gated::new(&[], &brings, &[]).await;
+        let root = same.root();
+        let _ = same.state.found.get_mut(&root).unwrap().insert(
+            "patch-y".to_owned(),
+            status(
+                Some("3.1.0"),
+                vec![mods::Problem::Missing(vec!["Data/patch-y.mpq".to_owned()])],
+            ),
+        );
+        let _ = same.go(Message::Repair("patch-y".to_owned()));
+        assert_eq!(same.state.busy.as_ref().map(|work| work.looks), Some(false));
+    }
+
+    #[tokio::test]
+    async fn only_the_last_client_patched_keeps_its_graph() {
+        let brings = archive(&[("x.txt", b"x".to_vec())]);
+        let mut gated = Gated::new(&[], &brings, &[]).await;
+        let first = gated.root();
+        let scan = gated.state.scans[&first].0.clone();
+
+        let second = PathBuf::from("/another/client");
+        let _ = gated
+            .state
+            .patched(&second, Some(scan.clone()), Locale::EnUs);
+        assert!(gated.state.scans.contains_key(&second));
+        assert!(!gated.state.scans.contains_key(&first));
+
+        let third = PathBuf::from("/yet/another");
+        let _ = gated.state.patched(&third, Some(scan), Locale::EnUs);
+        assert_eq!(
+            gated.state.scans.keys().collect::<Vec<_>>(),
+            vec![&third],
+            "only the last is kept"
+        );
+        assert!(gated.state.gates.keys().all(|held| held == &third));
+    }
+
+    #[tokio::test]
     async fn cancelling_after_the_download_keeps_it_for_next_time() {
         let g = archive_of(&tables(&["CreatureDisplayInfo"]));
         let brings = archive_of(&tables(&["CreatureDisplayInfo"]));
@@ -4547,7 +4617,7 @@ mod tests {
 
         for (rules, listed) in [("old", &then), ("current", &today)] {
             let started = std::time::Instant::now();
-            let change = gate::change_of(&root, &list, listed, &release);
+            let change = gate::change_of(&root, &list, listed, &release, None);
             let install = gate::install_in(&root, &list, listed, &change, &scan.graph, &archives)
                 .expect("it goes in the client");
 

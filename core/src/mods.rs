@@ -815,7 +815,7 @@ fn at(root: &Path, path: &str) -> PathBuf {
 
 /// `path` as it is spelled in the client folder at `root` (see [`at`]),
 /// with `/` between folders: `Data/patch-Y.mpq` for `Data/patch-y.mpq`.
-fn as_there(root: &Path, path: &str) -> String {
+pub fn spelled(root: &Path, path: &str) -> String {
     at(root, path).strip_prefix(root).map_or_else(
         |_| path.to_owned(),
         |there| {
@@ -1136,7 +1136,7 @@ fn foreign_of(
                         .any(|other| owns(root, other, path, &sum))
             })
         })
-        .map(|path| as_there(root, path))
+        .map(|path| spelled(root, path))
         .collect()
 }
 
@@ -1377,7 +1377,7 @@ pub fn excluded(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Vec<Strin
     let mut conflicting: Vec<String> = excluded
         .into_iter()
         .chain(beside)
-        .map(|path| as_there(root, &path))
+        .map(|path| spelled(root, &path))
         .collect();
     conflicting.dedup();
 
@@ -1615,14 +1615,21 @@ pub fn install_downloaded(
         };
         placed.map_err(io_at(&target))?;
     }
-    // Its files weren't read yet: the next look does.
-    game_mod.mark(
-        root,
-        release,
-        release.setup.is_empty(),
-        instead,
-        BTreeMap::new(),
-    )?;
+    // Every file was just checked against the release: noted as found, the
+    // next look reads none of them.
+    let mut stamps = BTreeMap::new();
+    for (path, _) in &release.files {
+        if game_mod.is_setting(path) {
+            continue;
+        }
+        if let Ok(metadata) = fs::metadata(at(root, path))
+            && metadata.is_file()
+            && let Some(stamp) = Stamp::of(&metadata)
+        {
+            let _ = stamps.insert(path.clone(), stamp);
+        }
+    }
+    game_mod.mark(root, release, release.setup.is_empty(), instead, stamps)?;
 
     for (name, value) in &game_mod.config {
         if config_setting(root, name).is_none_or(|set| !set.eq_ignore_ascii_case(value)) {
@@ -1782,14 +1789,17 @@ impl<'a> Plan<'a> {
 /// is in the way (see [`install_downloaded`], which does exactly this): the
 /// files placed, and those gone, which are the ones it removes, as spelled
 /// on disk, and the ones it backs up. The player's files stay. Nothing
-/// where [`install_downloaded`] fails for lack of a language.
-pub fn change(root: &Path, game_mod: &Mod, release: &Release, alternatives: &[&Mod]) -> Change {
+/// where [`install_downloaded`] fails for lack of a language. The languages
+/// the client lacks get those of `instead`, as there.
+pub fn change(
+    root: &Path,
+    game_mod: &Mod,
+    release: &Release,
+    alternatives: &[&Mod],
+    instead: Option<Locale>,
+) -> Change {
     let unmade = excluded(root, game_mod, alternatives);
-    let instead = game_mod
-        .marker(root)
-        .and_then(|marker| marker.instead)
-        .or_else(|| fallback(game_mod))
-        .filter(|_| !lacking(root, game_mod).is_empty());
+    let instead = instead_in(root, game_mod, instead);
     let (locale, locales) = languages(root);
     let (Some(game_mod), Some(release)) = (
         game_mod.placed(locale, &locales, instead),
@@ -1807,7 +1817,7 @@ pub fn change(root: &Path, game_mod: &Mod, release: &Release, alternatives: &[&M
         .iter()
         .flat_map(|(_, paths)| paths)
         .filter(|path| at(root, path).exists())
-        .map(|path| as_there(root, path));
+        .map(|path| spelled(root, path));
     for path in plan.backups.iter().cloned().chain(removed) {
         if !removes.contains(&path) {
             removes.push(path);
@@ -1821,7 +1831,7 @@ pub fn change(root: &Path, game_mod: &Mod, release: &Release, alternatives: &[&M
         .iter()
         .filter(|(path, _)| !(game_mod.is_setting(path) && at(root, path).exists()))
         .map(|(path, sum)| {
-            let there = as_there(root, path);
+            let there = spelled(root, path);
             let spelled = match (removes.contains(&there), path.rsplit_once('/')) {
                 (true, Some((_, name))) => match there.rsplit_once('/') {
                     Some((folder, _)) => format!("{folder}/{name}"),
@@ -1998,7 +2008,7 @@ pub fn installed_archives(root: &Path, game_mod: &Mod) -> Vec<(String, String)> 
         .files
         .iter()
         .filter(|(path, _)| is_archive(path) && at(root, path).is_file())
-        .map(|(path, sum)| (as_there(root, path), sum.clone()))
+        .map(|(path, sum)| (spelled(root, path), sum.clone()))
         .collect()
 }
 
@@ -2418,6 +2428,47 @@ mod tests {
             [Problem::Missing(vec!["Glow.dll".to_owned()])],
             "a missing file is missing, trusted or not"
         );
+    }
+
+    #[test]
+    fn an_install_notes_its_files_so_the_next_look_reads_nothing() {
+        let (game_mod, new_zip, _) = glow();
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root();
+        install(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &new_zip,
+            &[],
+            false,
+        )
+        .unwrap();
+
+        let marker = game_mod.marker(root).unwrap();
+        assert_eq!(
+            marker.files.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["Glow.dll", "Glow/setup.exe", "version.dll"],
+            "the files it placed, but the player's"
+        );
+
+        // A byte flipped under the same size and time is not looked for:
+        // nothing is read.
+        rewrite(&root.join("Glow.dll"), "renderer 3");
+        let mut read = 0;
+        let placed = game_mod.placed_in(root).unwrap();
+        let _ = status_of(
+            root,
+            &placed,
+            &[],
+            &mut Looking {
+                thorough: false,
+                note: false,
+                read: &mut |bytes| read += bytes,
+            },
+        );
+        assert_eq!(read, 0);
+        assert_eq!(game_mod.marker(root).unwrap(), marker, "nothing to note");
     }
 
     #[test]
@@ -3312,7 +3363,7 @@ mod tests {
     ) -> Change {
         let root = installation.root();
         let before = contents(root);
-        let changed = change(root, game_mod, release, alternatives);
+        let changed = change(root, game_mod, release, alternatives, None);
 
         install(
             installation,
@@ -3586,6 +3637,31 @@ mod tests {
             ),
             []
         );
+    }
+
+    #[test]
+    fn a_change_follows_the_language_the_player_picked() {
+        let (mut maps, _) = pax("maps", "maps", false);
+        maps.requires.clear();
+        maps.alternatives.clear();
+        let release = &mut maps.releases[0];
+        release.url = "https://example.com/patch-{locale}-M.MPQ".to_owned();
+        release.from.clear();
+        release.languages = [Locale::DeDe, Locale::EnUs]
+            .into_iter()
+            .map(|language| {
+                let path = "Data/{locale}/patch-{locale}-M.MPQ".to_owned();
+                (language, vec![(path, sha256(language.code().as_bytes()))])
+            })
+            .collect();
+        release.files.clear();
+        let (_root, spanish) = crate::testing::client(&["Data/esES/locale-esES.MPQ"]);
+        let root = spanish.root();
+        let adds = |instead| change(root, &maps, &maps.releases[0], &[], instead).adds;
+        let there = "Data/esES/patch-esES-M.MPQ".to_owned();
+
+        assert_eq!(adds(Some(Locale::DeDe)), [(there.clone(), sha256(b"deDE"))]);
+        assert_eq!(adds(Some(Locale::EnUs)), [(there, sha256(b"enUS"))]);
     }
 
     #[test]
