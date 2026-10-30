@@ -148,3 +148,21 @@ strip = true
 librqbit-sha1-wrapper = { path = "librqbit-sha1-wrapper" }
 iced = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
 iced_test = { git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
+
+# With thousands of fonts installed, iced froze the window for seconds the
+# first time it laid out text: it parsed every font file to learn which
+# fonts there are, and its text engine opened them all again to pick one.
+# These copies, at the commits iced pins, change only that (and
+# iced_graphics' Cargo.toml, to build outside iced's workspace):
+# - iced_graphics reads which fonts there are from an index cosmic-text
+#   keeps in the file `main.rs` names (`set_font_cache`), and parses them
+#   only to make it, the first time and when a folder or file it lists
+#   changes;
+# - cosmic-text, to pick a font, reads no file but those of the family it
+#   is looking at.
+# Each goes once its upstream does the same.
+[patch."https://github.com/iced-rs/iced"]
+iced_graphics = { path = "patches/iced_graphics" }
+
+[patch."https://github.com/hecrj/cosmic-text.git"]
+cosmic-text = { path = "patches/cosmic-text" }

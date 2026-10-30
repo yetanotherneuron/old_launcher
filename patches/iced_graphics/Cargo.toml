@@ -1,0 +1,72 @@
+# What this crate inherited from iced's workspace at
+# cd04b74ca7073766f654535d6e72c452ef749d07, written out, so that it builds
+# outside it; the iced crates it uses come from that commit.
+[package]
+name = "iced_graphics"
+description = "A bunch of backend-agnostic types that can be leveraged to build a renderer for iced"
+version = "0.15.0-dev"
+edition = "2024"
+authors = ["Héctor Ramón Jiménez <hector@hecrj.dev>"]
+license = "MIT"
+repository = "https://github.com/iced-rs/iced"
+homepage = "https://iced.rs"
+categories = ["gui"]
+keywords = ["gui", "ui", "graphics", "interface", "widgets"]
+
+[lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+missing_docs = "deny"
+unsafe_code = "deny"
+unused_results = "deny"
+
+[lints.clippy]
+type_complexity = "allow"
+map_entry = "allow"
+large_enum_variant = "allow"
+result_large_err = "allow"
+manual_filter = "allow"
+semicolon_if_nothing_returned = "deny"
+trivially_copy_pass_by_ref = "deny"
+default_trait_access = "deny"
+match_wildcard_for_single_variants = "deny"
+redundant_closure_for_method_calls = "deny"
+filter_map_next = "deny"
+manual_let_else = "deny"
+unused_async = "deny"
+from_over_into = "deny"
+needless_borrow = "deny"
+new_without_default = "deny"
+useless_conversion = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "forbid"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
+all-features = true
+
+[features]
+geometry = ["lyon_path"]
+image = ["dep:image", "kamadak-exif"]
+svg = []
+web-colors = []
+fira-sans = []
+
+[dependencies]
+iced_core = { version = "0.15.0-dev", git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
+iced_futures = { version = "0.15.0-dev", git = "https://github.com/iced-rs/iced", rev = "cd04b74ca7073766f654535d6e72c452ef749d07" }
+
+bitflags = "2.0"
+bytemuck = { version = "1.0", features = ["derive"] }
+cosmic-text = { git = "https://github.com/hecrj/cosmic-text.git", rev = "6adc2364289fd241daed751948a03d0aea5a31ca" }
+half = "2.2"
+log = "0.4"
+raw-window-handle = "0.6"
+rustc-hash = "2.0"
+thiserror = "2"
+
+image = { version = "0.25", default-features = false, optional = true }
+
+kamadak-exif = { version = "0.6", optional = true }
+
+lyon_path = { version = "1.0", optional = true }

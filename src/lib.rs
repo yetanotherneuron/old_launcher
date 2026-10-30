@@ -74,8 +74,23 @@ pub fn icon() -> Option<iced::window::Icon> {
 
 /// The fonts the launcher brings, for the window to load before drawing
 /// (see [`style::fonts`]).
-pub fn fonts() -> [&'static [u8]; 2] {
+pub fn fonts() -> [&'static [u8]; 4] {
     style::fonts()
+}
+
+/// The font of the launcher's text, for the window to use where nothing
+/// says otherwise (see [`style::FONT`]).
+pub const FONT: iced::Font = style::FONT;
+
+/// Where the index of the system fonts is kept: in the launcher's cache.
+/// A start reads which fonts there are from it instead of parsing every
+/// font file installed; it is made the first time, and again when a font
+/// folder or file it lists changes.
+pub fn font_cache() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_default()
+        .join("old_launcher")
+        .join("fonts.cache")
 }
 
 /// The launcher.

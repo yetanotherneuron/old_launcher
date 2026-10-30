@@ -35,10 +35,16 @@ pub fn main() -> iced::Result {
         window.platform_specific.application_id = "old_launcher".to_owned();
     }
 
+    // Which fonts the system has is read from an index in the launcher's
+    // cache, not by parsing every font file on the window's thread (see the
+    // patches in `Cargo.toml`). It must come before any text is laid out.
+    iced::advanced::graphics::text::set_font_cache(old_launcher::font_cache());
+
     iced::application(App::new, App::update, App::view)
         .title(App::title)
         .theme(App::theme)
         .fonts(old_launcher::fonts())
+        .font(old_launcher::FONT)
         .subscription(App::subscription)
         .window(window)
         .centered()

@@ -79,6 +79,13 @@ pub static FOLDER: Art = Art::new(include_bytes!("../assets/folder.svg"));
 /// pixels, which any smaller size smears across two or three.
 const ICON: f32 = 24.0;
 
+/// Fira Sans 4.203, under the SIL Open Font License
+/// (`assets/fonts/FiraSans-OFL.txt`), for the body: the regular weight is
+/// the very file iced brings, the bold Google Fonts' build of the same
+/// release.
+const FIRA_SANS: &[u8] = include_bytes!("../assets/fonts/FiraSans-Regular.ttf");
+const FIRA_SANS_BOLD: &[u8] = include_bytes!("../assets/fonts/FiraSans-Bold.ttf");
+
 /// Cinzel, under the SIL Open Font License (`assets/fonts/Cinzel-OFL.txt`):
 /// capitals cut the way the game's headings are. The game's own fonts are
 /// licensed, and stay its.
@@ -86,16 +93,19 @@ const CINZEL: &[u8] = include_bytes!("../assets/fonts/Cinzel-Regular.ttf");
 const CINZEL_BOLD: &[u8] = include_bytes!("../assets/fonts/Cinzel-Bold.ttf");
 
 /// The fonts the launcher brings, loaded before anything is drawn (and by
-/// the screenshots): iced's own Fira Sans for the body, these for titles.
-pub fn fonts() -> [&'static [u8]; 2] {
-    [CINZEL, CINZEL_BOLD]
+/// the screenshots): Fira Sans for the body, Cinzel for titles.
+pub fn fonts() -> [&'static [u8]; 4] {
+    [FIRA_SANS, FIRA_SANS_BOLD, CINZEL, CINZEL_BOLD]
 }
 
-/// The default font in bold, for names and whatever stands out in a line.
-pub const BOLD: Font = Font {
-    weight: font::Weight::Bold,
-    ..Font::DEFAULT
-};
+/// The font of the text, unless it says otherwise: Fira Sans, which the
+/// launcher brings. Where Fira Sans is installed, that copy draws it
+/// instead: the system's fonts are loaded first, and of two fonts of the
+/// same name and weight the text engine takes the first.
+pub const FONT: Font = Font::new("Fira Sans");
+
+/// The text's font in bold, for names and whatever stands out in a line.
+pub const BOLD: Font = FONT.weight(font::Weight::Bold);
 
 /// The font of titles and headings: Cinzel, bold, whose lowercase is small
 /// capitals.

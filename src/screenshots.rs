@@ -184,6 +184,7 @@ fn screenshots() {
         let mut ui = Simulator::with_size(
             iced::Settings {
                 fonts: style::fonts().into_iter().map(Into::into).collect(),
+                font: style::FONT,
                 ..iced::Settings::default()
             },
             (1200.0, 780.0),

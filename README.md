@@ -92,8 +92,9 @@ or on [Discord](https://discord.gg/tS35paspnf).
   `~/.cache/old_launcher` or `%LOCALAPPDATA%\old_launcher`: a copy of the
   addon list, so it doesn't need to be downloaded every time you open the
   launcher, a copy of each client's torrent, fetched again from its peers
-  if missing, and each mod's last download, so installing it again
-  downloads nothing.
+  if missing, each mod's last download, so installing it again downloads
+  nothing, and the list of fonts installed on your computer, made again
+  when they change.
 - A client downloading from a torrent goes into a `.download` folder
   inside the folder you chose, its files into place once complete.
   It is shared with the others downloading it, as BitTorrent works, until

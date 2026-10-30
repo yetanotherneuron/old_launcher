@@ -7,7 +7,7 @@ repeating them.
 
 ## Building and running
 
-Stable Rust, edition 2024. The workspace has three crates and one patch:
+Stable Rust, edition 2024. The workspace has three crates and three patches:
 
 ```sh
 cargo run --release              # the launcher
@@ -57,6 +57,13 @@ launcher gets again from the peers when a copy is missing.
   module per upstream source (`source/`) and per mod (`mods/`).
 - `librqbit-sha1-wrapper/`: librqbit's hashes on RustCrypto, patched in
   over its OpenSSL and ring options, so no C crypto library gets built.
+- `patches/`: iced's `iced_graphics` and the `cosmic-text` it uses, at the
+  commits iced pins, patched in so that a start reads no font file it
+  doesn't draw with (`Cargo.toml` says how); each goes once its upstream
+  does the same. They aren't workspace members, so `cargo test --workspace`
+  doesn't run their tests; cosmic-text's need the fonts and images its
+  repository keeps in Git LFS, which the copy leaves out (GitLab refuses
+  a push of LFS pointers without their files).
 - `index/`: the generated data, committed (below).
 - `assets/`: icons and the knob as SVGs, the fonts, the README's screenshots.
 - `docs/plans/`: work planned but not started, and the plans behind what
@@ -192,12 +199,12 @@ and `view`; `lib.rs` maps its messages and acts on its instructions. See
 ## The look
 
 `src/style.rs` draws the game's login screens with iced's primitives:
-colors read off the game's textures, Cinzel (OFL) for headings, iced's
-Fira Sans for the body, own SVGs for the icons and the dialogs' corner
-knobs. Nothing of Blizzard's is shipped. `docs/plans/wotlk-look.md` has
-what each texture shows and where it went. Screenshot renders must match
-across systems, so the fonts are bundled and loaded by the app and the
-screenshot test alike.
+colors read off the game's textures, Cinzel (OFL) for headings, Fira Sans
+(OFL), regular and bold, for the body, own SVGs for the icons and the
+dialogs' corner knobs. Nothing of Blizzard's is shipped.
+`docs/plans/wotlk-look.md` has what each texture shows and where it went.
+Screenshot renders must match across systems, so the fonts are bundled
+and loaded by the app and the screenshot test alike.
 
 ## Tests
 
