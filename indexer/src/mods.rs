@@ -11,14 +11,48 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use old_launcher_core::mods::{self, Mod, Release};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::fetch::fetch;
 use crate::source::github;
+use crate::uploads;
 
-/// The files of a release's download, by its URL, with their SHA-256: what
-/// an earlier run found, since a release's download never changes.
-pub type Known = BTreeMap<String, Vec<(String, String)>>;
+/// What earlier runs found in releases' downloads, by URL: it holds while
+/// the download is the same upload (see [`uploads`]).
+pub type Known = BTreeMap<String, Found>;
+
+/// What was found in a release's download.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Kept")]
+pub struct Found {
+    /// Its files, with their SHA-256.
+    pub files: Vec<(String, String)>,
+    /// The id of the upload they were found in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset: Option<u64>,
+}
+
+/// What was found, as kept: as [`Found`] is, or as earlier versions of the
+/// indexer kept it, the files alone.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Kept {
+    Found {
+        files: Vec<(String, String)>,
+        #[serde(default)]
+        asset: Option<u64>,
+    },
+    Files(Vec<(String, String)>),
+}
+
+impl From<Kept> for Found {
+    fn from(kept: Kept) -> Self {
+        match kept {
+            Kept::Found { files, asset } => Self { files, asset },
+            Kept::Files(files) => Self { files, asset: None },
+        }
+    }
+}
 
 /// A release, as GitHub's API describes it.
 #[derive(Debug, Deserialize)]
@@ -31,9 +65,12 @@ pub struct Published {
     pub assets: Vec<Asset>,
 }
 
-/// A file attached to a release.
+/// A file attached to a release: one upload of it.
 #[derive(Debug, Deserialize)]
 pub struct Asset {
+    /// The id of this upload, which another under the same name doesn't
+    /// share.
+    pub id: u64,
     pub name: String,
     pub browser_download_url: String,
     /// Its checksum (`sha256:<hex>`), which GitHub gives for files attached
@@ -57,6 +94,14 @@ impl Published {
             .iter()
             .find(|asset| wanted(&asset.name))
             .map(|asset| asset.browser_download_url.clone())
+    }
+
+    /// The id of the upload of its file at `url`, if it has one there.
+    pub fn upload(&self, url: &str) -> Option<u64> {
+        self.assets
+            .iter()
+            .find(|asset| asset.browser_download_url == url)
+            .map(|asset| asset.id)
     }
 }
 
@@ -132,19 +177,35 @@ pub async fn gather(client: &reqwest::Client, known: &Known) -> anyhow::Result<G
 }
 
 /// The files of the download at `url`, with their SHA-256: as `known` says,
-/// or else downloaded and looked into.
+/// when it is still the upload `asset` (see [`earlier`]), or else downloaded
+/// and looked into.
 pub async fn files(
     client: &reqwest::Client,
     known: &Known,
     url: &str,
+    asset: Option<u64>,
 ) -> anyhow::Result<Vec<(String, String)>> {
-    if let Some(files) = known.get(url) {
-        return Ok(files.clone());
+    if let Some(files) = earlier(known, url, asset) {
+        return Ok(files.to_vec());
     }
 
     let archive = fetch(client, url).await?;
 
     Ok(tokio::task::spawn_blocking(move || mods::inspect(&archive)).await??)
+}
+
+/// The files `known` says the release's download at `url` holds, if it is
+/// still the upload they were found in: `asset`, the id of the one there
+/// now.
+pub fn earlier<'a>(
+    known: &'a Known,
+    url: &str,
+    asset: Option<u64>,
+) -> Option<&'a [(String, String)]> {
+    known
+        .get(url)
+        .filter(|found| uploads::same(found.asset, asset))
+        .map(|found| found.files.as_slice())
 }
 
 /// What earlier runs found in releases' downloads, as kept at `path`.
@@ -190,5 +251,53 @@ mod tests {
 
         assert_eq!(left_out.missed, ["Mod v2.0: its scripts are new"]);
         assert_eq!(left_out.skipped, ["Mod v0.9: it has no zip"]);
+    }
+
+    #[test]
+    fn what_was_found_holds_only_for_the_same_upload() {
+        let url = "https://github.com/doitsujin/dxvk/releases/download/v3.1/dxvk-3.1.tar.gz";
+        let files = vec![("dxvk-3.1/x32/d3d9.dll".to_owned(), "b2".to_owned())];
+        let known = Known::from([(
+            url.to_owned(),
+            Found {
+                files: files.clone(),
+                asset: Some(7),
+            },
+        )]);
+
+        assert_eq!(earlier(&known, url, Some(7)), Some(files.as_slice()));
+        assert_eq!(earlier(&known, url, Some(8)), None, "uploaded again");
+        assert_eq!(earlier(&known, url, None), None, "unknown now");
+        assert_eq!(earlier(&known, "https://example.com/other", Some(7)), None);
+    }
+
+    #[test]
+    fn what_earlier_runs_found_is_read_back_as_it_was_kept_before_too() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mod-archives.json");
+        let known = Known::from([(
+            "https://example.com/a.zip".to_owned(),
+            Found {
+                files: vec![("a.txt".to_owned(), "a1".to_owned())],
+                asset: Some(7),
+            },
+        )]);
+
+        std::fs::write(&path, serde_json::to_string_pretty(&known).unwrap()).unwrap();
+        assert_eq!(super::known(&path), known);
+
+        // As earlier versions of the indexer kept it: the files alone.
+        std::fs::write(
+            &path,
+            r#"{ "https://example.com/a.zip": [["a.txt", "a1"]] }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            super::known(&path)["https://example.com/a.zip"],
+            Found {
+                files: vec![("a.txt".to_owned(), "a1".to_owned())],
+                asset: None,
+            }
+        );
     }
 }

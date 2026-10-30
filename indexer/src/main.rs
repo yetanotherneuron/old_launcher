@@ -1,11 +1,20 @@
 //! Builds the launcher's catalog from every upstream source: lists their
-//! addons, downloads every archive to check it and record the folders it
+//! addons, pins the downloads that move to what they serve now (see
+//! [`pin`]), downloads every archive to check it and record the folders it
 //! installs, merges the listings of the same addon from different sources,
 //! and writes the result. Then the same for the list of mods.
+//!
+//! What was found in each archive is kept for the next run, which downloads
+//! only what may have changed: an archive that never changes isn't
+//! downloaded again, but for a release's file uploaded again under the same
+//! name (see [`uploads`]), and one that may is asked about, when its server
+//! sent what tells its versions apart (see [`fetch::Validators`]).
 
 mod fetch;
 mod mods;
+mod pin;
 mod source;
+mod uploads;
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, HashSet};
@@ -18,14 +27,17 @@ use clap::Parser;
 use old_launcher_core::catalog::Contents;
 use old_launcher_core::mods::Mods;
 use old_launcher_core::{Catalog, Toc, catalog, toc};
+use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use crate::fetch::fetch;
+use crate::fetch::{Fetched, Validators, fetch_changed};
+use crate::pin::Pins;
 use crate::source::{
     Listing, Source, Updated, curseforge, github, gitlab, locus313, nom0re, rising_gods,
     wowinterface,
 };
+use crate::uploads::Uploads;
 
 /// Builds the launcher's addon catalog from every upstream source.
 #[derive(Debug, Parser)]
@@ -33,11 +45,12 @@ struct Arguments {
     /// Where to write the catalog.
     #[arg(long, default_value = "index/wotlk.json")]
     output: PathBuf,
-    /// Where to keep what was found in archives that never change, for the
-    /// next run to reuse instead of downloading them again.
+    /// Where to keep what was found in archives, for the next run to reuse
+    /// instead of downloading them again: those that never change, and
+    /// those whose server can say whether they did.
     #[arg(long, default_value = "index/archives.json")]
     archives: PathBuf,
-    /// How many archives to download at once.
+    /// How many archives to download, or repositories to look up, at once.
     #[arg(long, default_value_t = 8)]
     jobs: usize,
     /// Where to write the list of mods.
@@ -66,6 +79,22 @@ struct Inspected {
     contents: Contents,
     /// When the addon was last updated, wherever the listing says to look.
     updated: Option<String>,
+}
+
+/// What was found in an archive, as kept for the next run, by its URL.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct Archive {
+    #[serde(flatten)]
+    contents: Contents,
+    /// For an archive whose URL may serve another one, what its server sent
+    /// to tell the version looked into: the next run asks whether it is
+    /// still that one. None for an archive that never changes.
+    #[serde(flatten)]
+    validators: Validators,
+    /// For a release's file, the id of the upload looked into, which
+    /// another upload under the same name doesn't share (see [`uploads`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    asset: Option<u64>,
 }
 
 /// Hosts upstream sources link to that no longer serve those pages: gone,
@@ -102,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
 const MISSED: i32 = 3;
 
 /// Builds the catalog of addons and writes it, with what was found in
-/// archives that never change.
+/// archives for the next run.
 async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Result<()> {
     // Every source, in order of preference: when several list the same addon,
     // the first describes it (so English descriptions come before German
@@ -144,58 +173,87 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
     let mut seen = HashSet::new();
     listings.retain(|(_, source, listing)| seen.insert((source.clone(), listing.name.clone())));
 
+    let pins = Pins::look_up(
+        client,
+        listings.iter().map(|(_, _, listing)| listing),
+        arguments.jobs,
+    )
+    .await?;
+    // A download that moves is pinned to what it serves now, which the
+    // catalog then describes; one that can't be is skipped.
+    let listings: Vec<_> = listings
+        .into_iter()
+        .map(|(priority, source, mut listing)| {
+            let pinned = pins.pin(&mut listing);
+
+            (priority, source, listing, pinned)
+        })
+        .collect();
+    let uploads = Uploads::look_up(
+        client,
+        listings
+            .iter()
+            .map(|(_, _, listing, _)| listing.download.as_str()),
+    )
+    .await;
     let known = known_archives(&arguments.archives);
     let total = listings.len();
     let downloads = Arc::new(Semaphore::new(arguments.jobs.max(1)));
     let mut inspections = JoinSet::new();
 
-    for (priority, source, listing) in listings {
+    for (priority, source, listing, pinned) in listings {
         let client = client.clone();
         let downloads = Arc::clone(&downloads);
-        let earlier = earlier(&listing, &known);
+        let asset = uploads.id(&listing.download);
+        let earlier = earlier(&listing, asset, &known);
 
         let _ = inspections.spawn(async move {
-            let reused = earlier.is_some();
-            let contents = match earlier {
-                Some(contents) => Ok(contents),
-                None => {
-                    async {
+            let inspection = async {
+                pinned?;
+
+                match earlier {
+                    // It never changes, and was looked into before.
+                    Some(archive) if listing.immutable => Ok((archive, true)),
+                    earlier => {
                         let _permit = downloads.acquire_owned().await?;
+                        let (archive, reused) =
+                            inspect(&client, &listing.download, earlier).await?;
 
-                        contents(&client, &listing.download).await
+                        // Looked into as uploaded now, for a release's file.
+                        anyhow::Ok((Archive { asset, ..archive }, reused))
                     }
-                    .await
                 }
-            };
+            }
+            .await;
 
-            (priority, source, listing, contents, reused)
+            (priority, source, listing, inspection)
         });
     }
 
     let mut inspected = Vec::new();
     let mut skipped = Vec::new();
-    // What this run found in archives that never change, for the next.
+    // What this run found in archives, for the next.
     let mut archives = BTreeMap::new();
     let mut reused_count = 0;
 
     while let Some(inspection) = inspections.join_next().await {
-        let (priority, source, listing, contents, reused) = inspection?;
+        let (priority, source, listing, inspection) = inspection?;
         let done = inspected.len() + skipped.len() + 1;
-        let note = if reused {
+        let note = if let Ok((_, true)) = &inspection {
             reused_count += 1;
             " (inspected before)"
         } else {
             ""
         };
 
-        if listing.immutable
-            && let Ok(contents) = &contents
+        if let Ok((archive, _)) = &inspection
+            && let Some(archive) = kept(&listing, archive)
         {
-            let _ = archives.insert(listing.download.clone(), contents.clone());
+            let _ = archives.insert(listing.download.clone(), archive);
         }
 
-        let reason = match contents {
-            Ok(contents) => match left_out(&listing, &contents) {
+        let reason = match inspection {
+            Ok((Archive { contents, .. }, _)) => match left_out(&listing, &contents) {
                 Some(reason) => reason,
                 None => {
                     println!(
@@ -411,10 +469,10 @@ async fn list_mods(client: &reqwest::Client, arguments: &Arguments) -> anyhow::R
     Ok(missed.is_empty())
 }
 
-/// What earlier runs found in archives that never change, by download URL,
-/// as kept at `path`. Without the file, or when it doesn't read, every
-/// archive is downloaded again, which costs time and nothing else.
-fn known_archives(path: &Path) -> BTreeMap<String, Contents> {
+/// What earlier runs found in archives, by download URL, as kept at `path`.
+/// Without the file, or when it doesn't read, every archive is downloaded
+/// again, which costs time and nothing else.
+fn known_archives(path: &Path) -> BTreeMap<String, Archive> {
     let json = match std::fs::read(path) {
         Ok(json) => json,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return BTreeMap::new(),
@@ -430,14 +488,41 @@ fn known_archives(path: &Path) -> BTreeMap<String, Contents> {
     })
 }
 
-/// What an earlier run found in `listing`'s archive, if it never changes
-/// and was inspected before.
-fn earlier(listing: &Listing, known: &BTreeMap<String, Contents>) -> Option<Contents> {
-    if !listing.immutable {
-        return None;
+/// What an earlier run found in `listing`'s archive, if it was inspected
+/// before and the finding is of use: as it is, when the archive never
+/// changes; to ask its server whether it is still the same, when it may
+/// have changed. A release's file is the same only while it is the same
+/// upload: `asset`, the id of the one there now, when it could be read.
+fn earlier(
+    listing: &Listing,
+    asset: Option<u64>,
+    known: &BTreeMap<String, Archive>,
+) -> Option<Archive> {
+    known
+        .get(&listing.download)
+        .filter(|archive| {
+            if uploads::repository(&listing.download).is_some() {
+                uploads::same(archive.asset, asset)
+            } else {
+                listing.immutable || !archive.validators.is_empty()
+            }
+        })
+        .cloned()
+}
+
+/// What to keep for the next run of `archive`, found at `listing`'s
+/// download: what is in it (and the upload it is, for a release's file),
+/// when it never changes; that and what tells its version, when its server
+/// can say whether it changed; nothing otherwise, so it is downloaded again.
+fn kept(listing: &Listing, archive: &Archive) -> Option<Archive> {
+    if listing.immutable {
+        return Some(Archive {
+            validators: Validators::default(),
+            ..archive.clone()
+        });
     }
 
-    known.get(&listing.download).cloned()
+    (!archive.validators.is_empty()).then(|| archive.clone())
 }
 
 /// What an addon does, as the first of its `listings` that says so tells
@@ -509,11 +594,37 @@ fn left_out(listing: &Listing, contents: &Contents) -> Option<String> {
     None
 }
 
-/// Downloads the archive at `url` and looks into it.
-async fn contents(client: &reqwest::Client, url: &str) -> anyhow::Result<Contents> {
-    let archive = fetch(client, url).await?;
+/// Downloads the archive at `url` and looks into it, unless its server says
+/// it is still the one `earlier` was found in (by the validators it sent
+/// then): then that finding stands. Says which, true for the earlier one.
+async fn inspect(
+    client: &reqwest::Client,
+    url: &str,
+    earlier: Option<Archive>,
+) -> anyhow::Result<(Archive, bool)> {
+    let validators = earlier
+        .as_ref()
+        .map(|archive| archive.validators.clone())
+        .unwrap_or_default();
 
-    Ok(tokio::task::spawn_blocking(move || Contents::inspect(&archive)).await??)
+    match fetch_changed(client, url, &validators).await? {
+        Fetched::Unchanged => earlier
+            .map(|archive| (archive, true))
+            .with_context(|| format!("{url} answered that nothing changed, but it wasn't asked")),
+        Fetched::Changed(archive, validators) => {
+            let contents =
+                tokio::task::spawn_blocking(move || Contents::inspect(&archive)).await??;
+
+            Ok((
+                Archive {
+                    contents,
+                    validators,
+                    asset: None,
+                },
+                false,
+            ))
+        }
+    }
 }
 
 /// Orders an addon's listings as the launcher tries them: those made for
@@ -669,18 +780,113 @@ mod tests {
         );
     }
 
-    #[test]
-    fn only_archives_that_never_change_are_reused() {
-        let mut listing = inspected(0, "1.0", None).listing;
-        let known = BTreeMap::from([(listing.download.clone(), folders(&[Some(30300)]))]);
+    /// What was found in an archive holding one folder per interface given,
+    /// with the `ETag` its server sent, if any.
+    fn archive(interfaces: &[Option<u32>], etag: Option<&str>) -> Archive {
+        Archive {
+            contents: folders(interfaces),
+            validators: Validators {
+                etag: etag.map(str::to_owned),
+                last_modified: None,
+            },
+            asset: None,
+        }
+    }
 
-        assert_eq!(earlier(&listing, &known), None, "it may have changed");
+    #[test]
+    fn archives_are_reused_when_they_never_change_or_their_server_can_say() {
+        let mut listing = inspected(0, "1.0", None).listing;
+        let mut known = BTreeMap::from([(listing.download.clone(), archive(&[Some(30300)], None))]);
+
+        assert_eq!(
+            earlier(&listing, None, &known),
+            None,
+            "it may have changed, and its server can't say"
+        );
 
         listing.immutable = true;
-        assert_eq!(earlier(&listing, &known), Some(folders(&[Some(30300)])));
+        assert_eq!(
+            earlier(&listing, None, &known),
+            Some(archive(&[Some(30300)], None))
+        );
+
+        listing.immutable = false;
+        let _ = known.insert(
+            listing.download.clone(),
+            archive(&[Some(30300)], Some("\"v1\"")),
+        );
+        assert_eq!(
+            earlier(&listing, None, &known),
+            Some(archive(&[Some(30300)], Some("\"v1\""))),
+            "to ask its server"
+        );
 
         listing.download = "https://example.com/new.zip".into();
-        assert_eq!(earlier(&listing, &known), None, "never inspected");
+        assert_eq!(earlier(&listing, None, &known), None, "never inspected");
+    }
+
+    #[test]
+    fn a_releases_file_is_reused_only_while_it_is_the_same_upload() {
+        let mut listing = inspected(0, "1.0", None).listing;
+        listing.download =
+            "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/WDM.zip".into();
+        listing.immutable = true;
+        let found = Archive {
+            asset: Some(7),
+            ..archive(&[Some(30300)], None)
+        };
+        let mut known = BTreeMap::from([(listing.download.clone(), found.clone())]);
+
+        assert_eq!(earlier(&listing, Some(7), &known), Some(found));
+        assert_eq!(earlier(&listing, Some(8), &known), None, "uploaded again");
+        assert_eq!(
+            earlier(&listing, None, &known),
+            None,
+            "the upload there now is unknown"
+        );
+
+        let _ = known.insert(listing.download.clone(), archive(&[Some(30300)], None));
+        assert_eq!(
+            earlier(&listing, Some(7), &known),
+            None,
+            "found before uploads were told apart"
+        );
+
+        let new = Archive {
+            asset: Some(8),
+            ..archive(&[Some(30300)], Some("\"v1\""))
+        };
+        assert_eq!(
+            kept(&listing, &new),
+            Some(Archive {
+                asset: Some(8),
+                ..archive(&[Some(30300)], None)
+            }),
+            "kept with the upload it is"
+        );
+    }
+
+    #[test]
+    fn what_is_kept_is_what_the_next_run_can_reuse() {
+        let mut listing = inspected(0, "1.0", None).listing;
+
+        assert_eq!(
+            kept(&listing, &archive(&[Some(30300)], None)),
+            None,
+            "it may change, and its server can't say"
+        );
+        assert_eq!(
+            kept(&listing, &archive(&[Some(30300)], Some("\"v1\""))),
+            Some(archive(&[Some(30300)], Some("\"v1\""))),
+            "with what tells its version"
+        );
+
+        listing.immutable = true;
+        assert_eq!(
+            kept(&listing, &archive(&[Some(30300)], Some("\"v1\""))),
+            Some(archive(&[Some(30300)], None)),
+            "it never changes: nothing to ask"
+        );
     }
 
     #[test]
@@ -689,15 +895,170 @@ mod tests {
         let path = directory.path().join("archives.json");
         assert!(known_archives(&path).is_empty(), "no record yet");
 
-        let known = BTreeMap::from([(
-            "https://example.com/a.zip".to_owned(),
-            folders(&[Some(30300), None]),
-        )]);
+        let known = BTreeMap::from([
+            (
+                "https://example.com/a.zip".to_owned(),
+                archive(&[Some(30300), None], None),
+            ),
+            (
+                "https://example.com/b.zip".to_owned(),
+                archive(&[Some(30300)], Some("\"v1\"")),
+            ),
+            (
+                "https://github.com/o/r/releases/download/v1/r.zip".to_owned(),
+                Archive {
+                    asset: Some(7),
+                    ..archive(&[Some(30300)], None)
+                },
+            ),
+        ]);
         std::fs::write(&path, serde_json::to_string_pretty(&known).unwrap()).unwrap();
         assert_eq!(known_archives(&path), known);
 
+        // As earlier versions of the indexer wrote it.
+        std::fs::write(
+            &path,
+            r#"{ "https://example.com/a.zip": { "folders": [], "updated": "2026-01-01" } }"#,
+        )
+        .unwrap();
+        let earlier = &known_archives(&path)["https://example.com/a.zip"];
+        assert_eq!(earlier.validators, Validators::default());
+        assert_eq!(earlier.asset, None);
+
         std::fs::write(&path, "{ not json").unwrap();
         assert!(known_archives(&path).is_empty(), "a broken record");
+    }
+
+    /// A local server answering each request with what `respond` makes of
+    /// it, and recording in `seen` each request's headers, lowercase.
+    /// Returns the URL of its one file.
+    fn server(
+        respond: impl Fn(&str) -> Vec<u8> + Send + 'static,
+        seen: Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let _ = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut request = [0; 4096];
+                let read = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..read]).to_lowercase();
+                let answer = respond(&request);
+
+                seen.lock().unwrap().push(request);
+                stream.write_all(&answer).unwrap();
+            }
+        });
+
+        format!("http://{address}/Addon.zip")
+    }
+
+    /// An answer of `200 OK` with `headers` and a zip of one addon.
+    fn addon_zip(headers: &str) -> Vec<u8> {
+        use std::io::Write;
+
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer
+            .start_file("Addon/Addon.toc", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"## Interface: 30300\n").unwrap();
+        let zip = writer.finish().unwrap().into_inner();
+
+        let mut answer = format!(
+            "HTTP/1.1 200 OK\r\n{headers}content-length: {}\r\nconnection: close\r\n\r\n",
+            zip.len()
+        )
+        .into_bytes();
+        answer.extend(zip);
+
+        answer
+    }
+
+    #[tokio::test]
+    async fn an_archive_its_server_says_is_unchanged_is_not_downloaded_again() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        // As Rising Gods' server does: an ETag and a date with the file, and
+        // a 304 when asked with the ETag.
+        let url = server(
+            |request| {
+                if request.contains("if-none-match: \"v1\"") {
+                    b"HTTP/1.1 304 Not Modified\r\netag: \"v1\"\r\nconnection: close\r\n\r\n"
+                        .to_vec()
+                } else {
+                    addon_zip("etag: \"v1\"\r\nlast-modified: Thu, 09 Feb 2017 14:01:14 GMT\r\n")
+                }
+            },
+            Arc::clone(&seen),
+        );
+        let client = reqwest::Client::new();
+
+        let (first, reused) = inspect(&client, &url, None).await.unwrap();
+        assert!(!reused);
+        assert_eq!(first.contents.folders[0].name, "Addon");
+        assert_eq!(
+            first.validators,
+            Validators {
+                etag: Some("\"v1\"".into()),
+                last_modified: Some("Thu, 09 Feb 2017 14:01:14 GMT".into()),
+            }
+        );
+
+        let (again, reused) = inspect(&client, &url, Some(first.clone())).await.unwrap();
+        assert!(reused, "nothing downloaded");
+        assert_eq!(again, first);
+
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen[0].contains("if-none-match"),
+            "nothing to ask the first time"
+        );
+        assert!(
+            seen[1].contains("if-none-match: \"v1\"")
+                && seen[1].contains("if-modified-since: thu, 09 feb 2017 14:01:14 gmt"),
+            "{}",
+            seen[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_archive_whose_server_tells_no_version_is_downloaded_every_time() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let url = server(|_| addon_zip(""), Arc::clone(&seen));
+        let client = reqwest::Client::new();
+        let mut listing = inspected(0, "1.0", None).listing;
+        listing.download = url.clone();
+
+        let (found, reused) = inspect(&client, &url, None).await.unwrap();
+
+        assert!(!reused);
+        assert_eq!(found.validators, Validators::default());
+        assert_eq!(kept(&listing, &found), None, "nothing to ask next time");
+    }
+
+    /// Rising Gods' site as it is now: a file comes with what tells its
+    /// version, and asking with that downloads nothing.
+    #[tokio::test]
+    #[ignore = "downloads from Rising Gods"]
+    async fn rising_gods_says_when_a_file_is_unchanged() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::builder()
+            .user_agent("old_launcher-indexer-test")
+            .build()
+            .unwrap();
+        let url = "https://addons.rising-gods.de/sites/default/files/addons/Ace3-Release-r960.zip";
+
+        let (first, reused) = inspect(&client, url, None).await.unwrap();
+        println!("{:?}", first.validators);
+        assert!(!reused && !first.validators.is_empty());
+
+        let (_, reused) = inspect(&client, url, Some(first)).await.unwrap();
+        assert!(reused, "answered 304 Not Modified");
     }
 
     #[test]

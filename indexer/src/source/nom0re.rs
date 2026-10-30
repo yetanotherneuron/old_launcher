@@ -140,7 +140,8 @@ fn parse(index: &[u8]) -> anyhow::Result<Vec<Listing>> {
             updated: Updated::FromArchive,
             require_wotlk: false,
             // Many downloads are branch snapshots, which move on under the
-            // same URL.
+            // same URL until the indexer pins them (see `pin`), and the
+            // indexer tells those that never change by their URL.
             immutable: false,
         })
         .collect())

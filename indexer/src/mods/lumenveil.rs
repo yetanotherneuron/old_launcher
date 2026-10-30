@@ -17,7 +17,7 @@ use anyhow::Context;
 use old_launcher_core::mods::{Mod, Release, Source, Step};
 
 use crate::fetch::fetch;
-use crate::mods::{Known, LeftOut, Published, files, published};
+use crate::mods::{Found, Known, LeftOut, Published, earlier, files, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "lumenveil/Lumenveil";
@@ -152,12 +152,20 @@ async fn understood(
         .asset(|name| name == "SHA256SUMS.txt")
         .context("it has no SHA256SUMS.txt")?;
 
-    let files = files(client, known, &url).await?;
-    if !known.contains_key(&url) {
+    let asset = published.upload(&url);
+
+    let files = files(client, known, &url, asset).await?;
+    if earlier(known, &url, asset).is_none() {
         let sums = String::from_utf8_lossy(&fetch(client, &sums).await?).into_owned();
         checked(&files, &sums)?;
     }
-    let _ = found.insert(url.clone(), files.clone());
+    let _ = found.insert(
+        url.clone(),
+        Found {
+            files: files.clone(),
+            asset,
+        },
+    );
 
     release(published, url, files)
 }

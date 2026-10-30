@@ -109,7 +109,8 @@ fn parse(html: &str, url: &str) -> Option<Listing> {
         updated: Updated::FromArchive,
         // The collection is curated for the Rising Gods 3.3.5a server.
         require_wotlk: false,
-        // A new upload may keep the old file name.
+        // A new upload may keep the old file name: the indexer asks the
+        // site whether the file changed instead.
         immutable: false,
     })
 }

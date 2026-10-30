@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use anyhow::Context;
 use old_launcher_core::mods::{Mod, Release, Source, VersionIn};
 
-use crate::mods::{Known, LeftOut, Published, files, published};
+use crate::mods::{Found, Known, LeftOut, Published, files, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "doitsujin/dxvk";
@@ -87,9 +87,16 @@ async fn understood(
     published: Published,
 ) -> anyhow::Result<Release> {
     let url = published.asset(tarball).context("it has no tarball")?;
+    let asset = published.upload(&url);
 
-    let files = files(client, known, &url).await?;
-    let _ = found.insert(url.clone(), files.clone());
+    let files = files(client, known, &url, asset).await?;
+    let _ = found.insert(
+        url.clone(),
+        Found {
+            files: files.clone(),
+            asset,
+        },
+    );
 
     release(published, url, &files)
 }
@@ -151,6 +158,7 @@ mod tests {
             published_at: Some("2026-09-15T17:43:25Z".to_owned()),
             html_url: format!("https://github.com/doitsujin/dxvk/releases/tag/{tag}"),
             assets: vec![Asset {
+                id: 1,
                 name: "dxvk-native-3.1.1-steamrt-sniper.tar.gz".to_owned(),
                 browser_download_url: "https://example.com/native.tar.gz".to_owned(),
                 digest: None,

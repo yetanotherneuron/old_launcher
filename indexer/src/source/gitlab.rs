@@ -90,7 +90,8 @@ fn parse(project: &[u8]) -> anyhow::Result<Listing> {
         // A branch snapshot's files carry the last commit's date.
         updated: Updated::FromArchive,
         require_wotlk: true,
-        // The branch moves on under the same URL.
+        // The branch moves on under the same URL, until the indexer pins it
+        // to its commit (see `pin`).
         immutable: false,
     })
 }

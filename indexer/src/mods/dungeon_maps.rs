@@ -13,7 +13,7 @@ use old_launcher_core::Locale;
 use old_launcher_core::mods::{self, LOCALE, Mod, Release, Source};
 
 use crate::fetch::fetch;
-use crate::mods::{Known, LeftOut, Published, published};
+use crate::mods::{Found, Known, LeftOut, Published, earlier, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "Trimitor/WDM-patch";
@@ -105,7 +105,7 @@ async fn understood(
             continue;
         };
         let url = &asset.browser_download_url;
-        let sum = match (known.get(url), &asset.digest) {
+        let sum = match (earlier(known, url, Some(asset.id)), &asset.digest) {
             (Some(files), _) => files
                 .first()
                 .map(|(_, sum)| sum.clone())
@@ -115,7 +115,13 @@ async fn understood(
             }
             (None, _) => mods::sha256(&fetch(client, url).await?),
         };
-        let _ = found.insert(url.clone(), vec![(asset.name.clone(), sum.clone())]);
+        let _ = found.insert(
+            url.clone(),
+            Found {
+                files: vec![(asset.name.clone(), sum.clone())],
+                asset: Some(asset.id),
+            },
+        );
         let _ = sums.insert(language, (url.clone(), sum));
     }
 

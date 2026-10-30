@@ -25,7 +25,7 @@ use old_launcher_core::mods::{self, LOCALE, Mod, Release, Source};
 use serde::Deserialize;
 
 use crate::fetch::fetch;
-use crate::mods::{Known, LeftOut, Published, published};
+use crate::mods::{Found, Known, LeftOut, Published, earlier, published};
 
 /// The repository its releases are published in.
 const REPOSITORY: &str = "CRSD-Lau/Lau-Setup";
@@ -279,8 +279,9 @@ async fn release(
         .find(|package| package.edition == edition.package)
         .with_context(|| format!("{DOWNLOADS} names no {} zip", edition.package))?;
 
-    let files = match known.get(&package.url) {
-        Some(files) => files.clone(),
+    let asset = published.upload(&package.url);
+    let files = match earlier(known, &package.url, asset) {
+        Some(files) => files.to_vec(),
         None => {
             let zip = fetch(client, &package.url).await?;
             anyhow::ensure!(
@@ -295,7 +296,13 @@ async fn release(
             files
         }
     };
-    let _ = found.insert(package.url.clone(), files.clone());
+    let _ = found.insert(
+        package.url.clone(),
+        Found {
+            files: files.clone(),
+            asset,
+        },
+    );
     let (placed, from) = placed(&files)?;
 
     Ok(Release {

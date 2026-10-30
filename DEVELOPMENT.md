@@ -110,19 +110,21 @@ GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer
 GITHUB_TOKEN=$(gh auth token) cargo run --release -p indexer -- --skip-curseforge
 ```
 
-The token only raises GitHub's API limits (a run makes about a hundred
+The token only raises GitHub's API limits (a run makes about two hundred
 calls). CurseForge's API needs a key in `CURSEFORGE_API_KEY`: the
 project's is a CI variable, and CurseForge's terms forbid sharing it.
 Without one, `--skip-curseforge` leaves CurseForge out; the catalog it
 writes then lacks those addons, so don't commit it. A key goes in single
 quotes, since it has `$` signs.
 
-The indexer lists every source, downloads every archive but the
-unchanging ones it inspected before (`index/archives.json`, by URL; delete
-it after changing how archives are inspected), records the folders each
-one installs, merges the listings of the same addon, and orders each
-entry's downloads newest first. `indexer/src/main.rs` and `source.rs` say
-how; each source's module says what it takes and leaves out.
+The indexer lists every source, pins the downloads that move (a branch's
+snapshot) to what they serve now, downloads every archive but those it
+inspected before that haven't changed since (`index/archives.json`, by
+URL; delete it after changing how archives are inspected), records the
+folders each one installs, merges the listings of the same addon, and
+orders each entry's downloads newest first. `indexer/src/main.rs` and
+`source.rs` say how; each source's module says what it takes and leaves
+out.
 
 **Adding a source** is a module in `indexer/src/source/` implementing
 `Source` (`info` describes it, `list` returns its listings) and a line in

@@ -112,8 +112,9 @@ struct Attached {
 }
 
 /// The addons of the `repository`'s release `latest`: its zips, each named
-/// after its file, with the release's date. A release's files never
-/// change.
+/// after its file, with the release's date. A release's files keep their
+/// URLs: one uploaded again under its name is told apart by the indexer
+/// (see `uploads`).
 fn listings(repository: &str, latest: Latest) -> Vec<Listing> {
     let day = latest
         .published_at
@@ -194,7 +195,8 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
                     // A branch snapshot's files carry the last commit's date.
                     updated: Updated::FromArchive,
                     require_wotlk: true,
-                    // The branch moves on under the same URL.
+                    // The branch moves on under the same URL, until the
+                    // indexer pins it to its commit (see `pin`).
                     immutable: false,
                 }),
         );

@@ -47,7 +47,10 @@ pub struct Listing {
     pub require_wotlk: bool,
     /// Whether the archive at `download` never changes, a new version
     /// getting a new URL: then what an earlier run found in it still holds,
-    /// and it is not downloaded again.
+    /// and it is not downloaded again, but for a release's file uploaded
+    /// again under the same name (see `uploads`). A download that moves (a
+    /// branch's snapshot) is pinned to what it serves now before it is
+    /// inspected, becoming one that never changes (see `pin`).
     pub immutable: bool,
 }
 
