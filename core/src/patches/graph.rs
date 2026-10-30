@@ -17,8 +17,11 @@
 //!
 //! **Needs.** Of each winning file of a custom archive (Blizzard's needs are
 //! left out: the base game ships references nothing provides), the files it
-//! references: a model's skins, animations and textures, and what the six
-//! tables name, resolved the way the game does. `CreatureDisplayInfo`'s
+//! references: a model's skins, animations and the textures it draws, and
+//! what the six tables name, resolved the way the game does. A row of a
+//! custom table that repeats the highest Blizzard copy's row unchanged (by
+//! fingerprint; for creature displays, with the same model path too) is
+//! Blizzard's own and needs nothing. `CreatureDisplayInfo`'s
 //! textures are looked up in the folder of the model that the winning
 //! `CreatureModelData` names for them, which may come from another archive;
 //! an `ItemDisplayInfo` model is probed in the seven component folders (and,
@@ -42,11 +45,12 @@
 //! Everything compares paths case-insensitively: on Windows two names that
 //! differ only in case are one file.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use super::Change;
-use super::facts::{Facts, Kind, Model, model_name};
+use super::facts::{Facts, Kind, Model, Prints, model_name};
 use super::order::{Rank, is_blizzard, rank_of};
 use crate::locale::Locale;
 use crate::mpq::{Key, key};
@@ -128,13 +132,16 @@ impl Layer {
 /// `facts` of the archive at `path`, in a client that plays in `locale`,
 /// without what the graph never reads of it (see [`Layer::new`]): Blizzard's
 /// archives lose their needs but the `CreatureModelData` that custom tables
-/// are resolved against, and they are most of the tables' weight. The
+/// are resolved against, and they are most of the tables' weight. What
+/// stays of the other rows is a fingerprint each, to tell the rows a custom
+/// table copies unchanged (see [`Prints`](super::facts::Prints)). The
 /// launcher keeps the facts stripped, so the next start reads small files.
 /// Stripping again changes nothing.
 pub fn strip(path: &str, mut facts: Facts, locale: Locale) -> Facts {
     if is_blizzard(path, locale) {
         let models = std::mem::take(&mut facts.tables.creature_model_data);
 
+        facts.prints.add(&facts.tables);
         facts.models = BTreeMap::new();
         facts.tables = super::facts::Tables {
             creature_model_data: models,
@@ -293,7 +300,7 @@ struct Scene<'a> {
     lookup: Lookup<'a>,
 }
 
-impl Scene<'_> {
+impl<'a> Scene<'a> {
     /// The layer whose copy of `key` wins, and whether it is a delete
     /// marker.
     fn raw(&self, key: Key) -> Option<(usize, bool)> {
@@ -329,6 +336,34 @@ impl Scene<'_> {
     /// Whether anything meets `want`.
     fn met(&self, want: &Want) -> bool {
         want.keys().iter().any(|key| self.winner(*key).is_some())
+    }
+
+    /// The facts of the highest Blizzard archive that holds the table
+    /// `file`: the rows a custom copy of it may repeat unchanged.
+    fn stock(&self, file: &str) -> Option<&'a Facts> {
+        let file = key(file);
+
+        self.layers
+            .iter()
+            .find(|ground| {
+                !ground.custom && ground.facts.files.get(&file).is_some_and(|f| !f.deleted)
+            })
+            .map(|ground| ground.facts)
+    }
+}
+
+/// Blizzard's own rows of a table, which a custom copy may repeat.
+struct Stock<'a>(Option<Cow<'a, Prints>>);
+
+impl<'a> Stock<'a> {
+    fn of(scene: &Scene<'a>, file: &str) -> Stock<'a> {
+        Stock(scene.stock(file).map(Facts::stock))
+    }
+
+    /// Whether the row under `id` is Blizzard's, `print` being the check
+    /// against the fingerprints of the table.
+    fn has(&self, print: impl Fn(&Prints) -> bool) -> bool {
+        self.0.as_deref().is_some_and(print)
     }
 }
 
@@ -419,7 +454,15 @@ impl Resolver<'_, '_> {
     }
 
     fn creature_models(&mut self, layer: usize, facts: &Facts) {
-        for path in facts.tables.creature_model_data.values() {
+        let stock = self.scene.stock(CREATURE_MODEL_DATA);
+
+        for (id, path) in &facts.tables.creature_model_data {
+            let theirs = stock.and_then(|stock| stock.tables.creature_model_data.get(id));
+
+            if theirs.is_some_and(|theirs| key(theirs) == key(path)) {
+                continue;
+            }
+
             self.one(layer, &model_name(path));
         }
     }
@@ -432,11 +475,25 @@ impl Resolver<'_, '_> {
             .winner(key(CREATURE_MODEL_DATA))
             .and_then(|at| scene.layers.get(at))
             .map(|ground| &ground.facts.tables.creature_model_data);
+        let theirs = scene
+            .stock(CREATURE_MODEL_DATA)
+            .map(|stock| &stock.tables.creature_model_data);
+        let stock = Stock::of(scene, CREATURE_DISPLAY_INFO);
 
-        for display in facts.tables.creature_display_info.values() {
+        for (id, display) in &facts.tables.creature_display_info {
             let Some(path) = models.and_then(|models| models.get(&display.model)) else {
                 continue;
             };
+
+            // Blizzard's own row, if the model it is looked up in is too.
+            let same = theirs
+                .and_then(|theirs| theirs.get(&display.model))
+                .is_some_and(|theirs| key(theirs) == key(path));
+
+            if same && stock.has(|prints| display.is_in(prints, *id)) {
+                continue;
+            }
+
             let folder = path
                 .rsplit_once(['\\', '/'])
                 .map_or("", |(folder, _)| folder);
@@ -456,13 +513,25 @@ impl Resolver<'_, '_> {
     }
 
     fn creature_extras(&mut self, layer: usize, facts: &Facts) {
-        for bake in facts.tables.creature_display_info_extra.values() {
+        let stock = Stock::of(self.scene, CREATURE_DISPLAY_INFO_EXTRA);
+
+        for (id, bake) in &facts.tables.creature_display_info_extra {
+            if stock.has(|prints| prints.creature_display_info_extra.get(id) == Some(&key(bake))) {
+                continue;
+            }
+
             self.one(layer, &format!("Textures\\BakedNpcTextures\\{bake}"));
         }
     }
 
     fn item_displays(&mut self, layer: usize, facts: &Facts) {
-        for item in facts.tables.item_display_info.values() {
+        let stock = Stock::of(self.scene, ITEM_DISPLAY_INFO);
+
+        for (id, item) in &facts.tables.item_display_info {
+            if stock.has(|prints| item.is_in(prints, *id)) {
+                continue;
+            }
+
             for (index, model) in item.models.iter().enumerate() {
                 if model.is_empty() {
                     continue;
@@ -530,13 +599,25 @@ impl Resolver<'_, '_> {
     }
 
     fn object_displays(&mut self, layer: usize, facts: &Facts) {
-        for path in facts.tables.game_object_display_info.values() {
+        let stock = Stock::of(self.scene, GAME_OBJECT_DISPLAY_INFO);
+
+        for (id, path) in &facts.tables.game_object_display_info {
+            if stock.has(|prints| prints.game_object_display_info.get(id) == Some(&key(path))) {
+                continue;
+            }
+
             self.one(layer, &model_name(path));
         }
     }
 
     fn spell_effects(&mut self, layer: usize, facts: &Facts) {
-        for path in facts.tables.spell_visual_effect_name.values() {
+        let stock = Stock::of(self.scene, SPELL_VISUAL_EFFECT_NAME);
+
+        for (id, path) in &facts.tables.spell_visual_effect_name {
+            if stock.has(|prints| prints.spell_visual_effect_name.get(id) == Some(&key(path))) {
+                continue;
+            }
+
             self.one(layer, &model_name(path));
         }
     }
@@ -970,10 +1051,8 @@ mod tests {
             .loaded
             .iter()
             .flat_map(|slot| slot.paths.iter().map(move |path| (slot.priority, path)))
-            .map(|(priority, path)| Layer {
-                priority,
-                path: path.clone(),
-                facts: Arc::new(read(dir.path(), path)),
+            .map(|(priority, path)| {
+                Layer::new(priority, path.clone(), read(dir.path(), path), PLAYER)
             })
             .collect();
 
@@ -1176,6 +1255,142 @@ mod tests {
             "again, nothing changes"
         );
         assert_eq!(strip("Data/patch-G.MPQ", facts.clone(), PLAYER), facts);
+    }
+
+    /// What the unmet needs of `graph` are called, in order.
+    fn unmet_names(graph: &Graph) -> Vec<String> {
+        let mut names: Vec<String> = graph
+            .unmet()
+            .iter()
+            .map(|need| need.needs.name.clone().unwrap_or_default())
+            .collect();
+        names.sort();
+
+        names
+    }
+
+    /// A `GameObjectDisplayInfo` in an archive.
+    fn objects_in(rows: &[(u32, &str)]) -> Writer {
+        archive(&[(
+            "DBFilesClient\\GameObjectDisplayInfo.dbc",
+            object_displays(rows),
+        )])
+    }
+
+    /// Blizzard's `GameObjectDisplayInfo`, with two dead references.
+    fn blizzards_objects() -> (&'static str, Writer) {
+        (
+            "Data/patch-2.MPQ",
+            objects_in(&[(1, "World\\Dead.mdx"), (2, "World\\AlsoDead.mdx")]),
+        )
+    }
+
+    #[test]
+    fn a_row_a_patch_copies_unchanged_from_blizzard_needs_nothing_of_its_own() {
+        // Spelled with another case and slashes, it is still the same row.
+        let copy = objects_in(&[(1, "world/DEAD.mdx"), (2, "World\\AlsoDead.mdx")]);
+        let (_dir, graph) = scanned(&[blizzards_objects(), ("Data/patch-G.MPQ", copy)]);
+        assert_eq!(unmet_names(&graph), Vec::<String>::new());
+
+        // Installing such a table needs nothing of its own either, and
+        // neither does it break what an archive of the player has.
+        let (_dir, graph) = scanned(&[
+            blizzards_objects(),
+            ("Data/patch-H.MPQ", archive(&[("World\\Dead.m2", m2(0))])),
+        ]);
+        let copy = objects_in(&[(1, "World\\Dead.mdx")]);
+        let (change, facts) = changing(&[], &[("Data/patch-Y.mpq", &copy)]);
+
+        assert_eq!(graph.gate(&change, &facts), Gate::default());
+    }
+
+    #[test]
+    fn a_row_a_patch_changes_or_adds_still_needs_what_it_names() {
+        let table = objects_in(&[
+            (1, "World\\Dead.mdx"),
+            (2, "World\\Changed.mdx"),
+            (3, "World\\New.mdx"),
+        ]);
+        let (_dir, graph) = scanned(&[blizzards_objects(), ("Data/patch-G.MPQ", table)]);
+
+        assert_eq!(
+            unmet_names(&graph),
+            vec!["World\\Changed.m2", "World\\New.m2"]
+        );
+
+        // And installing one that overrides what another archive had
+        // breaks it: only the rows that are new count.
+        let (_dir, graph) = scanned(&[
+            blizzards_objects(),
+            ("Data/patch-H.MPQ", archive(&[("World\\New.m2", m2(0))])),
+        ]);
+        let table = objects_in(&[(1, "World\\Dead.mdx"), (3, "World\\New.mdx")]);
+        let (change, facts) = changing(&["Data/patch-H.MPQ"], &[("Data/patch-Y.mpq", &table)]);
+        let gate = graph.gate(&change, &facts);
+
+        assert_eq!(gate.breaks.len(), 1, "{gate:?}");
+        assert_eq!(gate.breaks[0].needs.name.as_deref(), Some("World\\New.m2"));
+    }
+
+    #[test]
+    fn a_creature_display_copied_from_blizzard_counts_again_when_its_model_changed() {
+        let blizzard = || {
+            (
+                "Data/patch-2.MPQ",
+                archive(&[
+                    (
+                        "DBFilesClient\\CreatureModelData.dbc",
+                        model_data(&[(5, "Creature\\Foo\\Foo.mdx")]),
+                    ),
+                    (
+                        "DBFilesClient\\CreatureDisplayInfo.dbc",
+                        display_info(&[(7, 5, "FooSkin")]),
+                    ),
+                ]),
+            )
+        };
+        let copy = || {
+            archive(&[(
+                "DBFilesClient\\CreatureDisplayInfo.dbc",
+                display_info(&[(7, 5, "FooSkin")]),
+            )])
+        };
+
+        // Alone, the copy is Blizzard's own row.
+        let (_dir, graph) = scanned(&[blizzard(), ("Data/patch-G.MPQ", copy())]);
+        assert_eq!(unmet_names(&graph), Vec::<String>::new());
+
+        // With the same model data (spelled otherwise), still.
+        let same = archive(&[
+            (
+                "DBFilesClient\\CreatureModelData.dbc",
+                model_data(&[(5, "creature/foo/FOO.mdx")]),
+            ),
+            ("creature/foo/foo.m2", m2(0)),
+        ]);
+        let (_dir, graph) = scanned(&[
+            blizzard(),
+            ("Data/patch-G.MPQ", copy()),
+            ("Data/patch-H.MPQ", same),
+        ]);
+        assert_eq!(unmet_names(&graph), Vec::<String>::new());
+
+        // But once the model is another one, the texture is looked up in
+        // its folder, and the row is the patch's.
+        let moved = archive(&[
+            (
+                "DBFilesClient\\CreatureModelData.dbc",
+                model_data(&[(5, "Creature\\Bar\\Bar.mdx")]),
+            ),
+            ("Creature\\Bar\\Bar.m2", m2(0)),
+        ]);
+        let (_dir, graph) = scanned(&[
+            blizzard(),
+            ("Data/patch-G.MPQ", copy()),
+            ("Data/patch-H.MPQ", moved),
+        ]);
+
+        assert_eq!(unmet_names(&graph), vec!["Creature\\Bar\\FooSkin.blp"]);
     }
 
     #[test]

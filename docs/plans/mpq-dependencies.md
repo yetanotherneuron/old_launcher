@@ -109,13 +109,23 @@ it**, of a file that is still the winning copy after the install, where
 that file comes from:
 
 - a **custom** archive (not Blizzard's: see below), the player's own or a
-  mod's;
-- or one of **the mod's own** archives being installed. Patch Y's tables
-  needed patch-F's models; the install that set patch-F aside broke itself.
+  mod's.
+
+The release's own archives are simulated too, but what their tables name
+that the install replaces is not a break the launcher reports: the file
+being set aside is already told in the confirm box ("belongs to something
+else … overrides it safely"), and that is all the player gets.
 
 Needs of Blizzard's archives are left out: the base game ships with a few
 hundred references nothing provides and runs fine, and a message starting
-"Your custom Data/common.MPQ" would be wrong. Needs that are unmet already
+"Your custom Data/common.MPQ" would be wrong. For the same reason a custom
+table's **rows that repeat Blizzard's unchanged** (same id, same names;
+for creature displays also the same model path) need nothing: Lau's Patch Y
+ships a whole copy of `SpellVisualEffectName` with Blizzard's own dead
+references in it. Blizzard's archives keep a fingerprint per row for this.
+A model needs only the textures something draws (a skin batch, a particle
+emitter, a ribbon), when its skins are in the same archive; the conversion
+of the HD pack left undrawn ones behind. Needs that are unmet already
 are not a break either: the install made nothing worse. A need met only by
 an archive present but not loaded (`.backup`, `.disabled`) is not met.
 
@@ -350,9 +360,14 @@ in these sentences (the confirm box's own "overrides it safely (backed up)"
 lines stay as they are). Kinds of files: tables, models, textures, sounds,
 interface, world, and "files" for the rest.
 
-**Blocked** (the row shows the sentence in warning tone; the Install button
-is off with the same sentence as its tip; after a download, the same
-sentence where the progress was):
+**Blocked** (the row shows the short sentence in warning tone, and so does
+the banner where the progress was after a download; hovering either, or the
+disabled Install button, shows the detailed sentences below as a tip):
+
+- This mod would break one of your patches. / This mod would break 2 of
+  your patches. *(the count is of the distinct archives that would break)*
+
+The detailed sentences:
 
 - Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which
   installing “Patch Y” would override.
@@ -360,8 +375,9 @@ sentence where the progress was):
   and Data/patch-E.mpq, which installing “Patch Y” would override.
 - The tables of “Dungeon Maps” need Data/patch-F.mpq, which installing
   “Patch Y” would override. *(the needing archive is a mod's)*
-- The tables “Patch Y” brings need Data/patch-F.mpq, which installing it
-  would override. *(the mod's own needs)*
+
+Nothing is said of the release's own tables naming what the install
+replaces.
 
 **Warn and ask** (lines in the confirm box, above the existing "Install
 “Patch Y” anyway?"):

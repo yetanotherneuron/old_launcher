@@ -126,6 +126,8 @@ struct Work {
     root: PathBuf,
     id: String,
     said: String,
+    /// More on hover, when `said` is the short of it.
+    details: Option<String>,
     /// How far an install got, while it goes on.
     stage: Option<Stage>,
     /// How many steps an install has: the download, looking at its
@@ -654,9 +656,9 @@ impl State {
         // update as much as for a first install.
         if let Some(why) = self
             .install_of(root, &listed.id)
-            .and_then(|install| install.blocked.clone())
+            .and_then(|install| install.blocked.as_ref())
         {
-            return Some(why);
+            return Some(why.details.clone());
         }
         if held.contains_key(&listed.id) {
             return None;
@@ -990,6 +992,7 @@ impl State {
                     root: root.clone(),
                     id: id.clone(),
                     said: format!("Removing “{}”", listed.name),
+                    details: None,
                     stage: None,
                     steps: 0,
                     looks: false,
@@ -1079,11 +1082,12 @@ impl State {
                 // Nothing was touched: what was downloaded stays in the
                 // cache for next time.
                 if let Some(why) = blocked {
-                    log::info!("Not installing {id} in {}: {why}", root.display());
+                    log::info!("Not installing {id} in {}: {}", root.display(), why.details);
                     self.stopped = Some(Work {
                         root,
                         id,
-                        said: why,
+                        said: why.short,
+                        details: Some(why.details),
                         stage: None,
                         steps: 0,
                         looks: false,
@@ -1118,6 +1122,7 @@ impl State {
                             root: root.clone(),
                             id,
                             said,
+                            details: None,
                             stage: None,
                             steps: 0,
                             looks: false,
@@ -1264,6 +1269,7 @@ impl State {
             root: root.clone(),
             id: id.clone(),
             said: busy.clone(),
+            details: None,
             stage: Some(Stage::Downloading {
                 received: 0,
                 total: None,
@@ -1391,6 +1397,7 @@ impl State {
             root: root.clone(),
             id: id.clone(),
             said: busy,
+            details: None,
             stage: Some(Stage::Downloading {
                 received: 0,
                 total: None,
@@ -1498,7 +1505,10 @@ impl State {
                 )
             }
             (None, None, Some((work, tone))) => (
-                text(&work.said).boxed(),
+                match &work.details {
+                    Some(details) => style::tip(text(&work.said), details.clone()).boxed(),
+                    None => text(&work.said).boxed(),
+                },
                 row![
                     button("Dismiss")
                         .style(style::quiet)
@@ -1713,20 +1723,21 @@ impl State {
         let judged = verdict
             .and_then(|verdict| verdict.install.as_ref())
             .filter(|_| installable);
-        let gate_says: Vec<&str> = judged
+        // Each line, and what more it says on hover.
+        let gate_says: Vec<(&str, Option<&str>)> = judged
             .into_iter()
             .flat_map(|install| {
                 install
                     .blocked
-                    .as_deref()
-                    .into_iter()
-                    .chain(install.asks.iter().map(String::as_str))
+                    .iter()
+                    .map(|block| (block.short.as_str(), Some(block.details.as_str())))
+                    .chain(install.asks.iter().map(|line| (line.as_str(), None)))
             })
             .chain(
                 verdict
                     .filter(|_| status.is_some())
                     .into_iter()
-                    .flat_map(|verdict| verdict.installed.iter().map(String::as_str)),
+                    .flat_map(|verdict| verdict.installed.iter().map(|line| (line.as_str(), None))),
             )
             .collect();
         let asked = judged.map_or(&[][..], |judged| judged.asks.as_slice());
@@ -1902,9 +1913,14 @@ impl State {
                     .size(13)
                     .style(text::warning)
             }),
-            column(gate_says.into_iter().map(|line| {
+            column(gate_says.into_iter().map(|(line, details)| {
                 let tone: Tone = text::warning;
-                text(line).size(13).style(tone)
+                let line = text(line).size(13).style(tone);
+
+                match details {
+                    Some(details) => style::tip(line, details).boxed(),
+                    None => line.boxed(),
+                }
             }))
             .spacing(4),
             self.elsewhere(root, listed, installable && newer.is_none()),
@@ -2959,6 +2975,7 @@ mod tests {
             root: ROOT.into(),
             id: "elsewhere".to_owned(),
             said: "Installing Lumenveil 0.1.1".to_owned(),
+            details: None,
             stage: None,
             steps: 0,
             looks: false,
@@ -3181,6 +3198,7 @@ mod tests {
             root: root.clone(),
             id: "glow".to_owned(),
             said: "Installing Glow".to_owned(),
+            details: None,
             stage: None,
             steps: 0,
             looks: false,
@@ -3697,6 +3715,7 @@ mod tests {
             root: ROOT.into(),
             id: "glow".to_owned(),
             said: "Installing Glow 2.0".to_owned(),
+            details: None,
             stage: Some(Stage::Downloading {
                 received: 524_288,
                 total: Some(1_048_576),
@@ -4127,6 +4146,7 @@ mod tests {
         )
         .await;
         let before = tree(&gated.root());
+        let short = "This mod would break one of your patches.";
         let sentence = "Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which \
                         installing “Patch Y” would override.";
 
@@ -4142,12 +4162,19 @@ mod tests {
         // It stopped where the progress was, and says so in the row.
         assert!(gated.state.busy.is_none() && gated.state.pending.is_none());
         assert!(gated.state.confirming.is_none());
-        assert!(gated.banner_shows(sentence));
-        assert!(gated.shows(sentence));
+        assert!(gated.banner_shows(short));
+        assert!(gated.shows(short));
+        assert!(!gated.banner_shows(sentence), "the details are for the tip");
+        assert!(!gated.shows(sentence));
+        assert_eq!(
+            gated.state.stopped.as_ref().unwrap().details.as_deref(),
+            Some(sentence),
+            "the banner has them on hover"
+        );
         assert_eq!(
             gated.state.blocked(&gated.root(), &gated.listed()),
             Some(sentence.to_owned()),
-            "the button is off, with it for a tip"
+            "the button is off, with them for a tip"
         );
         let root = gated.root();
         let mut ui = simulator(gated.state.view(&root, false));
@@ -4217,6 +4244,54 @@ mod tests {
         assert!(gated.root().join("Data/patch-y.mpq").is_file());
         assert!(gated.root().join("Data/patch-G.mpq").is_file());
         assert!(gated.root().join("Data/patch-H.mpq").is_file());
+    }
+
+    /// A `GameObjectDisplayInfo` with one row, naming the model `path`.
+    fn object_table(path: &str) -> Vec<u8> {
+        let strings = format!("\0{path}\0");
+        let mut bytes = b"WDBC".to_vec();
+
+        for number in [1, 19, 19 * 4, strings.len()] {
+            bytes.extend((number as u32).to_le_bytes());
+        }
+        for column in 0..19u32 {
+            bytes.extend(u32::from(column == 0 || column == 1).to_le_bytes());
+        }
+        bytes.extend(strings.as_bytes());
+
+        bytes
+    }
+
+    #[tokio::test]
+    async fn a_mods_own_gaps_neither_block_nor_ask() {
+        // The player's own Data/patch-Y.mpq has the model that the table
+        // Patch Y brings names, and Patch Y's archive replaces it.
+        let player = archive(&[("World\\Foo.m2", model(0))]);
+        let brings = archive(&[(
+            "DBFilesClient\\GameObjectDisplayInfo.dbc",
+            object_table("World\\Foo.mdx"),
+        )]);
+        let mut gated = Gated::new(&[("Data/patch-Y.mpq", &player)], &brings, &[]).await;
+
+        install(&mut gated);
+        let (fetched, _) = gated.fetched().await;
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+
+        // No block and no line about it: the file of the player's it sets
+        // aside is all it says.
+        assert!(gated.state.stopped.is_none());
+        assert_eq!(gated.state.blocked(&gated.root(), &gated.listed()), None);
+        assert!(!gated.shows("name files only"));
+        assert!(!gated.shows("which installing it would override"));
+        assert!(gated.shows("Install “Patch Y” anyway?"));
+        assert!(gated.state.busy.is_none());
+
+        let _ = gated.go(Message::ConfirmInstall);
+        assert!(gated.state.busy.is_some());
     }
 
     #[tokio::test]

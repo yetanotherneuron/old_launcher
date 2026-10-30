@@ -8,7 +8,9 @@
 //! row and the confirm box show, naming the mod an archive belongs to
 //! (`Mods::owned`) and calling every other custom archive the player's:
 //! "Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which
-//! installing “Patch Y” would override."
+//! installing “Patch Y” would override." Only the breaks of other archives
+//! count: what the release's own tables name that the install replaces is
+//! not told (the files it sets aside are, in the confirm box).
 //!
 //! [`judge`] does it for every mod of the list whose release's archives
 //! have their facts in the launcher's cache, before anything is pressed;
@@ -39,12 +41,22 @@ const ORDER: [Kind; 7] = [
     Kind::Other,
 ];
 
+/// Why an install is blocked: the short sentence the row and the banner
+/// say, and the detailed ones that show on hover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Blocked {
+    /// "This mod would break one of your patches."
+    pub short: String,
+    /// What would break, archive by archive.
+    pub details: String,
+}
+
 /// What installing the newest release of a mod does to the patches.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Install {
-    /// Why it can't be installed: it would break a patch's needs. No
-    /// "anyway".
-    pub blocked: Option<String>,
+    /// Why it can't be installed: it would break the needs of another
+    /// archive. No "anyway".
+    pub blocked: Option<Blocked>,
     /// What the player is asked about first: files it would override, and
     /// what would override it.
     pub asks: Vec<String>,
@@ -201,21 +213,23 @@ fn kinds(kinds: &BTreeSet<Kind>) -> String {
 }
 
 /// What breaks, a sentence for each archive whose files would lose what they
-/// need, and for each set of kinds of file that need the same archives.
+/// need, and for each set of kinds of file that need the same archives. The
+/// release's own archives are left out: what they name that the install
+/// replaces is the player's to know from the files it backs up, not a block.
 fn breaks(breaks: &[Break], owners: &Owners, listed: &Mod) -> Vec<String> {
-    // By the archive that needs (and whether it is the mod's own), then by
-    // what it needs, with the kinds of the files that do.
-    type Needs = BTreeMap<(bool, String), BTreeMap<(bool, String), BTreeSet<Kind>>>;
+    // By the archive that needs, then by what it needs (and whether it is
+    // the mod's own), with the kinds of the files that do.
+    type Needs = BTreeMap<String, BTreeMap<(bool, String), BTreeSet<Kind>>>;
     let mut needs: Needs = BTreeMap::new();
 
-    for lost in breaks {
+    for lost in breaks.iter().filter(|lost| !lost.in_change) {
         // What the mod brings now and the new release doesn't: an archive
         // of the mod as installed. A file of something else where the
         // release goes is the player's, whatever its name.
         let own = owners.id(&lost.was_provided_by) == Some(listed.id.as_str());
 
         let _ = needs
-            .entry((lost.in_change, lost.archive.clone()))
+            .entry(lost.archive.clone())
             .or_default()
             .entry((own, lost.was_provided_by.clone()))
             .or_default()
@@ -224,7 +238,7 @@ fn breaks(breaks: &[Break], owners: &Owners, listed: &Mod) -> Vec<String> {
 
     let mut said = Vec::new();
 
-    for ((in_change, archive), provided) in needs {
+    for (archive, provided) in needs {
         // The archives that are needed for the same kinds of files go in one
         // sentence.
         let mut together: BTreeMap<(bool, Vec<usize>), Vec<String>> = BTreeMap::new();
@@ -246,9 +260,7 @@ fn breaks(breaks: &[Break], owners: &Owners, listed: &Mod) -> Vec<String> {
                 .copied()
                 .collect();
             let kinds = kinds(&set);
-            let subject = if in_change {
-                format!("The {kinds} “{}” brings", listed.name)
-            } else if let Some(name) = owners.name(&archive) {
+            let subject = if let Some(name) = owners.name(&archive) {
                 format!("The {kinds} of “{name}”")
             } else {
                 format!("Your custom {archive}'s {kinds}")
@@ -257,8 +269,6 @@ fn breaks(breaks: &[Break], owners: &Owners, listed: &Mod) -> Vec<String> {
 
             said.push(if own {
                 format!("{subject} need what {wanted} has now, which this release leaves out.")
-            } else if in_change {
-                format!("{subject} need {wanted}, which installing it would override.")
             } else {
                 format!(
                     "{subject} need {wanted}, which installing “{}” would override.",
@@ -347,8 +357,22 @@ fn sentences(gate: &Gate, owners: &Owners, listed: &Mod) -> Install {
         &format!("“{}” brings", listed.name),
     ));
 
+    // The archives that would break, counted for the short sentence.
+    let archives: BTreeSet<&str> = gate
+        .breaks
+        .iter()
+        .filter(|lost| !lost.in_change)
+        .map(|lost| lost.archive.as_str())
+        .collect();
+
     Install {
-        blocked: (!broken.is_empty()).then(|| broken.join(" ")),
+        blocked: (!broken.is_empty()).then(|| Blocked {
+            short: match archives.len() {
+                0 | 1 => "This mod would break one of your patches.".to_owned(),
+                many => format!("This mod would break {many} of your patches."),
+            },
+            details: broken.join(" "),
+        }),
         asks,
     }
 }
@@ -503,6 +527,11 @@ mod tests {
     use crate::core::mods::Source;
     use crate::core::patches::graph::Overlap;
 
+    /// What an install's block says on hover.
+    fn details(install: &Install) -> Option<&str> {
+        install.blocked.as_ref().map(|block| block.details.as_str())
+    }
+
     /// A mod called “Patch Y”.
     fn patch_y() -> Mod {
         Mod {
@@ -605,7 +634,7 @@ mod tests {
         };
 
         assert_eq!(
-            sentences(&gate, &none, &patch_y()).blocked.as_deref(),
+            details(&sentences(&gate, &none, &patch_y())),
             Some(
                 "Your custom Data/patch-G.mpq's models and tables need Data/patch-E.mpq and \
                  Data/patch-F.mpq, which installing “Patch Y” would override."
@@ -623,12 +652,46 @@ mod tests {
             ..Gate::default()
         };
         assert_eq!(
-            sentences(&gate, &none, &patch_y()).blocked.as_deref(),
+            details(&sentences(&gate, &none, &patch_y())),
             Some(
                 "Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which installing \
                  “Patch Y” would override."
             )
         );
+    }
+
+    #[test]
+    fn a_block_says_in_short_how_many_patches_would_break() {
+        let one =
+            |archive: &str, file: &str| lost(archive, file, "a00.skin", "Data/patch-F.mpq", false);
+        let short = |breaks: Vec<Break>| {
+            let gate = Gate {
+                breaks,
+                ..Gate::default()
+            };
+
+            sentences(&gate, &owners(&[], &[]), &patch_y())
+                .blocked
+                .map(|block| block.short)
+        };
+
+        assert_eq!(
+            short(vec![
+                one("Data/patch-G.mpq", "a.m2"),
+                one("Data/patch-G.mpq", "b.m2")
+            ])
+            .as_deref(),
+            Some("This mod would break one of your patches.")
+        );
+        assert_eq!(
+            short(vec![
+                one("Data/patch-G.mpq", "a.m2"),
+                one("Data/patch-H.mpq", "b.m2")
+            ])
+            .as_deref(),
+            Some("This mod would break 2 of your patches.")
+        );
+        assert_eq!(short(Vec::new()), None);
     }
 
     #[test]
@@ -657,14 +720,16 @@ mod tests {
             ..Gate::default()
         };
 
+        // The other mod's break blocks; the release's own is not told.
+        let install = sentences(&gate, &owned, &patch_y());
         assert_eq!(
-            sentences(&gate, &owned, &patch_y()).blocked.as_deref(),
+            details(&install),
             Some(
                 "The tables of “Dungeon Maps” need Data/patch-F.mpq, which installing “Patch Y” \
-                 would override. The tables “Patch Y” brings need Data/patch-F.mpq, which \
-                 installing it would override."
+                 would override."
             ),
         );
+        assert_eq!(install.asks, Vec::<String>::new());
     }
 
     #[test]
@@ -675,26 +740,28 @@ mod tests {
         );
         let gate = Gate {
             breaks: vec![lost(
-                "Data/patch-y.mpq",
+                "Data/patch-G.mpq",
                 "DBFilesClient\\CreatureDisplayInfo.dbc",
                 "y.blp",
                 "Data/patch-y.mpq",
-                true,
+                false,
             )],
             ..Gate::default()
         };
 
         assert_eq!(
-            sentences(&gate, &owned, &patch_y()).blocked.as_deref(),
+            details(&sentences(&gate, &owned, &patch_y())),
             Some(
-                "The tables “Patch Y” brings need what Data/patch-y.mpq has now, which this \
-                 release leaves out."
+                "Your custom Data/patch-G.mpq's tables need what Data/patch-y.mpq has now, \
+                 which this release leaves out."
             )
         );
     }
 
     #[test]
-    fn a_file_of_something_else_where_the_release_goes_is_not_taken_for_the_mods() {
+    fn a_mods_own_gaps_neither_block_nor_ask() {
+        // Its tables name what the file of something else where it goes
+        // has, and the install sets that file aside.
         let owned = owners(&[], &[("patch-y", "Patch Y")]);
         let gate = Gate {
             breaks: vec![lost(
@@ -707,13 +774,7 @@ mod tests {
             ..Gate::default()
         };
 
-        assert_eq!(
-            sentences(&gate, &owned, &patch_y()).blocked.as_deref(),
-            Some(
-                "The tables “Patch Y” brings need Data/patch-Y.mpq, which installing it would \
-                 override."
-            )
-        );
+        assert_eq!(sentences(&gate, &owned, &patch_y()), Install::default());
     }
 
     #[test]

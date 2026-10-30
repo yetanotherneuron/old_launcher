@@ -14,6 +14,7 @@
 //! model that doesn't add up is noted in [`Facts::problems`] and the rest of
 //! the archive is read on.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::btree_map::Entry as Slot;
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,6 +38,9 @@ const M2_VERSION: u32 = 264;
 const MAX_SKINS: u32 = 256;
 const MAX_SEQUENCES: u32 = 0x1_0000;
 const MAX_TEXTURES: u32 = 4096;
+const MAX_LOOKUPS: u32 = 0x1_0000;
+const MAX_BATCHES: u32 = 0x1_0000;
+const MAX_EMITTERS: u32 = 0x1000;
 
 /// A sequence flag: its animation is inside the model, not in an `.anim`.
 /// (`0x10` is the game's own mark for an animation it has loaded.)
@@ -254,6 +258,110 @@ pub struct Tables {
     pub spell_visual_effect_name: BTreeMap<u32, String>,
 }
 
+impl CreatureDisplay {
+    /// The fingerprint of the row: its model and textures.
+    fn print(&self) -> Key {
+        let model = self.model.to_string();
+
+        print(std::iter::once(model.as_str()).chain(self.textures.iter().map(String::as_str)))
+    }
+}
+
+impl ItemDisplay {
+    /// The fingerprint of the row: all its names.
+    fn print(&self) -> Key {
+        print(
+            self.models
+                .iter()
+                .chain(&self.model_textures)
+                .chain(&self.icons)
+                .chain(&self.components)
+                .map(String::as_str),
+        )
+    }
+}
+
+/// The fingerprint of a row: its path columns joined, hashed as a file name
+/// is, so case and the direction of slashes don't matter.
+fn print<'a>(columns: impl Iterator<Item = &'a str>) -> Key {
+    key(&columns.collect::<Vec<_>>().join("\u{1}"))
+}
+
+/// One fingerprint per row of the five tables whose rows the graph resolves
+/// (all but `CreatureModelData`, which is kept whole), by row id. Blizzard's
+/// archives keep these in place of their rows: a custom table that copies a
+/// row unchanged only repeats what the base game ships, dead references
+/// included, and the graph tells such a row by its fingerprint.
+#[derive(Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub struct Prints {
+    /// `CreatureDisplayInfo`: model id and textures.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub creature_display_info: BTreeMap<u32, Key>,
+    /// `CreatureDisplayInfoExtra`: the baked texture.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub creature_display_info_extra: BTreeMap<u32, Key>,
+    /// `ItemDisplayInfo`: all its names.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub item_display_info: BTreeMap<u32, Key>,
+    /// `GameObjectDisplayInfo`: the path of the model.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub game_object_display_info: BTreeMap<u32, Key>,
+    /// `SpellVisualEffectName`: the path of the model.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub spell_visual_effect_name: BTreeMap<u32, Key>,
+}
+
+impl Prints {
+    /// Whether there are none.
+    pub fn is_empty(&self) -> bool {
+        self.creature_display_info.is_empty()
+            && self.creature_display_info_extra.is_empty()
+            && self.item_display_info.is_empty()
+            && self.game_object_display_info.is_empty()
+            && self.spell_visual_effect_name.is_empty()
+    }
+
+    /// Adds the fingerprint of every row of `tables`.
+    pub fn add(&mut self, tables: &Tables) {
+        let paths = |rows: &BTreeMap<u32, String>| -> BTreeMap<u32, Key> {
+            rows.iter().map(|(id, path)| (*id, key(path))).collect()
+        };
+
+        self.creature_display_info.extend(
+            tables
+                .creature_display_info
+                .iter()
+                .map(|(id, row)| (*id, row.print())),
+        );
+        self.creature_display_info_extra
+            .extend(paths(&tables.creature_display_info_extra));
+        self.item_display_info.extend(
+            tables
+                .item_display_info
+                .iter()
+                .map(|(id, row)| (*id, row.print())),
+        );
+        self.game_object_display_info
+            .extend(paths(&tables.game_object_display_info));
+        self.spell_visual_effect_name
+            .extend(paths(&tables.spell_visual_effect_name));
+    }
+}
+
+impl CreatureDisplay {
+    /// Whether `prints` has this row, unchanged, under `id`.
+    pub fn is_in(&self, prints: &Prints, id: u32) -> bool {
+        prints.creature_display_info.get(&id) == Some(&self.print())
+    }
+}
+
+impl ItemDisplay {
+    /// Whether `prints` has this row, unchanged, under `id`.
+    pub fn is_in(&self, prints: &Prints, id: u32) -> bool {
+        prints.item_display_info.get(&id) == Some(&self.print())
+    }
+}
+
 /// Everything one archive says, which the launcher caches locally: what the
 /// archive holds, and what its tables and models reference. Nothing of it
 /// depends on any other archive.
@@ -267,6 +375,10 @@ pub struct Facts {
     /// The columns of its tables that name files.
     #[serde(default)]
     pub tables: Tables,
+    /// The fingerprints of the rows it had before the launcher dropped them
+    /// (see [`Prints`]); only Blizzard's archives have any.
+    #[serde(default, skip_serializing_if = "Prints::is_empty")]
+    pub prints: Prints,
     /// Each of its models (`.m2`) with a name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub models: BTreeMap<Key, Model>,
@@ -276,6 +388,22 @@ pub struct Facts {
 }
 
 impl Facts {
+    /// The fingerprints of the rows of its tables: those it kept, and those
+    /// of any rows it still holds (an archive that was never stripped).
+    pub fn stock(&self) -> Cow<'_, Prints> {
+        let mut rows = Prints::default();
+        rows.add(&self.tables);
+
+        if rows.is_empty() {
+            return Cow::Borrowed(&self.prints);
+        }
+
+        let mut all = self.prints.clone();
+        all.add(&self.tables);
+
+        Cow::Owned(all)
+    }
+
     /// What `source` says. `known` are names from elsewhere (the other
     /// archives' listfiles) to try on the files `source` lists without
     /// naming, since models can only be read by name.
@@ -347,7 +475,7 @@ impl Facts {
             let (true, Some(size)) = (model, size) else {
                 continue;
             };
-            match read_model(source, name, size) {
+            match read_model(source, &there, name, size, &mut facts.problems) {
                 Ok(model) => {
                     facts.models.insert(*key, model);
                 }
@@ -606,8 +734,115 @@ fn ask(source: &impl Source, name: &str, offset: u32, len: u32) -> Result<Vec<u8
         .map_err(|error| format!("can't be read: {error}"))
 }
 
-/// What the model `name`, of `size` bytes, needs.
-fn read_model(source: &impl Source, name: &str, size: u32) -> Result<Model, String> {
+/// Which textures of the model `name` something draws: those a batch of one
+/// of its skins in the archive picks through the texture lookup, and those
+/// its particle emitters and ribbons use. `None` when none of its skins is
+/// in the archive (they are all kept then).
+fn drawn(
+    source: &impl Source,
+    there: &impl Fn(&str) -> bool,
+    name: &str,
+    skins: u32,
+) -> Result<Option<BTreeSet<usize>>, String> {
+    const CUT: &str = "its header is cut short";
+    let stem = name.get(..name.len().saturating_sub(3)).unwrap_or(name);
+    let skins: Vec<String> = (0..skins)
+        .map(|skin| format!("{stem}{skin:02}.skin"))
+        .filter(|skin| there(skin))
+        .collect();
+    if skins.is_empty() {
+        return Ok(None);
+    }
+
+    let head = ask(source, name, 0x80, 0xB0)?;
+    let word = |at: usize| u32_at(&head, at - 0x80).ok_or(CUT);
+    let array = |at: usize, each: u32, most: u32, what: &str| -> Result<Vec<u8>, String> {
+        let (count, from) = (word(at)?, word(at + 4)?);
+        let end = u64::from(count) * u64::from(each) + u64::from(from);
+        if count > most || end > u64::from(u32::MAX) {
+            return Err(format!("claims {count} {what} that don't fit in it"));
+        }
+        let bytes = ask(source, name, from, count * each)?;
+        if bytes.len() as u64 != u64::from(count) * u64::from(each) {
+            return Err(format!("claims {count} {what} that don't fit in it"));
+        }
+        Ok(bytes)
+    };
+
+    let lookup = array(0x80, 2, MAX_LOOKUPS, "texture lookups")?;
+    let mut used = BTreeSet::new();
+    for skin in &skins {
+        let head = ask(source, skin, 0, 0x2C)?;
+        if head.get(..4) != Some(b"SKIN") {
+            return Err(format!("{skin} isn't a skin"));
+        }
+        let (count, from) = (
+            u32_at(&head, 0x24).ok_or("a skin's header is cut short")?,
+            u32_at(&head, 0x28).ok_or("a skin's header is cut short")?,
+        );
+        if count > MAX_BATCHES {
+            return Err(format!("{skin} claims {count} batches"));
+        }
+        let batches = ask(source, skin, from, count * 24)?;
+        if batches.len() as u64 != u64::from(count) * 24 {
+            return Err(format!(
+                "{skin} claims {count} batches that don't fit in it"
+            ));
+        }
+        for batch in batches.as_chunks::<24>().0 {
+            let (textures, first) = (u16_at(batch, 0x0E), u16_at(batch, 0x10));
+            let (Some(textures), Some(first)) = (textures, first) else {
+                continue;
+            };
+            for at in usize::from(first)..usize::from(first) + usize::from(textures) {
+                if let Some(texture) = u16_at(&lookup, at * 2) {
+                    used.insert(usize::from(texture));
+                }
+            }
+        }
+    }
+
+    let emitters = array(0x128, 0x1DC, MAX_EMITTERS, "particle emitters")?;
+    for emitter in emitters.as_chunks::<0x1DC>().0 {
+        used.extend(u16_at(emitter, 0x16).map(usize::from));
+    }
+
+    let ribbons = array(0x120, 0xB0, MAX_EMITTERS, "ribbons")?;
+    for ribbon in ribbons.as_chunks::<0xB0>().0 {
+        let (count, from) = (
+            u32_at(ribbon, 0x14).ok_or(CUT)?,
+            u32_at(ribbon, 0x18).ok_or(CUT)?,
+        );
+        if count > MAX_TEXTURES {
+            return Err(format!("claims {count} ribbon textures"));
+        }
+        let list = ask(source, name, from, count * 2)?;
+        if list.len() as u64 != u64::from(count) * 2 {
+            return Err(format!(
+                "claims {count} ribbon textures that don't fit in it"
+            ));
+        }
+        used.extend(
+            list.as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| usize::from(u16::from_le_bytes(*pair))),
+        );
+    }
+
+    Ok(Some(used))
+}
+
+/// What the model `name`, of `size` bytes, needs. A model that can still be
+/// loaded but whose textures can't be told apart (a bad offset in its header
+/// or skins) keeps them all, and `problems` says why.
+fn read_model(
+    source: &impl Source,
+    there: &impl Fn(&str) -> bool,
+    name: &str,
+    size: u32,
+    problems: &mut Vec<String>,
+) -> Result<Model, String> {
     const CUT: &str = "its header is cut short";
     let stem = name.get(..name.len().saturating_sub(3)).unwrap_or(name);
     let head = ask(source, name, 0, 0x58)?;
@@ -680,7 +915,16 @@ fn read_model(source: &impl Source, name: &str, size: u32) -> Result<Model, Stri
     let (count, at) = textures;
     inside(count, at, 16, MAX_TEXTURES, "textures")?;
     let table = ask(source, name, at, count * 16)?;
+    // Of the textures with a name, only those something draws, when the
+    // skins are there to say.
+    let drawn = drawn(source, there, name, skins).unwrap_or_else(|problem| {
+        problems.push(format!("{name}: {problem}"));
+        None
+    });
     for index in 0..to_usize(count)? {
+        if drawn.as_ref().is_some_and(|drawn| !drawn.contains(&index)) {
+            continue;
+        }
         let word = |field: usize| {
             u32_at(&table, index * 16 + field * 4).ok_or("its textures are cut short")
         };
@@ -1030,6 +1274,152 @@ mod tests {
         };
         assert_eq!(facts.models[&key("Cata.m2")], unloadable("version 272"));
         assert_eq!(facts.models[&key("Chunked.m2")], unloadable("MD21"));
+    }
+
+    /// A model of version 264 with one skin and `textures` named, whose
+    /// texture lookup is `lookup`, with a particle emitter for each of
+    /// `emitters` (the texture it uses) and a ribbon for each of `ribbons`
+    /// (the textures it uses).
+    fn drawing_m2(
+        textures: &[&str],
+        lookup: &[i16],
+        emitters: &[u16],
+        ribbons: &[&[u16]],
+    ) -> Vec<u8> {
+        let mut bytes = vec![0; 0x130];
+        bytes[..4].copy_from_slice(b"MD20");
+        let mut at = 0x130;
+        let put = |bytes: &mut Vec<u8>, field: usize, count: usize, from: usize| {
+            bytes[field..field + 4].copy_from_slice(&(count as u32).to_le_bytes());
+            bytes[field + 4..field + 8].copy_from_slice(&(from as u32).to_le_bytes());
+        };
+        bytes[4..8].copy_from_slice(&264u32.to_le_bytes());
+        bytes[0x44..0x48].copy_from_slice(&1u32.to_le_bytes());
+
+        put(&mut bytes, 0x50, textures.len(), at);
+        let mut names = at + textures.len() * 16;
+        for name in textures {
+            for number in [0, 0, name.len() + 1, names] {
+                bytes.extend((number as u32).to_le_bytes());
+            }
+            names += name.len() + 1;
+        }
+        for name in textures {
+            bytes.extend(name.as_bytes());
+            bytes.push(0);
+        }
+        at = bytes.len();
+
+        put(&mut bytes, 0x80, lookup.len(), at);
+        bytes.extend(lookup.iter().flat_map(|number| number.to_le_bytes()));
+        at = bytes.len();
+
+        put(&mut bytes, 0x128, emitters.len(), at);
+        for texture in emitters {
+            let mut emitter = vec![0; 0x1DC];
+            emitter[0x16..0x18].copy_from_slice(&texture.to_le_bytes());
+            bytes.extend(emitter);
+        }
+        at = bytes.len();
+
+        put(&mut bytes, 0x120, ribbons.len(), at);
+        let mut lists = at + ribbons.len() * 0xB0;
+        for list in ribbons {
+            let mut ribbon = vec![0; 0xB0];
+            ribbon[0x14..0x18].copy_from_slice(&(list.len() as u32).to_le_bytes());
+            ribbon[0x18..0x1C].copy_from_slice(&(lists as u32).to_le_bytes());
+            bytes.extend(ribbon);
+            lists += list.len() * 2;
+        }
+        for list in ribbons {
+            bytes.extend(list.iter().flat_map(|number| number.to_le_bytes()));
+        }
+
+        bytes
+    }
+
+    /// A skin with the batches (textures used, first lookup index).
+    fn skin(batches: &[(u16, u16)]) -> Vec<u8> {
+        let mut bytes = vec![0; 0x2C];
+        bytes[..4].copy_from_slice(b"SKIN");
+        bytes[0x24..0x28].copy_from_slice(&(batches.len() as u32).to_le_bytes());
+        bytes[0x28..0x2C].copy_from_slice(&0x2Cu32.to_le_bytes());
+        for &(count, first) in batches {
+            let mut batch = vec![0; 24];
+            batch[0x0E..0x10].copy_from_slice(&count.to_le_bytes());
+            batch[0x10..0x12].copy_from_slice(&first.to_le_bytes());
+            bytes.extend(batch);
+        }
+
+        bytes
+    }
+
+    #[test]
+    fn a_model_needs_only_the_textures_its_skins_particles_and_ribbons_draw() {
+        let textures = ["A.blp", "B.blp", "C.blp", "D.blp", "E.blp", "F.blp"];
+        // Lookup 0 and 1 name textures 1 and 0; 2 names texture 2. The skin
+        // draws lookups 0 and 2, an emitter texture 3, a ribbon texture 4.
+        let model = drawing_m2(&textures, &[1, 0, 2], &[3], &[&[4]]);
+        let memory = Memory::listed(&[("Foo.m2", model), ("Foo00.skin", skin(&[(1, 0), (1, 2)]))]);
+        let facts = Facts::of(&memory, &[]);
+        assert_eq!(facts.problems, Vec::<String>::new());
+        let mut want = vec![
+            key("Foo00.skin"),
+            key("B.blp"),
+            key("C.blp"),
+            key("D.blp"),
+            key("E.blp"),
+        ];
+        want.sort();
+        assert_eq!(facts.models[&key("Foo.m2")], Model::Needs(want));
+    }
+
+    #[test]
+    fn a_model_whose_skins_are_elsewhere_keeps_every_named_texture() {
+        let textures = ["A.blp", "B.blp"];
+        let model = drawing_m2(&textures, &[1], &[], &[]);
+        let every = |skin: Option<Vec<u8>>| {
+            let mut files = vec![("Foo.m2", model.clone())];
+            files.extend(skin.map(|skin| ("Foo00.skin", skin)));
+            let facts = Facts::of(&Memory::listed(&files), &[]);
+            let Model::Needs(needs) = &facts.models[&key("Foo.m2")] else {
+                panic!("{facts:?}");
+            };
+            (needs.contains(&key("A.blp")), facts.problems)
+        };
+
+        assert_eq!(every(None), (true, Vec::new()));
+        assert_eq!(every(Some(skin(&[(1, 0)]))), (false, Vec::new()));
+
+        // A skin that lies, or isn't one, is a problem, not a panic; the
+        // model keeps all its textures.
+        let mut lies = skin(&[(1, 0)]);
+        lies[0x24..0x28].copy_from_slice(&u32::MAX.to_le_bytes());
+        let mut far = skin(&[(1, 0)]);
+        far[0x28..0x2C].copy_from_slice(&u32::MAX.to_le_bytes());
+        for bad in [lies, far, b"nope".to_vec(), Vec::new()] {
+            let (kept, problems) = every(Some(bad));
+            assert!(kept);
+            assert_eq!(problems.len(), 1, "{problems:?}");
+        }
+
+        // So does a model whose lookup, emitters or ribbons don't add up.
+        for field in [0x80, 0x120, 0x128] {
+            let mut lies = drawing_m2(&textures, &[1], &[0], &[&[0]]);
+            lies[field..field + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+            let mut far = lies.clone();
+            far[field..field + 4].copy_from_slice(&1u32.to_le_bytes());
+            far[field + 4..field + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+            for bad in [lies, far] {
+                let memory = Memory::listed(&[("Foo.m2", bad), ("Foo00.skin", skin(&[(1, 0)]))]);
+                let facts = Facts::of(&memory, &[]);
+                assert_eq!(facts.problems.len(), 1, "{field:#x}: {:?}", facts.problems);
+                let Model::Needs(needs) = &facts.models[&key("Foo.m2")] else {
+                    panic!("{facts:?}");
+                };
+                assert!(needs.contains(&key("A.blp")) && needs.contains(&key("B.blp")));
+            }
+        }
     }
 
     #[test]

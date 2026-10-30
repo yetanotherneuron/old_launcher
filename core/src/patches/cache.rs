@@ -34,10 +34,20 @@ const RELEASES: &str = "releases";
 /// The extension of a file of the cache.
 const EXTENSION: &str = "json";
 
+/// The version of what the facts say, written with each file. Files of
+/// another version (those from before it was written count as 0) are read
+/// again, since what they would say has changed. Raise it whenever the facts
+/// of an archive come out different: 1 added the fingerprints of Blizzard's
+/// rows and left out the textures of a model that nothing draws.
+const FORMAT: u32 = 1;
+
 /// The facts of an archive of a client, with what they were read from:
 /// owned when read back, borrowed when written.
 #[derive(Serialize, Deserialize)]
 struct Archive<F = Facts> {
+    /// The version of the facts (see [`FORMAT`]).
+    #[serde(default)]
+    format: u32,
     /// The archive, relative to the client folder.
     path: String,
     /// Its size, in bytes.
@@ -52,6 +62,9 @@ struct Archive<F = Facts> {
 /// The facts of the archive of a release, owned or borrowed as [`Archive`]'s.
 #[derive(Serialize, Deserialize)]
 struct Release<F = Facts> {
+    /// The version of the facts (see [`FORMAT`]).
+    #[serde(default)]
+    format: u32,
     /// Its checksum.
     sha256: String,
     facts: F,
@@ -97,6 +110,7 @@ impl Cache {
         write(
             &file,
             &Archive {
+                format: FORMAT,
                 path: path.to_owned(),
                 size,
                 modified,
@@ -115,7 +129,11 @@ impl Cache {
         let (size, modified) = stamp(&root.join(path))?;
         let kept: Archive = read(&self.archive_file(root, path))?;
 
-        (kept.path == path && kept.size == size && kept.modified == modified && kept.pool == pool)
+        (kept.format == FORMAT
+            && kept.path == path
+            && kept.size == size
+            && kept.modified == modified
+            && kept.pool == pool)
             .then_some(kept.facts)
     }
 
@@ -136,6 +154,7 @@ impl Cache {
             write(
                 &file,
                 &Release {
+                    format: FORMAT,
                     sha256: sha256.to_ascii_lowercase(),
                     facts: &facts,
                 },
@@ -150,9 +169,7 @@ impl Cache {
     pub fn release(&self, sha256: &str) -> Option<Facts> {
         let kept: Release = read(&self.release_file(sha256)?)?;
 
-        kept.sha256
-            .eq_ignore_ascii_case(sha256)
-            .then_some(kept.facts)
+        (kept.format == FORMAT && kept.sha256.eq_ignore_ascii_case(sha256)).then_some(kept.facts)
     }
 
     /// Drops what is kept of the client folder at `root`'s archives but
@@ -428,6 +445,46 @@ mod tests {
         fs::remove_file(&file).unwrap();
         fs::create_dir(&file).unwrap();
         assert_eq!(archive(), facts("fresh"));
+    }
+
+    #[test]
+    fn facts_stripped_in_the_old_format_are_read_again() {
+        let (root, dir) = client();
+        let (root, cache) = (root.path(), Cache::at(dir.path()));
+        let sum = "12".repeat(32);
+        let _ = cache
+            .of_archive(root, "Data/patch-x.mpq", "", || Ok(facts("old")))
+            .unwrap();
+        let _ = cache.of_release(&sum, || Ok(facts("old"))).unwrap();
+
+        // Files written before the format was told lack it.
+        for file in [
+            cache.archive_file(root, "Data/patch-x.mpq"),
+            cache.release_file(&sum).unwrap(),
+        ] {
+            let mut kept: serde_json::Value =
+                serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+            assert_eq!(kept["format"], FORMAT);
+            kept.as_object_mut().unwrap().remove("format");
+            fs::write(&file, serde_json::to_vec(&kept).unwrap()).unwrap();
+        }
+
+        assert_eq!(cache.archive(root, "Data/patch-x.mpq", ""), None);
+        assert_eq!(cache.release(&sum), None);
+        assert_eq!(
+            cache
+                .of_archive(root, "Data/patch-x.mpq", "", || Ok(facts("new")))
+                .unwrap(),
+            facts("new")
+        );
+        assert_eq!(
+            cache.of_release(&sum, || Ok(facts("new"))).unwrap(),
+            facts("new")
+        );
+        assert_eq!(
+            cache.archive(root, "Data/patch-x.mpq", ""),
+            Some(facts("new"))
+        );
     }
 
     #[test]
