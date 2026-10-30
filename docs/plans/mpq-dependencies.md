@@ -1,10 +1,10 @@
 # The client's patches: what each one changes and needs
 
-Status: decided on 2026-10-30, being built; packages 1 and 2 started.
-Written against commit 798e721 (version 1.1.2); names refer to the code as
-it is now. This plan supersedes `mod-table-overlap.md`, whose idea (warn
-when a mod replaces a table another patch replaces) is one case of the
-warn-and-ask below; package 6 deletes that file.
+Status: built on 2026-10-30, in the commits from fc8706b to d057a6e. It was
+written against commit 798e721 (version 1.1.2), and names refer to the
+code as it was then. This plan supersedes `mod-table-overlap.md`, whose
+idea (warn when a mod replaces a table another patch replaces) is one case
+of the warn-and-ask below; package 6 deleted that file.
 
 ## Why
 
