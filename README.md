@@ -24,15 +24,21 @@ It's a portable program: nothing to install, just run it.
 - **Play**: on Linux through Proton (umu-launcher), Wine or any runner, under GameMode when installed, each client in a Wine prefix of its own.
 - **One list** of every addon, available and installed, to search and filter.
 - **Install** or reinstall with one click, from the freshest source or the one you pick.
+- **Install an addon from outside the list**, from a folder or an archive.
 - **Update** addons that have a newer version available, and the launcher itself.
 - **Manage** addons: uninstall, clean saved settings, repair broken folders.
+- **Dependencies**: shows what each addon requires, and warns before uninstalling one that others need.
 - **Recognizes** the addons you installed before the launcher, and tells when you changed one it installed.
 - **Export** addons and settings to a zip; **import** it on another computer.
 - **Several clients** side by side (3.3.5a only).
-- **Download a client** from a torrent, in the languages you choose; later check its files and repair them, or download or delete languages.
+- **Download a client** from a torrent, in the languages you choose; later download or delete languages.
+- **Check any client**: its patches and mods, and with the torrent it came from, every file, repairing what's off.
 - **Switch the language** of a client that has more than one.
+- **Server**: shows which server a client connects to, warns when its realmlist won't work, and opens it to edit.
 - **4 GB of memory** for a client's game (Large Address Aware), for HD textures and long view distances.
 - **Mods** for the client, such as [Lumenveil](https://github.com/lumenveil/Lumenveil) (fog, lamp light, water), [Patch Y](https://github.com/CRSD-Lau/Lau-Setup), [Dungeon Maps](https://github.com/Trimitor/WDM-patch) and, on Windows, [DXVK](https://github.com/doitsujin/dxvk): install, update, repair or remove them per client.
+- **Keeps your patches working**: before a mod goes in, it reads the client's MPQ patches, refuses an install that would break one, and says what it would override.
+- **Custom patches**: lists the MPQ patches it doesn't recognise, to open their folder or set them all aside.
 - **Show on Discord** that you're playing, if you want.
 
 ![The installed addons, among them a manual install and a broken folder to repair](assets/screenshots/installed.png)
