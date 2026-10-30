@@ -221,9 +221,9 @@ then. The install flow becomes:
 So the confirm box is asked once, when the launcher knows everything:
 before the download when the facts are cached, after it the first time. A
 mod without archives keeps today's flow exactly. Once the facts are cached,
-the row shows the gate's verdict without pressing anything: the block
-sentence, or the "would override" and "would be overridden" lines appear
-beside "In conflict with …" so the player knows before pressing Install.
+the row shows a block without pressing anything. The "would override" and
+"would be overridden" lines are said in the confirm box only, never on the
+row as well (the user, 2026-10-30): "In conflict with …" stays on the row.
 Before the facts are known, the row says nothing about it.
 
 The mod's archives installed in a client are read again by the client scan
@@ -714,10 +714,11 @@ downloads }`; a break shows its sentence where the progress was and in the
 row, and the button goes off with it; anything to ask fills the confirm
 box; "Install anyway?" or nothing to ask runs `place` (today's
 `install_downloaded` and setup). When the facts are cached already, the
-gate runs on `Found` and the verdict shows in the row before any press, and
+gate runs on `Found` and a block shows in the row before any press, and
 the confirm box comes before the download as today. The row's lines: the
-block sentence, "would override", "would be overridden", and for an
-installed mod "overrides the tables it brings". Nothing is gated for a mod
+block sentence, and for an installed mod "overrides the tables it brings";
+"would override" and "would be overridden" are the confirm box's only.
+Nothing is gated for a mod
 being repaired at the same release. A release's archive that can't be read
 is treated as providing and needing nothing, with a debug log line: the
 gate works on what it removes.

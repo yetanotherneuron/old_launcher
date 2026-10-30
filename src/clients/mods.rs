@@ -15,8 +15,9 @@
 //! archives and simulates the install on the client's graph; then, if it
 //! breaks nothing and the player agrees to what it overrides, [`place`]
 //! puts the files in place and runs the setup. When it has (an earlier
-//! install, in this client or another), the verdict shows in the mod's row
-//! before any press, and the question comes before the download. A release
+//! install, in this client or another), a block shows in the mod's row
+//! before any press, and the question comes before the download: what it
+//! overrides is said in the question only. A release
 //! without archives goes straight to [`place`], as it always did.
 
 mod gate;
@@ -1738,16 +1739,12 @@ impl State {
         let judged = verdict
             .and_then(|verdict| verdict.install.as_ref())
             .filter(|_| installable);
-        // Each line, and what more it says on hover.
+        // Each line, and what more it says on hover. What installing would
+        // override, or be overridden by, is said only when it asks.
         let gate_says: Vec<(&str, Option<&str>)> = judged
+            .and_then(|install| install.blocked.as_ref())
+            .map(|block| (block.short.as_str(), Some(block.details.as_str())))
             .into_iter()
-            .flat_map(|install| {
-                install
-                    .blocked
-                    .iter()
-                    .map(|block| (block.short.as_str(), Some(block.details.as_str())))
-                    .chain(install.asks.iter().map(|line| (line.as_str(), None)))
-            })
             .chain(
                 verdict
                     .filter(|_| status.is_some())
@@ -4360,13 +4357,14 @@ mod tests {
         .unwrap();
         gated.judged();
 
-        // Now the verdict shows before any press, and the question comes
-        // before the download.
-        assert!(gated.shows(sentence));
+        // Now the question comes before the download, and what it overrides
+        // is said there only, never on the row.
+        assert!(!gated.shows(sentence));
         install(&mut gated);
         assert!(gated.state.busy.is_none() && gated.state.pending.is_none());
         assert!(gated.state.confirming.is_some());
         assert!(gated.shows("Install “Patch Y” anyway?"));
+        assert!(gated.shows(sentence));
         assert_eq!(gated.requests(), 0);
 
         let _ = gated.go(Message::ConfirmInstall);
