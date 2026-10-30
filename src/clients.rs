@@ -113,7 +113,8 @@ pub enum Message {
     Env(String),
     /// The command was edited.
     Command(String),
-    /// "Check" was pressed beside the file integrity.
+    /// "Check" was pressed beside the file integrity (a client without a
+    /// torrent has its patches checked).
     Check,
     /// "Manage…" was pressed beside the languages.
     Languages,
@@ -151,7 +152,8 @@ pub enum Instruction {
     Select(PathBuf),
     /// Open the form that adds a client.
     Add,
-    /// Check the files of the client at this folder against its torrent.
+    /// Check the client at this folder: its patches, and its files against
+    /// its torrent if it has one.
     Check(PathBuf),
     /// Check the client at `root` against the torrent of `source` from now
     /// on, and now.
@@ -205,6 +207,24 @@ impl State {
     /// [`mods::cache`]).
     pub fn keep_mod_downloads_in(&mut self, folder: PathBuf) {
         self.mods.keep_downloads_in(folder);
+    }
+
+    /// What the mods read of the archives of their releases is kept in
+    /// `cache` from now on.
+    pub fn keep_archive_facts_in(&mut self, cache: crate::core::patches::Cache) {
+        self.mods.keep_facts_in(cache);
+    }
+
+    /// The patches of the client folder at `root` were looked at and found
+    /// `scan`, if the look is over, the client playing in `locale`: what
+    /// installing a mod does to them is worked out.
+    pub fn patched(
+        &mut self,
+        root: &Path,
+        scan: Option<std::sync::Arc<crate::patches::Scan>>,
+        locale: Locale,
+    ) -> Task<Message> {
+        self.mods.patched(root, scan, locale).map(Message::Mods)
     }
 
     /// The patches of the client folders at `roots` are being looked at, and
@@ -461,10 +481,8 @@ impl State {
                 Action::none()
             }
             Message::Check => match current {
-                Some(root) if config.torrents.contains_key(root) => {
-                    Action::instruction(Instruction::Check(root.to_path_buf()))
-                }
-                _ => Action::none(),
+                Some(root) => Action::instruction(Instruction::Check(root.to_path_buf())),
+                None => Action::none(),
             },
             Message::Languages => {
                 let Some((root, Some(Some(Ok(details))))) =
@@ -746,7 +764,6 @@ impl State {
                         .map(|installation| fact("Version", installation.version().to_string())),
                     self.torrent(torrent, downloading),
                     integrity_of(
-                        torrent.is_some(),
                         downloading,
                         self.mods.is_waiting_for_patches(root),
                         integrity,
@@ -986,12 +1003,11 @@ fn languages(
 }
 
 /// What is known of the files of the client shown, `integrity`, beside the
-/// button checking them against its torrent: without one (`torrent`), it
-/// says it takes one; while a client is being downloaded, checked, or given
-/// languages (`downloading`), or the client's patches are being looked at
-/// (`looking`), it waits.
+/// button checking them: every client's patches, and its files against its
+/// torrent when it has one. While a client is being downloaded, checked, or
+/// given languages (`downloading`), or the client's patches are being looked
+/// at (`looking`), it waits.
 fn integrity_of<'a>(
-    torrent: bool,
     downloading: bool,
     looking: bool,
     integrity: Option<String>,
@@ -1001,16 +1017,10 @@ fn integrity_of<'a>(
         .padding([2, 10]);
     let check: Element<'a, Message> = if looking {
         style::tip(check, crate::patches::LOOKING).boxed()
-    } else if torrent {
+    } else {
         check
             .on_press_maybe((!downloading).then_some(Message::Check))
             .boxed()
-    } else {
-        style::tip(
-            check,
-            "Set the client's torrent first: its files are checked against it.",
-        )
-        .boxed()
     };
 
     row![
@@ -1688,10 +1698,6 @@ mod tests {
         );
         drop(ui);
         assert!(
-            clicked(&state, &config, "Check", false).is_empty(),
-            "nothing to check its files against"
-        );
-        assert!(
             clicked(&state, &config, "Set…", true).is_empty(),
             "not while a client downloads"
         );
@@ -1739,6 +1745,56 @@ mod tests {
             let _ = update(&mut state, &mut config, message);
         }
         assert!(state.source.is_none());
+    }
+
+    #[test]
+    fn the_check_is_offered_to_a_client_without_a_torrent() {
+        let (mut state, mut config) = opened(Some(details(None)));
+        assert!(!config.torrents.contains_key(Path::new(WOTLK)));
+
+        let instructions: Vec<Instruction> = clicked(&state, &config, "Check", false)
+            .into_iter()
+            .filter_map(|message| update(&mut state, &mut config, message).instruction)
+            .collect();
+        assert!(matches!(
+            instructions.as_slice(),
+            [Instruction::Check(root)] if root == Path::new(WOTLK)
+        ));
+
+        // Not while a client downloads, is checked or given languages.
+        assert!(clicked(&state, &config, "Check", true).is_empty());
+
+        // What a check says shows beside it.
+        let said = "Nothing is wrong with its patches.";
+        let mut ui = simulator(state.view(
+            &config,
+            Some(Path::new(WOTLK)),
+            None,
+            false,
+            false,
+            Some(said.to_owned()),
+        ));
+        assert!(ui.find(said).is_ok());
+    }
+
+    #[test]
+    fn the_check_waits_for_the_patches_to_be_looked_at() {
+        let (mut state, mut config) = opened(Some(details(None)));
+
+        state
+            .mods
+            .waiting_for_patches(BTreeSet::from([PathBuf::from(WOTLK)]));
+        assert!(
+            clicked(&state, &config, "Check", false).is_empty(),
+            "looking at the patches"
+        );
+
+        state.mods.waiting_for_patches(BTreeSet::new());
+        let instructions: Vec<Instruction> = clicked(&state, &config, "Check", false)
+            .into_iter()
+            .filter_map(|message| update(&mut state, &mut config, message).instruction)
+            .collect();
+        assert!(matches!(instructions.as_slice(), [Instruction::Check(_)]));
     }
 
     #[test]

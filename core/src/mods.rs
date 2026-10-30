@@ -29,7 +29,7 @@ use sha2::{Digest, Sha256};
 use crate::error::io_at;
 use crate::installation::{STAGING_PREFIX, child, config_setting};
 use crate::notes::Notes;
-use crate::patches::Change;
+use crate::patches::{Cache, Change, Facts, Opened};
 use crate::{Error, Installation, Locale, archive};
 
 /// What stands for a language (`enUS`, `deDE`, …) in the paths of the list
@@ -1323,10 +1323,7 @@ pub fn install_downloaded(
     } else {
         Vec::new()
     };
-    let instead = instead
-        .or_else(|| game_mod.marker(root).and_then(|marker| marker.instead))
-        // Noted only when it stands in for one of the client's languages.
-        .filter(|_| !lacking(root, game_mod).is_empty());
+    let instead = instead_in(root, game_mod, instead);
     let (locale, locales) = languages(root);
     let (Some(game_mod), Some(release)) = (
         game_mod.placed(locale, &locales, instead),
@@ -1642,6 +1639,170 @@ pub fn change(root: &Path, game_mod: &Mod, release: &Release, alternatives: &[&M
         .collect();
 
     Change { adds, removes }
+}
+
+/// Whether `path` names an archive of the game's (`.mpq`, in any case).
+pub fn is_archive(path: &str) -> bool {
+    path.len() > 4
+        && path
+            .get(path.len() - 4..)
+            .is_some_and(|end| end.eq_ignore_ascii_case(".mpq"))
+}
+
+/// The language `release` is installed with: `instead`, or the one the
+/// mod's marker names, when it stands in for one of the client's languages.
+fn instead_in(root: &Path, game_mod: &Mod, instead: Option<Locale>) -> Option<Locale> {
+    instead
+        .or_else(|| game_mod.marker(root).and_then(|marker| marker.instead))
+        // Noted only when it stands in for one of the client's languages.
+        .filter(|_| !lacking(root, game_mod).is_empty())
+}
+
+/// Reads the archives (`.mpq`) of `release` of `game_mod` as installing it
+/// in the client folder at `root` would place them, from its `downloads` by
+/// address (see [`Release::downloads`]), and returns what each says (see
+/// [`Facts`]) by SHA-256, keeping it in `cache` so a release's archive is
+/// read once whatever the client. Every archive is checked against the
+/// release first, as [`install_downloaded`] does. One that can't be read
+/// provides and needs nothing, with a line in the log. An archive of the
+/// downloads is unpacked beside `scratch`, the launcher's own folder, or in
+/// the system's when there is none, and nothing is touched in the client.
+pub fn read_archives(
+    root: &Path,
+    game_mod: &Mod,
+    release: &Release,
+    downloads: &BTreeMap<String, Vec<u8>>,
+    instead: Option<Locale>,
+    scratch: Option<&Path>,
+    cache: &Cache,
+) -> Result<BTreeMap<String, Facts>, Error> {
+    let instead = instead_in(root, game_mod, instead);
+    let (locale, locales) = languages(root);
+    let release = release
+        .placed(locale, &locales, instead)
+        .ok_or(Error::NoLanguage)?;
+    let mut read = BTreeMap::new();
+    if !release.files.iter().any(|(path, _)| is_archive(path)) {
+        return Ok(read);
+    }
+
+    let staging = match scratch {
+        Some(folder) => {
+            fs::create_dir_all(folder).map_err(io_at(folder))?;
+            tempfile::Builder::new()
+                .prefix(STAGING_PREFIX)
+                .tempdir_in(folder)
+                .map_err(io_at(folder))?
+        }
+        None => tempfile::Builder::new()
+            .prefix(STAGING_PREFIX)
+            .tempdir()
+            .map_err(io_at(&std::env::temp_dir()))?,
+    };
+
+    for (index, (url, paths)) in release.downloads().into_iter().enumerate() {
+        let wanted: Vec<&(String, String)> = release
+            .files
+            .iter()
+            .filter(|(path, _)| is_archive(path) && paths.contains(path))
+            .collect();
+        if wanted.is_empty() {
+            continue;
+        }
+        let download = downloads.get(&url).ok_or(Error::Undownloaded(url))?;
+        let folder = staging.path().join(index.to_string());
+
+        // Not an archive: the one file, each of its paths a copy of it.
+        let unpacked = match archive::Format::detect(download) {
+            Some(_) => {
+                fs::create_dir_all(&folder).map_err(io_at(&folder))?;
+                archive::extract(download, &folder)?;
+                Some(folder.join(release.inside.as_deref().unwrap_or("")))
+            }
+            None if !paths.is_empty() => None,
+            None => return Err(Error::UnknownArchive),
+        };
+
+        for (path, sum) in wanted {
+            if read.contains_key(sum) {
+                continue;
+            }
+            let facts = match &unpacked {
+                Some(from) => {
+                    let file = from.join(release.source(path));
+                    let mut hash = Sha256::new();
+                    let mut opened = fs::File::open(&file)
+                        .map_err(|_| Error::NotInRelease(release.source(path).to_owned()))?;
+                    let _ = io::copy(&mut opened, &mut hash).map_err(io_at(&file))?;
+                    if format!("{:x}", hash.finalize()) != *sum {
+                        return Err(Error::Checksum(path.clone()));
+                    }
+
+                    cache.of_release(sum, || Ok(facts_of(&file, Opened::open(&file), path)))?
+                }
+                None => {
+                    if sha256(download) != *sum {
+                        return Err(Error::Checksum(path.clone()));
+                    }
+                    cache.of_release(sum, || {
+                        let opened = crate::mpq::Archive::from_reader(
+                            io::Cursor::new(download.as_slice()),
+                            path.as_str(),
+                        )
+                        .map(Opened::new);
+
+                        Ok(facts_of(Path::new(path), opened, path))
+                    })?
+                }
+            };
+
+            let _ = read.insert(sum.clone(), facts);
+        }
+    }
+
+    Ok(read)
+}
+
+/// What the archive `opened`, at `file`, says: nothing if it can't be read,
+/// with a line in the log.
+fn facts_of<R: io::Read + io::Seek>(
+    file: &Path,
+    opened: Result<Opened<R>, Error>,
+    path: &str,
+) -> Facts {
+    match opened {
+        Ok(opened) => Facts::of(&opened, &[]),
+        Err(error) => {
+            log::debug!("{path} ({}) can't be read: {error}", file.display());
+
+            Facts {
+                problems: vec![format!("can't be read: {error}")],
+                ..Facts::default()
+            }
+        }
+    }
+}
+
+/// The archives (`.mpq`) of the release `game_mod` is installed with in the
+/// client folder at `root`, that are there: path as spelled on disk, and the
+/// SHA-256 of the release's. Nothing when its marker names no listed release.
+pub fn installed_archives(root: &Path, game_mod: &Mod) -> Vec<(String, String)> {
+    let Some(marker) = game_mod.marker(root) else {
+        return Vec::new();
+    };
+    let Some(placed) = game_mod.placed_in(root) else {
+        return Vec::new();
+    };
+    let Some(release) = placed.release(&marker.version) else {
+        return Vec::new();
+    };
+
+    release
+        .files
+        .iter()
+        .filter(|(path, _)| is_archive(path) && at(root, path).is_file())
+        .map(|(path, sum)| (as_there(root, path), sum.clone()))
+        .collect()
 }
 
 /// Removes the file or folder at `path`, if there is one.

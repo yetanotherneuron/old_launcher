@@ -23,6 +23,13 @@
 //! locked out. An archive that can't be read is noted and left out, and the
 //! rest goes on.
 //!
+//! A look also reads the archives the folders hold that the game doesn't
+//! load (backups, switched off ones, names it never lists, but not
+//! Blizzard's own `base-` and `backup-`) through the same cache, to tell
+//! which needs of the archives loaded they would meet. That, the case-twins
+//! and the archives that can't be read are what the file integrity check says
+//! of the patches ([`Findings`]), from memory.
+//!
 //! Only the graph of the client shown is kept.
 
 use std::cell::Cell;
@@ -40,8 +47,8 @@ use sha2::{Digest, Sha256};
 use crate::activity::activity;
 use crate::core::mpq::{Key, key};
 use crate::core::patches::facts::{Entry, Opened, Source};
-use crate::core::patches::order::{Reason, Unloaded, order_with};
-use crate::core::patches::{Cache, Facts, Graph, Layer, Order, strip};
+use crate::core::patches::order::{Reason, order_with};
+use crate::core::patches::{Cache, Facts, Graph, Kind, Layer, Order, strip};
 use crate::core::{Error, Locale};
 use crate::errors::Errors;
 use crate::{blocking, describe, style};
@@ -154,6 +161,9 @@ pub struct Scan {
     pub graph: Graph,
     /// The archives that couldn't be read.
     pub unreadable: Vec<Unreadable>,
+    /// The needs that nothing loaded meets but an archive aside (a backup, a
+    /// switched off one) would.
+    pub unmet: Vec<Unmet>,
     /// The `Data` folders as they were when the look started.
     listing: Listing,
 }
@@ -167,17 +177,125 @@ impl std::fmt::Debug for Scan {
     }
 }
 
+/// A need of an archive that a file in the folder the game doesn't load
+/// would meet: a backup of what it needs, say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unmet {
+    /// The archive whose file needs, from the game folder.
+    pub archive: String,
+    /// What that file is.
+    pub kind: Kind,
+    /// The archive in the folder that would meet it, as it is called there.
+    pub instead: String,
+    /// Why the game doesn't load that one.
+    pub reason: Reason,
+}
+
 /// What the integrity check says of the patches, before it has the words:
 /// the raw pieces.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(dead_code, reason = "the integrity check turns it into sentences")]
 pub struct Findings {
     /// Archives that differ only in case, together.
     pub twins: Vec<Vec<String>>,
-    /// MPQs in the folders the game never loads, and why.
-    pub unloaded: Vec<Unloaded>,
+    /// Needs that nothing loaded meets but an archive aside would.
+    pub unmet: Vec<Unmet>,
     /// Archives that couldn't be read.
     pub unreadable: Vec<Unreadable>,
+    /// What is wrong with the files of the mods installed, in words. The
+    /// patches' look knows nothing of it: the check fills it.
+    pub mods: Vec<String>,
+}
+
+impl Findings {
+    /// What is wrong, a line each. `owner` tells the name of the mod that
+    /// installed the archive at a path (in lowercase), if any did: a mod's
+    /// archive is named by it, not called custom.
+    pub fn lines(&self, owner: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+        let mut lines: Vec<String> = self
+            .twins
+            .iter()
+            .map(|twins| {
+                format!(
+                    "{} differ only in case. Windows would allow only one of them, and the game \
+                     may load either: rename one, or remove it.",
+                    list(twins)
+                )
+            })
+            .collect();
+
+        // By who needs and what would meet it, the kinds of file together.
+        let mut grouped: BTreeMap<(&str, &str), (BTreeSet<Kind>, &Reason)> = BTreeMap::new();
+        for unmet in &self.unmet {
+            grouped
+                .entry((&unmet.archive, &unmet.instead))
+                .or_insert_with(|| (BTreeSet::new(), &unmet.reason))
+                .0
+                .insert(unmet.kind);
+        }
+        for ((archive, instead), (kinds, reason)) in grouped {
+            let kinds = list(&kinds.into_iter().map(kind).collect::<Vec<_>>());
+            let who = match owner(&archive.to_ascii_lowercase()) {
+                Some(name) => format!("The {kinds} of “{name}”"),
+                None => format!("Your custom {archive}'s {kinds}"),
+            };
+            let (needed, state) = match reason {
+                Reason::Backup => (original(instead), format!("it is backed up as {instead}")),
+                Reason::Disabled => (
+                    original(instead),
+                    format!("it is switched off as {instead}"),
+                ),
+                Reason::NotListed | Reason::Unreadable(_) => (
+                    instead,
+                    "the game never looks at a name like that".to_owned(),
+                ),
+            };
+
+            lines.push(format!("{who} need {needed}, which isn't loaded: {state}."));
+        }
+
+        lines.extend(self.unreadable.iter().map(|archive| {
+            format!(
+                "{} couldn't be read, so what it changes is unknown.",
+                archive.path
+            )
+        }));
+        lines.extend(self.mods.iter().cloned());
+
+        lines
+    }
+}
+
+/// `names` as a sentence lists them: `a, b and c`.
+fn list(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => only.clone(),
+        [first @ .., last] => format!("{} and {last}", first.join(", ")),
+    }
+}
+
+/// How a message calls the files of a kind.
+fn kind(kind: Kind) -> String {
+    match kind {
+        Kind::Tables => "tables",
+        Kind::Models => "models",
+        Kind::Textures => "textures",
+        Kind::Sounds => "sounds",
+        Kind::Interface => "interface",
+        Kind::World => "world",
+        Kind::Other => "files",
+    }
+    .to_owned()
+}
+
+/// The archive that `aside`, a backup or a switched off archive, was before:
+/// `Data/patch-F.mpq.backup-1` was `Data/patch-F.mpq`.
+fn original(aside: &str) -> &str {
+    aside
+        .to_ascii_lowercase()
+        .find(".mpq.")
+        .and_then(|at| aside.get(..at + ".mpq".len()))
+        .unwrap_or(aside)
 }
 
 /// What happens to the looks.
@@ -377,6 +495,18 @@ impl State {
         self.clients.get(root)?.found.as_deref()
     }
 
+    /// What the last look at the client folder at `root` found, once the
+    /// look is over: none while another is under way.
+    pub fn settled(&self, root: &Path) -> Option<Arc<Scan>> {
+        let client = self.clients.get(root)?;
+
+        client
+            .running
+            .is_none()
+            .then(|| client.found.clone())
+            .flatten()
+    }
+
     /// What the client folder at `root`'s archives add up to.
     #[allow(dead_code, reason = "the install gate reads it")]
     pub fn graph(&self, root: &Path) -> Option<&Graph> {
@@ -392,20 +522,14 @@ impl State {
 
     /// What is amiss with the patches of the client folder at `root`, in the
     /// pieces the integrity check turns into sentences.
-    #[allow(dead_code, reason = "the integrity check reads it")]
     pub fn findings(&self, root: &Path) -> Option<Findings> {
         let scan = self.scan(root)?;
 
         Some(Findings {
             twins: scan.order.twins().into_iter().map(<[_]>::to_vec).collect(),
-            unloaded: scan
-                .order
-                .unloaded
-                .iter()
-                .filter(|unloaded| !matches!(unloaded.reason, Reason::Unreadable(_)))
-                .cloned()
-                .collect(),
+            unmet: scan.unmet.clone(),
             unreadable: scan.unreadable.clone(),
+            mods: Vec::new(),
         })
     }
 
@@ -558,8 +682,20 @@ pub fn look(
         }
     }
 
+    // The archives aside that the check may find a need met by: backups,
+    // switched off ones and names the game never lists, but not Blizzard's
+    // own `base-` and `backup-`, which nobody made as a backup.
+    let aside: Vec<&str> = order
+        .unloaded
+        .iter()
+        .filter(|unloaded| !matches!(unloaded.reason, Reason::Unreadable(_)))
+        .map(|unloaded| unloaded.path.as_str())
+        .filter(|path| !never_loaded(path, locale))
+        .collect();
+
     // Second round: the names the first gave, to name what has no list.
-    if !deferred.is_empty() {
+    let mut kept_aside: Vec<(&str, Facts)> = Vec::new();
+    if !deferred.is_empty() || !aside.is_empty() {
         let pool: BTreeSet<Key> = facts
             .values()
             .flat_map(|facts| facts.names.keys().copied())
@@ -572,19 +708,47 @@ pub fn look(
             let mut read = false;
             let done = cache.of_archive(root, path, &tag, || {
                 read = true;
-                let known = known.get_or_insert_with(|| {
-                    let mut names: Vec<&String> = facts
-                        .values()
-                        .flat_map(|facts| facts.names.values())
-                        .collect();
-                    names.sort_unstable();
-                    names.dedup();
-
-                    names.into_iter().cloned().collect()
-                });
+                let known = known.get_or_insert_with(|| names_of(&facts));
                 Opened::open(&root.join(path)).map(|opened| compute(path, &opened, known))
             });
             finish(path, done, read, &say, &mut facts, &mut unreadable);
+        }
+
+        // The ones aside, through the same cache, saying nothing of how it
+        // goes: they are no part of the count the player sees.
+        for path in aside {
+            let kept = cache
+                .archive(root, path, kept_as)
+                .or_else(|| cache.archive(root, path, &tag));
+            if let Some(own) = kept {
+                kept_aside.push((path, own));
+                continue;
+            }
+
+            let opened = match Opened::open(&root.join(path)) {
+                Ok(opened) => opened,
+                Err(error) => {
+                    log::debug!("Can't read {path}, aside: {}", describe(&error));
+                    continue;
+                }
+            };
+            // One without a list of its files is named by the others, and
+            // kept under their names.
+            let (under, names) = if has_listfile(&opened) {
+                (kept_as, &[][..])
+            } else {
+                (
+                    tag.as_str(),
+                    known.get_or_insert_with(|| names_of(&facts)).as_slice(),
+                )
+            };
+
+            match cache.of_archive(root, path, under, || {
+                Ok(strip(path, Facts::of(&opened, names), locale))
+            }) {
+                Ok(own) => kept_aside.push((path, own)),
+                Err(error) => log::debug!("Can't keep {path}, aside: {}", describe(&error)),
+            }
         }
     }
 
@@ -601,6 +765,14 @@ pub fn look(
         .collect();
     let graph = Graph::build(&layers, locale);
     drop(layers);
+
+    let present: Vec<(&str, &Facts)> = kept_aside
+        .iter()
+        .map(|(path, facts)| (*path, facts))
+        .collect();
+    let unmet = met_aside(&graph, &order, &present);
+    drop(present);
+    drop(kept_aside);
 
     unreadable.extend(
         order
@@ -628,8 +800,59 @@ pub fn look(
         order,
         graph,
         unreadable,
+        unmet,
         listing,
     })
+}
+
+/// The names the archives in `facts` give to their files, each once.
+fn names_of(facts: &BTreeMap<String, Facts>) -> Vec<String> {
+    let mut names: Vec<&String> = facts
+        .values()
+        .flat_map(|facts| facts.names.values())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+
+    names.into_iter().cloned().collect()
+}
+
+/// Whether `path` is one of the archives Blizzard ships in the language's
+/// folder that the game never loads, `base-` and `backup-`: not a backup
+/// anyone made.
+fn never_loaded(path: &str, locale: Locale) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let code = locale.code().to_ascii_lowercase();
+
+    ["base", "backup"]
+        .iter()
+        .any(|name| lower == format!("data/{code}/{name}-{code}.mpq"))
+}
+
+/// The needs of the archives loaded that nothing loaded meets and one of the
+/// archives aside (`present`, with their facts) would, as `order` says why
+/// each is aside.
+fn met_aside(graph: &Graph, order: &Order, present: &[(&str, &Facts)]) -> Vec<Unmet> {
+    graph
+        .unmet_but_present(present)
+        .into_iter()
+        .filter_map(|found| {
+            let instead = found.present_in.into_iter().next()?;
+            let reason = order
+                .unloaded
+                .iter()
+                .find(|unloaded| unloaded.path == instead)?
+                .reason
+                .clone();
+
+            Some(Unmet {
+                archive: found.need.archive,
+                kind: found.need.file.kind,
+                instead,
+                reason,
+            })
+        })
+        .collect()
 }
 
 /// Files an archive's facts, or notes that it can't be read, and says the
@@ -840,6 +1063,33 @@ mod tests {
         }
 
         (root, path)
+    }
+
+    /// A model of version 264 that needs `skins` skins.
+    fn model(skins: u32) -> Vec<u8> {
+        let mut bytes = vec![0; 0x58];
+
+        bytes[..4].copy_from_slice(b"MD20");
+        bytes[4..8].copy_from_slice(&264u32.to_le_bytes());
+        bytes[0x44..0x48].copy_from_slice(&skins.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&0x58u32.to_le_bytes());
+        bytes[0x54..0x58].copy_from_slice(&0x58u32.to_le_bytes());
+
+        bytes
+    }
+
+    /// An archive of the model `Creature\Foo\Foo.m2`, which needs a skin.
+    fn wants_a_skin() -> Writer {
+        Writer::new()
+            .file("Creature\\Foo\\Foo.m2", &model(1))
+            .with_listfile(Options::default())
+    }
+
+    /// An archive of the skin that model needs.
+    fn gives_the_skin() -> Writer {
+        Writer::new()
+            .file("Creature\\Foo\\Foo00.skin", b"skin")
+            .with_listfile(Options::default())
     }
 
     /// Looks at `root`, saying what the look reported.
@@ -1117,6 +1367,145 @@ mod tests {
         assert!(errors.messages().is_empty());
     }
 
+    #[test]
+    fn a_need_that_an_archive_aside_would_meet_is_found_whatever_the_archive_is_called() {
+        let (_root, root) = client(&[
+            ("Data/patch-G.mpq", &wants_a_skin()),
+            ("Data/patch-F.mpq.backup", &gives_the_skin()),
+        ]);
+        let folder = tempfile::tempdir().unwrap();
+        let cache = Cache::at(folder.path());
+
+        let (scan, said) = looked(&root, &cache);
+        let scan = scan.unwrap();
+        assert_eq!(
+            scan.unmet,
+            [Unmet {
+                archive: "Data/patch-G.mpq".to_owned(),
+                kind: Kind::Models,
+                instead: "Data/patch-F.mpq.backup".to_owned(),
+                reason: Reason::Backup,
+            }]
+        );
+        assert_eq!(
+            said.iter()
+                .map(|progress| progress.archive.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["Data/patch-G.mpq"]),
+            "the archive aside is no part of the count"
+        );
+
+        // Changed, it is read again, and says nothing.
+        fs::write(
+            root.join("Data/patch-F.mpq.backup"),
+            b"not an archive any more, but its stamp is the same size",
+        )
+        .unwrap();
+        let (again, _) = looked(&root, &cache);
+        assert!(
+            again.unwrap().unmet.is_empty(),
+            "read again, it says nothing"
+        );
+
+        // Switched off, or with a name the game never looks at.
+        fs::remove_file(root.join("Data/patch-F.mpq.backup")).unwrap();
+        gives_the_skin().write(&root.join("Data/patch-7.mpq.disabled"));
+        let (scan, _) = looked(&root, &cache);
+        assert_eq!(scan.unwrap().unmet[0].reason, Reason::Disabled);
+
+        fs::remove_file(root.join("Data/patch-7.mpq.disabled")).unwrap();
+        gives_the_skin().write(&root.join("Data/patch-F.Ompq"));
+        let (scan, _) = looked(&root, &cache);
+        let scan = scan.unwrap();
+        assert_eq!(scan.unmet[0].reason, Reason::NotListed);
+        assert_eq!(scan.unmet[0].instead, "Data/patch-F.Ompq");
+    }
+
+    #[test]
+    fn blizzards_unloaded_base_and_backup_archives_are_not_backups() {
+        let (_root, root) = client(&[
+            ("Data/patch-G.mpq", &wants_a_skin()),
+            ("Data/enUS/base-enUS.MPQ", &gives_the_skin()),
+            ("Data/enUS/backup-enUS.MPQ", &gives_the_skin()),
+        ]);
+        let folder = tempfile::tempdir().unwrap();
+
+        let (scan, _) = looked(&root, &Cache::at(folder.path()));
+        let scan = scan.unwrap();
+
+        assert!(scan.unmet.is_empty(), "{:?}", scan.unmet);
+        assert!(
+            scan.graph.unmet().len() == 1,
+            "the need is unmet all the same"
+        );
+    }
+
+    #[test]
+    fn the_findings_say_who_needs_what_and_name_a_mods_archive() {
+        let unmet = |archive: &str, kind, instead: &str, reason| Unmet {
+            archive: archive.to_owned(),
+            kind,
+            instead: instead.to_owned(),
+            reason,
+        };
+        let findings = Findings {
+            twins: vec![vec![
+                "Data/patch-W.mpq".to_owned(),
+                "Data/patch-w.mpq".to_owned(),
+            ]],
+            unmet: vec![
+                unmet(
+                    "Data/patch-G.mpq",
+                    Kind::Tables,
+                    "Data/patch-F.mpq.backup-1",
+                    Reason::Backup,
+                ),
+                unmet(
+                    "Data/patch-G.mpq",
+                    Kind::Models,
+                    "Data/patch-F.mpq.backup-1",
+                    Reason::Backup,
+                ),
+                unmet(
+                    "Data/patch-G.mpq",
+                    Kind::Models,
+                    "Data/patch-7.mpq.disabled",
+                    Reason::Disabled,
+                ),
+                unmet(
+                    "Data/enUS/patch-enUS-M.MPQ",
+                    Kind::Tables,
+                    "Data/patch-W.Ompq",
+                    Reason::NotListed,
+                ),
+            ],
+            unreadable: vec![Unreadable {
+                path: "Data/patch-X.mpq".to_owned(),
+                why: "bad".to_owned(),
+            }],
+            mods: vec!["“Patch Y”'s Data/patch-y.mpq is not as released.".to_owned()],
+        };
+        let owner =
+            |path: &str| (path == "data/enus/patch-enus-m.mpq").then(|| "Dungeon Maps".to_owned());
+
+        assert_eq!(
+            findings.lines(&owner),
+            [
+                "Data/patch-W.mpq and Data/patch-w.mpq differ only in case. Windows would allow \
+                 only one of them, and the game may load either: rename one, or remove it.",
+                "The tables of “Dungeon Maps” need Data/patch-W.Ompq, which isn't loaded: the \
+                 game never looks at a name like that.",
+                "Your custom Data/patch-G.mpq's models need Data/patch-7.mpq, which isn't loaded: \
+                 it is switched off as Data/patch-7.mpq.disabled.",
+                "Your custom Data/patch-G.mpq's tables and models need Data/patch-F.mpq, which \
+                 isn't loaded: it is backed up as Data/patch-F.mpq.backup-1.",
+                "Data/patch-X.mpq couldn't be read, so what it changes is unknown.",
+                "“Patch Y”'s Data/patch-y.mpq is not as released.",
+            ]
+        );
+        assert!(Findings::default().lines(&owner).is_empty());
+    }
+
     /// The memory this process uses now and at most, where Linux says.
     fn memory() -> String {
         fs::read_to_string("/proc/self/status")
@@ -1129,7 +1518,39 @@ mod tests {
     }
 
     /// `OLD_LAUNCHER_TEST_CLIENT=<client folder> cargo test --release --lib
-    /// patches::tests::a_real_client -- --ignored --nocapture`, the folder
+    /// patches::tests::a_real_clients_check -- --ignored --nocapture`, the
+    /// folder only ever read: looks at its patches with a cache in a
+    /// temporary folder, and prints what the integrity check says of them.
+    #[test]
+    #[ignore = "reads every archive of the client in $OLD_LAUNCHER_TEST_CLIENT"]
+    fn a_real_clients_check_says_what_is_amiss_with_its_patches() {
+        let root = PathBuf::from(
+            std::env::var("OLD_LAUNCHER_TEST_CLIENT")
+                .expect("OLD_LAUNCHER_TEST_CLIENT is a client folder"),
+        );
+        let locale = crate::core::Installation::open(&root)
+            .expect("it is a client")
+            .locale()
+            .expect("it has a language");
+        let folder = tempfile::tempdir().unwrap();
+        let cache = Cache::at(folder.path());
+        let mut state = State::new(cache.clone());
+        let _ = state.look(&root, locale);
+        let scan = look(&root, locale, &cache, &|_| {}).map(Arc::new);
+        let _ = state.update(Message::Looked(root.clone(), scan), &mut Errors::default());
+
+        let lines = state
+            .findings(&root)
+            .expect("it is looked at")
+            .lines(&|_| None);
+        println!("{} things to look at:", lines.len());
+        for line in lines {
+            println!("  {line}");
+        }
+    }
+
+    /// `OLD_LAUNCHER_TEST_CLIENT=<client folder> cargo test --release --lib
+    /// patches::tests::a_real_clients_patches -- --ignored --nocapture`, the folder
     /// only ever read: looks at its patches twice with a cache in a
     /// temporary folder, and prints the times and the memory. Under
     /// `/usr/bin/time -v` the peak is the first look's.

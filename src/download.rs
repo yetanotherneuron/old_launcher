@@ -35,6 +35,7 @@ use crate::core::mods::Mods;
 use crate::core::torrent::{Check, Torrent, client_in, folder_of_client, keep_origin, origin};
 use crate::core::{Config, Installation, Locale};
 use crate::errors::Errors;
+use crate::patches::Findings;
 use crate::torrent::{self, Download, Engine, Progress, Source};
 use crate::{blocking, counted, describe, size, style};
 
@@ -69,6 +70,9 @@ pub struct State {
     peers: Vec<SocketAddr>,
     /// What the last check of each client folder found, this run.
     checked: BTreeMap<PathBuf, Integrity>,
+    /// How many things to look at the last check of each client folder found
+    /// in its patches, this run.
+    looked: BTreeMap<PathBuf, usize>,
     /// The mods there are: a check leaves alone the files those installed
     /// in a client own.
     mods: Mods,
@@ -104,9 +108,10 @@ pub enum Request {
     New { source: Source, into: PathBuf },
     /// Download the rest of the client being downloaded with this info hash.
     Resume(String),
-    /// Check the files of the client at this folder against its torrent,
-    /// to repair those missing or changed.
-    Check(PathBuf),
+    /// Check the client at this folder, `findings` being what is amiss with
+    /// its patches (none if they couldn't be looked at): its files against
+    /// its torrent, to repair those missing or changed, if it has one.
+    Check(PathBuf, Option<Findings>),
     /// Check the client at `root` against the torrent of `source` from now
     /// on, and now.
     Adopt { root: PathBuf, source: Source },
@@ -145,6 +150,9 @@ struct Job {
     stopping: bool,
     /// What it shows once its torrent is found: the client's languages.
     pending: Option<Stage>,
+    /// What a check found amiss with the client's patches and mods, a line
+    /// each: none if they couldn't be looked at.
+    patches: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -185,6 +193,9 @@ enum Stage {
         read: Arc<AtomicU64>,
         stop: Arc<AtomicBool>,
     },
+    /// A client without a torrent was checked: what the job's `patches`
+    /// say is all there is to tell.
+    Checked,
     /// Every file of the client is as its torrent has it: the check, which
     /// may list files that are not its torrent's.
     Intact(Check),
@@ -352,6 +363,7 @@ impl State {
             discarding: None,
             peers: Vec::new(),
             checked: BTreeMap::new(),
+            looked: BTreeMap::new(),
             mods: Mods::default(),
         }
     }
@@ -370,6 +382,7 @@ impl State {
         self.jobs += 1;
         let id = self.jobs;
         let client = client.cloned().map_err(str::to_owned);
+        let mut patches = None;
 
         let (kind, saved, root, task) = match request {
             Request::New { source, into } => {
@@ -407,10 +420,28 @@ impl State {
                 );
                 (Kind::Resume, Some(saved), None, task)
             }
-            Request::Check(root) => {
+            Request::Check(root, findings) => {
+                let lines = findings.map(|findings| self.lines(&root, &findings));
+                match &lines {
+                    Some(lines) => {
+                        let _ = self.looked.insert(root.clone(), lines.len());
+                    }
+                    None => {
+                        let _ = self.looked.remove(&root);
+                    }
+                }
+
+                // Without a torrent, its patches are all there is to check.
                 let Some(saved) = config.torrents.get(&root).cloned() else {
+                    log::info!("Checking the patches of {}", root.display());
+                    let _ = self.checked.remove(&root);
+                    self.job = Some(Job {
+                        patches: lines,
+                        ..Job::new(id, Kind::Check, None, Some(root), Stage::Checked)
+                    });
                     return Task::none();
                 };
+                patches = lines;
                 log::info!("Checking the files of {}", root.display());
                 let task = Task::perform(
                     find_again(
@@ -482,9 +513,29 @@ impl State {
             }
         };
 
-        self.job = Some(Job::new(id, kind, saved, root, Stage::Finding));
+        self.job = Some(Job {
+            patches,
+            ..Job::new(id, kind, saved, root, Stage::Finding)
+        });
 
         task
+    }
+
+    /// What `findings` about the patches of the client at `root` say, a line
+    /// each; an archive a mod installed is named by the mod.
+    fn lines(&self, root: &Path, findings: &Findings) -> Vec<String> {
+        let owned = self.mods.owned(root);
+        let owner = |path: &str| {
+            let id = owned.get(path)?;
+
+            self.mods
+                .mods
+                .iter()
+                .find(|listed| &listed.id == id)
+                .map(|listed| listed.name.clone())
+        };
+
+        findings.lines(&owner)
     }
 
     /// Deletes what a new client not yet said yes to, or turned down,
@@ -535,9 +586,12 @@ impl State {
     /// Whether something is under way, or waits for the player: another
     /// job can't start.
     pub fn is_running(&self) -> bool {
-        self.job
-            .as_ref()
-            .is_some_and(|job| !matches!(job.stage, Stage::Intact(_) | Stage::Failed(_)))
+        self.job.as_ref().is_some_and(|job| {
+            !matches!(
+                job.stage,
+                Stage::Checked | Stage::Intact(_) | Stage::Failed(_)
+            )
+        })
     }
 
     /// Whether the dialog shows.
@@ -575,7 +629,7 @@ impl State {
             }
         }
 
-        self.checked.get(root).map(|integrity| match *integrity {
+        let files = self.checked.get(root).map(|integrity| match *integrity {
             Integrity::Intact { spared } => {
                 format!("Every file is intact{}.", left_alone(spared, "; "))
             }
@@ -594,7 +648,17 @@ impl State {
                     left_alone(spared, "; ")
                 )
             }
-        })
+        });
+        let patches = self.looked.get(root).map(|&things| match things {
+            0 => "Nothing is wrong with its patches.".to_owned(),
+            1 => "1 thing to look at: see the check.".to_owned(),
+            things => format!("{things} things to look at: see the check."),
+        });
+
+        match (files, patches) {
+            (Some(files), Some(patches)) => Some(format!("{files} {patches}")),
+            (files, patches) => files.or(patches),
+        }
     }
 
     /// Takes note of the current list of mods: the files of those installed
@@ -1358,6 +1422,7 @@ impl State {
             | Stage::Identifying
             | Stage::Downloading { .. }
             | Stage::Confirming { .. }
+            | Stage::Checked
             | Stage::Intact(_)
             | Stage::Damaged(_)
             | Stage::Failed(_) => false,
@@ -1377,7 +1442,7 @@ impl State {
         };
         if !matches!(
             job.stage,
-            Stage::Intact(_) | Stage::Failed(_) | Stage::Languages { .. }
+            Stage::Checked | Stage::Intact(_) | Stage::Failed(_) | Stage::Languages { .. }
         ) {
             log::info!("Stopped {}", job.name());
         }
@@ -1403,6 +1468,7 @@ impl State {
         // What a check found before is not to be trusted now.
         if let (Kind::Check, Some(root)) = (&job.kind, &job.root) {
             let _ = self.checked.remove(root);
+            let _ = self.looked.remove(root);
         }
 
         task
@@ -1597,11 +1663,13 @@ impl State {
                     .boxed(),
                     row![hide, stop("Stop")],
                 ),
+                Stage::Checked => (checked(job.patches.as_deref()), row![stop("Close")]),
                 Stage::Intact(check) => (
                     column![text(
                         "Every file is as its torrent has it: there is nothing to repair."
                     )]
                     .extend(unexpected(check))
+                    .extend(patches(job.patches.as_deref()))
                     .spacing(10)
                     .boxed(),
                     row![stop("Close")],
@@ -1614,7 +1682,10 @@ impl State {
                         repair.on_press(Message::Repair).boxed()
                     };
 
-                    (damaged(check, found), row![stop("Not now"), repair])
+                    (
+                        damaged(check, found, job.patches.as_deref()),
+                        row![stop("Not now"), repair],
+                    )
                 }
                 Stage::Languages {
                     has,
@@ -1700,6 +1771,7 @@ impl Job {
             hidden: false,
             stopping: false,
             pending: None,
+            patches: None,
         }
     }
 
@@ -1759,6 +1831,7 @@ impl Job {
                 self.name(),
                 percent(&self.progress)
             ),
+            Stage::Checked => format!("{} was checked.", self.name()),
             Stage::Intact(_) => format!("Every file of {} is intact.", self.name()),
             Stage::Damaged(_) => format!("Files of {} are missing or changed.", self.name()),
             Stage::Languages { .. } => format!("The languages of {}.", self.name()),
@@ -2536,8 +2609,76 @@ fn left_alone(spared: usize, lead: &str) -> String {
     }
 }
 
+/// What a check of a client without a torrent says: what it found in the
+/// client's patches and mods (`lines`; none if they couldn't be looked at),
+/// and that a torrent would let it go further.
+fn checked(lines: Option<&[String]>) -> Element<'_, Message> {
+    let headline = match lines {
+        None => "This client's patches couldn't be looked at, so there is nothing to tell yet."
+            .to_owned(),
+        Some([]) => {
+            "Nothing is wrong with this client's patches, and every mod is as released.".to_owned()
+        }
+        Some(lines) => format!(
+            "This client has {} to look at:",
+            counted(lines.len(), "thing")
+        ),
+    };
+
+    column![text(headline)]
+        .extend(lines.filter(|lines| !lines.is_empty()).map(named))
+        .push(
+            text(
+                "Want a deeper check? Set the torrent this client came from, and the check will \
+                 also compare every file with it and repair what's off.",
+            )
+            .size(13)
+            .style(text::secondary)
+            .boxed(),
+        )
+        .spacing(10)
+        .boxed()
+}
+
+/// What a check with a torrent says of the client's patches and mods after
+/// its own lines: what it found in them (`lines`), or that it found nothing.
+/// Nothing when they couldn't be looked at.
+fn patches<'a>(lines: Option<&'a [String]>) -> Option<Element<'a, Message>> {
+    match lines? {
+        [] => Some(
+            text("Nothing is wrong with its patches, and every mod is as released.")
+                .size(13)
+                .boxed(),
+        ),
+        lines => Some(named(lines)),
+    }
+}
+
+/// The first few of `lines`, then how many more.
+fn named(lines: &[String]) -> Element<'_, Message> {
+    let more = (lines.len() > NAMED).then(|| {
+        text(format!("and {} more", lines.len() - NAMED))
+            .size(13)
+            .style(text::secondary)
+    });
+
+    column(
+        lines
+            .iter()
+            .take(NAMED)
+            .map(|line| text(line.as_str()).size(13).boxed())
+            .chain(more.map(|more| more.boxed())),
+    )
+    .spacing(2)
+    .boxed()
+}
+
 /// What a repair downloads: how much, and which files.
-fn damaged<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Message> {
+fn damaged<'a>(
+    check: &'a Check,
+    found: Option<&'a Found>,
+    lines: Option<&'a [String]>,
+) -> Element<'a, Message> {
     let Some(torrent) = found.map(|found| &*found.torrent) else {
         return space::horizontal().boxed();
     };
@@ -2591,6 +2732,7 @@ fn damaged<'a>(check: &'a Check, found: Option<&'a Found>) -> Element<'a, Messag
         .boxed()
     }))
     .extend(unexpected(check))
+    .extend(patches(lines))
     .spacing(10)
     .boxed()
 }
@@ -2801,6 +2943,7 @@ mod tests {
     use iced_test::simulator;
 
     use super::*;
+    use crate::core::mpq::writer::{Options, Writer};
     use crate::core::testing::{WOTLK, fake_executable, torrent_naming, torrent_of};
     use crate::torrent::tests::{address, finished, local};
 
@@ -3338,6 +3481,314 @@ mod tests {
         }
     }
 
+    /// A model of version 264 that needs one skin.
+    fn model() -> Vec<u8> {
+        let mut bytes = vec![0; 0x58];
+
+        bytes[..4].copy_from_slice(b"MD20");
+        bytes[4..8].copy_from_slice(&264u32.to_le_bytes());
+        bytes[0x44..0x48].copy_from_slice(&1u32.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&0x58u32.to_le_bytes());
+        bytes[0x54..0x58].copy_from_slice(&0x58u32.to_le_bytes());
+
+        bytes
+    }
+
+    /// A client folder holding `archives` (path, archive).
+    fn client_of(archives: &[(&str, Writer)]) -> (tempfile::TempDir, PathBuf) {
+        let (dir, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+
+        for (path, archive) in archives {
+            let target = root.join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            archive.write(&target);
+        }
+
+        (dir, root)
+    }
+
+    /// What the check says of the patches of the client folder at `root`,
+    /// once looked at.
+    fn findings_of(root: &Path) -> Findings {
+        let folder = tempfile::tempdir().unwrap();
+        let cache = crate::core::patches::Cache::at(folder.path());
+        let mut state = crate::patches::State::new(cache.clone());
+        let _ = state.look(root, Locale::EnUs);
+        let scan = crate::patches::look(root, Locale::EnUs, &cache, &|_| {});
+        let _ = state.update(
+            crate::patches::Message::Looked(root.to_path_buf(), scan.map(Arc::new)),
+            &mut Errors::default(),
+        );
+
+        state.findings(root).unwrap()
+    }
+
+    /// Archives of a client in which `patch-G` needs a skin that only a
+    /// backup has, and `patch-w` and `patch-W` differ in case if the file
+    /// system can tell them apart: whether it can.
+    fn client_with_problems() -> (tempfile::TempDir, PathBuf, bool) {
+        let archive = |files: &[(&str, Vec<u8>)]| {
+            files
+                .iter()
+                .fold(Writer::new(), |writer, (name, bytes)| {
+                    writer.file(name, bytes)
+                })
+                .with_listfile(Options::default())
+        };
+        let (dir, root) = client_of(&[
+            (
+                "Data/patch-G.mpq",
+                archive(&[("Creature\\Foo\\Foo.m2", model())]),
+            ),
+            (
+                "Data/patch-F.mpq.backup",
+                archive(&[("Creature\\Foo\\Foo00.skin", b"skin".to_vec())]),
+            ),
+            ("Data/patch-w.mpq", archive(&[("w.txt", b"w".to_vec())])),
+        ]);
+        archive(&[("w2.txt", b"w".to_vec())]).write(&root.join("Data/patch-W.mpq"));
+        // A file system that ignores case can't hold both.
+        let both = fs::read_dir(root.join("Data")).unwrap().count() == 4;
+
+        (dir, root, both)
+    }
+
+    const TWINS: &str = "Data/patch-W.mpq and Data/patch-w.mpq differ only in case. Windows would \
+                         allow only one of them, and the game may load either: rename one, or \
+                         remove it.";
+    const BACKUP: &str = "Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which \
+                          isn't loaded: it is backed up as Data/patch-F.mpq.backup.";
+    const NOTE: &str = "Want a deeper check? Set the torrent this client came from, and the check \
+                        will also compare every file with it and repair what's off.";
+
+    #[test]
+    fn a_check_without_a_torrent_says_all_is_fine_and_offers_the_deeper_one() {
+        let (_dir, root) = client_of(&[]);
+        let config = Config {
+            installations: vec![root.clone()],
+            ..Config::default()
+        };
+        let mut state = State::new(PathBuf::new());
+
+        let task = state.start(
+            Request::Check(root.clone(), Some(findings_of(&root))),
+            &config,
+            Err("offline"),
+        );
+
+        assert_eq!(task.units(), 0, "nothing to find, nothing to wait for");
+        assert!(matches!(job(&state).stage, Stage::Checked));
+        assert!(!state.is_running(), "another can start");
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("Nothing is wrong with its patches.")
+        );
+
+        let mut ui = simulator(state.dialog(false).unwrap());
+        for line in [
+            "Nothing is wrong with this client's patches, and every mod is as released.",
+            NOTE,
+            "Close",
+        ] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
+        let _ = ui.click("Close").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        for message in messages {
+            let _ = update(&mut state, message, &config, false);
+        }
+        assert!(state.job.is_none());
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("Nothing is wrong with its patches."),
+            "the row keeps saying it"
+        );
+
+        // Its patches couldn't be looked at.
+        let _ = state.start(Request::Check(root.clone(), None), &config, Err("offline"));
+        assert_eq!(state.integrity(&root), None);
+        let mut ui = simulator(state.dialog(false).unwrap());
+        assert!(ui.find(NOTE).is_ok());
+    }
+
+    #[test]
+    fn a_check_without_a_torrent_lists_twins_and_needs_a_backup_would_meet() {
+        let (_dir, root, twins) = client_with_problems();
+        let config = Config {
+            installations: vec![root.clone()],
+            ..Config::default()
+        };
+        let mut state = State::new(PathBuf::new());
+
+        let _ = state.start(
+            Request::Check(root.clone(), Some(findings_of(&root))),
+            &config,
+            Err("offline"),
+        );
+
+        assert!(matches!(job(&state).stage, Stage::Checked));
+        let mut ui = simulator(state.dialog(false).unwrap());
+        assert!(ui.find(BACKUP).is_ok());
+        assert!(ui.find(NOTE).is_ok());
+        if !twins {
+            assert!(ui.find("This client has 1 thing to look at:").is_ok());
+            assert_eq!(
+                state.integrity(&root).as_deref(),
+                Some("1 thing to look at: see the check.")
+            );
+            return;
+        }
+        for line in ["This client has 2 things to look at:", TWINS] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
+        assert_eq!(
+            state.integrity(&root).as_deref(),
+            Some("2 things to look at: see the check.")
+        );
+    }
+
+    #[test]
+    fn the_first_few_things_are_named_and_the_rest_counted() {
+        let lines: Vec<String> = (0..11)
+            .map(|number| format!("Data/patch-{number}.mpq couldn't be read."))
+            .collect();
+        let mut ui = simulator(checked(Some(&lines)));
+
+        assert!(ui.find("This client has 11 things to look at:").is_ok());
+        assert!(ui.find(lines[7].as_str()).is_ok());
+        assert!(ui.find(lines[8].as_str()).is_err());
+        assert!(ui.find("and 3 more").is_ok());
+    }
+
+    #[test]
+    fn a_check_with_a_torrent_adds_the_patch_findings_to_its_results() {
+        let (_dir, root, twins) = client_with_problems();
+        let saved = ClientTorrent {
+            name: "WotLK".into(),
+            info_hash: "0123456789abcdef0123456789abcdef01234567".into(),
+            source: "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into(),
+            folder: root.clone(),
+            languages: Vec::new(),
+            made: false,
+        };
+        let config = Config {
+            installations: vec![root.clone()],
+            torrents: BTreeMap::from([(root.clone(), saved)]),
+            ..Config::default()
+        };
+        let mut state = State::new(PathBuf::new());
+
+        let _ = state.start(
+            Request::Check(root.clone(), Some(findings_of(&root))),
+            &config,
+            Err("offline"),
+        );
+        assert!(
+            matches!(job(&state).stage, Stage::Finding),
+            "its torrent comes first"
+        );
+        let torrent = at(Kind::Check, Stage::Finding, Progress::default(), false)
+            .job
+            .unwrap()
+            .found;
+        state.job.as_mut().unwrap().found = torrent;
+
+        // Every file is as its torrent has it.
+        let _ = update(
+            &mut state,
+            Message::Checked(1, Ok(Some(Check::default()))),
+            &config,
+            false,
+        );
+        assert!(matches!(job(&state).stage, Stage::Intact(_)));
+        let mut ui = simulator(state.dialog(false).unwrap());
+        for line in [
+            "Every file is as its torrent has it: there is nothing to repair.",
+            BACKUP,
+        ] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
+        assert_eq!(ui.find(TWINS).is_ok(), twins);
+        assert!(ui.find(NOTE).is_err(), "it has its torrent");
+        drop(ui);
+        let things = if twins { 2 } else { 1 };
+        assert_eq!(
+            state.integrity(&root),
+            Some(format!(
+                "Every file is intact. {things} thing{} to look at: see the check.",
+                if twins { "s" } else { "" }
+            ))
+        );
+
+        // Some are missing.
+        let _ = state.start(
+            Request::Check(root.clone(), Some(findings_of(&root))),
+            &config,
+            Err("offline"),
+        );
+        state.job.as_mut().unwrap().found =
+            at(Kind::Check, Stage::Finding, Progress::default(), false)
+                .job
+                .unwrap()
+                .found;
+        let _ = update(
+            &mut state,
+            Message::Checked(
+                2,
+                Ok(Some(Check {
+                    missing: vec![1],
+                    ..Check::default()
+                })),
+            ),
+            &config,
+            false,
+        );
+        assert!(matches!(job(&state).stage, Stage::Damaged(_)));
+        let mut ui = simulator(state.dialog(false).unwrap());
+        for line in ["Data/common.MPQ (missing)", BACKUP, "Repair"] {
+            assert!(ui.find(line).is_ok(), "{line}");
+        }
+        drop(ui);
+
+        // A client without anything amiss in its patches says so.
+        let mut ui = simulator(patches(Some(&[])).unwrap());
+        assert!(
+            ui.find("Nothing is wrong with its patches, and every mod is as released.")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_rows_summary_counts_the_problems() {
+        let root = Path::new("client");
+        let mut state = State::new(PathBuf::new());
+        assert_eq!(state.integrity(root), None, "not checked yet");
+
+        for (things, said) in [
+            (0, "Nothing is wrong with its patches."),
+            (1, "1 thing to look at: see the check."),
+            (4, "4 things to look at: see the check."),
+        ] {
+            let _ = state.looked.insert(root.to_path_buf(), things);
+            assert_eq!(state.integrity(root).as_deref(), Some(said));
+        }
+
+        // With a torrent, its own line comes first.
+        let _ = state
+            .checked
+            .insert(root.to_path_buf(), Integrity::Intact { spared: 0 });
+        assert_eq!(
+            state.integrity(root).as_deref(),
+            Some("Every file is intact. 4 things to look at: see the check.")
+        );
+        let _ = state.looked.insert(root.to_path_buf(), 0);
+        assert_eq!(
+            state.integrity(root).as_deref(),
+            Some("Every file is intact. Nothing is wrong with its patches.")
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn the_files_of_an_installed_mod_are_left_alone_by_a_check_and_a_repair() {
         let files = files();
@@ -3392,7 +3843,7 @@ mod tests {
         let mut state = downloading_from(&seeder, &cache).await;
         state.mods(list.clone());
 
-        let _ = state.start(Request::Check(root.clone()), &config, Err("offline"));
+        let _ = state.start(Request::Check(root.clone(), None), &config, Err("offline"));
         let found = find_again(
             saved,
             root.clone(),
@@ -3468,7 +3919,7 @@ mod tests {
         let mut state = downloading_from(&seeder, &cache).await;
         assert_eq!(state.integrity(&root), None, "not checked yet");
 
-        let _ = state.start(Request::Check(root.clone()), &config, Err("offline"));
+        let _ = state.start(Request::Check(root.clone(), None), &config, Err("offline"));
         assert_eq!(
             state.integrity(&root).as_deref(),
             Some("Finding its torrent…")
@@ -4827,7 +5278,7 @@ mod tests {
             ..Config::default()
         };
 
-        let _ = state.start(Request::Check(root.clone()), &config, Ok(&http()));
+        let _ = state.start(Request::Check(root.clone(), None), &config, Ok(&http()));
         let found = find_again(
             saved,
             root.clone(),

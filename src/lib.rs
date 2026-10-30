@@ -351,6 +351,7 @@ impl App {
             focused: true,
         };
         app.clients.keep_mod_downloads_in(clients::mods::cache());
+        app.clients.keep_archive_facts_in(patches::cache());
         // No client is open yet to look at with it.
         app.download.mods(mods.clone());
         let _ = app.clients.list_mods(mods, None);
@@ -550,7 +551,7 @@ impl App {
                     }
                     Some(clients::Instruction::Check(root)) => {
                         let start = self.download.start(
-                            download::Request::Check(root),
+                            download::Request::Check(root.clone(), self.patches.findings(&root)),
                             &self.config,
                             self.client.as_ref().map_err(String::as_str),
                         );
@@ -600,7 +601,8 @@ impl App {
                         self.selected = Selected::Nothing;
                         self.recognize.clear();
                         self.patches.forget(&removed);
-                        self.sync_patches();
+                        // Nothing is selected: there is nothing to judge.
+                        let _ = self.sync_patches();
 
                         let open = match self.config.selected.clone() {
                             Some(path) => {
@@ -806,9 +808,9 @@ impl App {
                     .patches
                     .update(message, &mut self.errors)
                     .map(Message::Patches);
-                self.sync_patches();
+                let judging = self.sync_patches();
 
-                task
+                Task::batch([task, judging])
             }
             // Back from somewhere else, where a game may have started. The
             // window reports the focus more than once per return, so only
@@ -1602,14 +1604,26 @@ impl App {
         let root = installation.root().to_path_buf();
         let locale = installation.locale().unwrap_or(Locale::EnUs);
         let task = self.patches.look(&root, locale).map(Message::Patches);
-        self.sync_patches();
+        let judging = self.sync_patches();
 
-        task
+        Task::batch([task, judging])
     }
 
-    /// Tells the mods which clients' patches are being looked at.
-    fn sync_patches(&mut self) {
+    /// Tells the mods which clients' patches are being looked at, and what
+    /// the selected client's look found, so they work out what installing
+    /// each does to them.
+    fn sync_patches(&mut self) -> Task<Message> {
         self.clients.waiting_for_patches(self.patches.waiting());
+
+        let Selected::Open { installation, .. } = &self.selected else {
+            return Task::none();
+        };
+        let root = installation.root();
+        let locale = installation.locale().unwrap_or(Locale::EnUs);
+
+        self.clients
+            .patched(root, self.patches.settled(root), locale)
+            .map(Message::Clients)
     }
 
     /// Reads the selected client's addons and data again.

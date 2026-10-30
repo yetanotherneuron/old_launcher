@@ -648,18 +648,18 @@ impl Graph {
     /// `key` as a message names it, `table` being its name if it is a
     /// table, and `more` the facts of archives not in the graph.
     fn named(&self, key: Key, table: Option<&str>, more: &[&Facts], kind: Option<Kind>) -> Named {
+        // The six tables as the game spells them, whatever case an archive's
+        // listfile gives them.
         let name = table.map(str::to_owned).or_else(|| {
-            self.name(key).map(str::to_owned).or_else(|| {
-                more.iter()
-                    .find_map(|facts| facts.names.get(&key))
-                    .cloned()
-                    .or_else(|| {
-                        TABLES
-                            .iter()
-                            .find(|name| crate::mpq::key(name) == key)
-                            .map(|name| (*name).to_owned())
-                    })
-            })
+            TABLES
+                .iter()
+                .find(|name| crate::mpq::key(name) == key)
+                .map(|name| (*name).to_owned())
+                .or_else(|| {
+                    self.name(key)
+                        .map(str::to_owned)
+                        .or_else(|| more.iter().find_map(|facts| facts.names.get(&key)).cloned())
+                })
         });
         let kind = name
             .as_deref()

@@ -254,7 +254,18 @@ OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
 # in a temporary folder (OLD_LAUNCHER_TEST_CACHE keeps it, to time a start
 # on its own), and prints the times and the memory, only reading:
 OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
-    cargo test --release --lib patches::tests::a_real_client \
+    cargo test --release --lib patches::tests::a_real_clients_patches \
+    -- --ignored --nocapture
+# Prints what the file integrity check says of a client's patches without a
+# torrent (twins, needs a backup would meet), only reading:
+OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release --lib patches::tests::a_real_clients_check \
+    -- --ignored --nocapture
+# Downloads Lau's Patch Y and prints what installing it would do to a
+# client's patches, with the list's rules and with the ones that crashed
+# Dalaran; the folder is only read:
+OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release --lib clients::mods::tests::the_gate_on_a_real_client \
     -- --ignored --nocapture
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \

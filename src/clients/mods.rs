@@ -6,10 +6,25 @@
 //! The last download of each mod is kept in the launcher's cache (see
 //! [`cache`]): installing it again, in another client or to repair one,
 //! downloads nothing.
+//!
+//! Installing a release with archives in `Data` goes through a gate (see
+//! [`gate`]): what it would do to the patches the client holds is told
+//! before anything is touched. The launcher knows what a release's archives
+//! provide and need only once it has read them, so when it has not yet,
+//! installing is two tasks: [`fetch`] downloads the release, looks at its
+//! archives and simulates the install on the client's graph; then, if it
+//! breaks nothing and the player agrees to what it overrides, [`place`]
+//! puts the files in place and runs the setup. When it has (an earlier
+//! install, in this client or another), the verdict shows in the mod's row
+//! before any press, and the question comes before the download. A release
+//! without archives goes straight to [`place`], as it always did.
+
+mod gate;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 
 use iced::futures::StreamExt;
 use iced::task::{Straw, sipper};
@@ -23,9 +38,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::action::Action;
 use crate::activity::activity;
 use crate::core::mods::{self, Mod, Mods, Problem, Release, Status};
+use crate::core::patches::Cache;
 use crate::core::{Config, Installation, Launch, Locale, launch};
 use crate::errors::Errors;
+use crate::patches::Scan;
 use crate::{blocking, describe, github, size, style, update};
+use gate::{Install, Verdict};
 
 /// What the hint of a button says while the game runs.
 const CLOSE_THE_GAME: &str = "Close the game first.";
@@ -67,6 +85,23 @@ pub struct State {
     patches: BTreeSet<PathBuf>,
     /// The work under way.
     busy: Option<Work>,
+    /// What each client folder's patches, as last looked at, say of each mod
+    /// with archives, by mod id (see [`gate::judge`]). Only for the client
+    /// shown.
+    gates: BTreeMap<PathBuf, BTreeMap<String, Verdict>>,
+    /// What the last look at the patches of each client folder found, and
+    /// the language it plays in.
+    scans: BTreeMap<PathBuf, (Arc<Scan>, Locale)>,
+    /// How many times each client folder's mods were judged: the newest
+    /// answer is the one that counts.
+    judged: BTreeMap<PathBuf, u64>,
+    /// Where the facts of the releases' archives are kept: none in tests.
+    facts: Option<Cache>,
+    /// The install that went to look at the release's archives, and waits
+    /// for them or for a yes.
+    pending: Option<Pending>,
+    /// The install that was stopped before it touched anything, and why.
+    stopped: Option<Work>,
     /// The client folder and the mod whose removal from it waits for a yes,
     /// and whether the player's files go too.
     removing: Option<(PathBuf, String, bool)>,
@@ -93,9 +128,49 @@ struct Work {
     said: String,
     /// How far an install got, while it goes on.
     stage: Option<Stage>,
-    /// How many steps an install has: the download, putting the files in
-    /// place, and each step of the setup.
+    /// How many steps an install has: the download, looking at its
+    /// archives (if `looks`), putting the files in place, and each step of
+    /// the setup.
     steps: usize,
+    /// Whether looking at the release's archives is a step of its own.
+    looks: bool,
+}
+
+/// An install between its two tasks (see [`fetch`] and [`place`]): what
+/// [`place`] needs, and what [`fetch`] found.
+#[derive(Debug, Clone)]
+struct Pending {
+    root: PathBuf,
+    listed: Mod,
+    release: Release,
+    /// The language chosen for the client's that the mod doesn't come in.
+    instead: Option<Locale>,
+    /// What is said while it goes on, and once it is done.
+    busy: String,
+    done: String,
+    /// Whether the player already said yes to what it overrides.
+    confirmed: bool,
+    /// What the first task found, once it is done.
+    fetched: Option<Fetched>,
+}
+
+/// What [`fetch`] found of the release it downloaded.
+#[derive(Clone)]
+pub struct Fetched {
+    /// What installing it does to the patches, unless that can't be told.
+    install: Option<Install>,
+    /// The downloads that are not kept in the launcher's cache, by address:
+    /// [`place`] needs them.
+    downloads: Arc<BTreeMap<String, Vec<u8>>>,
+}
+
+impl std::fmt::Debug for Fetched {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Fetched")
+            .field("install", &self.install)
+            .field("downloads", &self.downloads.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 /// How far installing a mod got.
@@ -104,6 +179,8 @@ pub enum Stage {
     /// Downloading its release: the bytes received, and how many there are
     /// when the server says.
     Downloading { received: u64, total: Option<u64> },
+    /// Looking at what its archives provide and need.
+    Looking,
     /// Checking its files and putting them in place.
     Installing,
     /// Running `step` of the `steps` of its setup, which last said `said`.
@@ -191,6 +268,12 @@ pub enum Message {
     Dismiss,
     /// Installing a mod in a client folder got further.
     Progressed(PathBuf, String, Stage),
+    /// The release being installed was downloaded and its archives looked
+    /// at: what it found, or why it failed.
+    Fetched(PathBuf, String, Result<Fetched, String>),
+    /// What a client folder's patches say of its mods was worked out, for
+    /// the `u64`th time (see [`State::judge`]).
+    Judged(PathBuf, u64, BTreeMap<String, Verdict>),
     /// The work on a mod in a client folder ended: what it did, or why it
     /// failed.
     Done(PathBuf, String, Result<String, String>),
@@ -292,6 +375,89 @@ impl State {
         self.cache = Some(folder);
     }
 
+    /// What is read of the releases' archives is kept in `cache` from now
+    /// on.
+    pub fn keep_facts_in(&mut self, cache: Cache) {
+        self.facts = Some(cache);
+    }
+
+    /// The patches of the client folder at `root` were looked at, and found
+    /// `scan` (none while they are being looked at again), the client
+    /// playing in `locale`: what installing a mod does to them is worked
+    /// out again.
+    pub fn patched(
+        &mut self,
+        root: &Path,
+        scan: Option<Arc<Scan>>,
+        locale: Locale,
+    ) -> Task<Message> {
+        let same = match (&scan, self.scans.get(root)) {
+            (Some(new), Some((old, _))) => Arc::ptr_eq(new, old),
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return Task::none();
+        }
+
+        let _ = self.gates.remove(root);
+        match scan {
+            Some(scan) => {
+                let _ = self.scans.insert(root.to_path_buf(), (scan, locale));
+                self.judge(root)
+            }
+            None => {
+                let _ = self.scans.remove(root);
+                Task::none()
+            }
+        }
+    }
+
+    /// Works out what the client folder at `root`'s patches say of its mods,
+    /// away from the window, once the client is known and so are its
+    /// patches.
+    fn judge(&mut self, root: &Path) -> Task<Message> {
+        let (Some((scan, locale)), Some(found), Some(facts)) =
+            (self.scans.get(root), self.found.get(root), &self.facts)
+        else {
+            return Task::none();
+        };
+        if self.patches.contains(root) {
+            return Task::none();
+        }
+
+        let (scan, locale, found, facts) = (scan.clone(), *locale, found.clone(), facts.clone());
+        let list = self.list.clone();
+        let ticket = self.judged.entry(root.to_path_buf()).or_default();
+        *ticket += 1;
+        let ticket = *ticket;
+        let root = root.to_path_buf();
+
+        Task::perform(
+            blocking({
+                let root = root.clone();
+                move || Ok(gate::judge(&root, &list, &found, &scan, locale, &facts))
+            }),
+            move |verdicts| Message::Judged(root, ticket, verdicts.unwrap_or_default()),
+        )
+    }
+
+    /// What the gate says of installing the newest release of the mod `id`
+    /// in the client folder at `root`, if it has been worked out.
+    fn install_of(&self, root: &Path, id: &str) -> Option<&Install> {
+        self.gates.get(root)?.get(id)?.install.as_ref()
+    }
+
+    /// Whether installing the newest release of `listed` in the client
+    /// folder at `root` has to look at its archives first, since the
+    /// launcher doesn't know yet what they provide and need.
+    fn unjudged(&self, root: &Path, listed: &Mod) -> bool {
+        self.facts.is_some()
+            && self.scans.contains_key(root)
+            && listed.newest().is_some_and(gate::has_archives)
+            && self.install_of(root, &listed.id).is_none()
+    }
+
     /// The patches of the client folders at `roots` are being looked at,
     /// and no others: nothing is done to the mods there until that ends.
     pub fn waiting_for_patches(&mut self, roots: BTreeSet<PathBuf>) {
@@ -321,6 +487,7 @@ impl State {
         self.unfit.clear();
         self.excluded.clear();
         self.lacking.clear();
+        self.gates.clear();
         // What is being looked at with the old list is looked at again.
         for again in self.finding.values_mut() {
             *again = true;
@@ -452,6 +619,14 @@ impl State {
     /// alternative to it or one that uses the same paths.
     fn blocked(&self, root: &Path, listed: &Mod) -> Option<String> {
         let held = self.found.get(root)?;
+        // What its archives would break comes first: it holds for an
+        // update as much as for a first install.
+        if let Some(why) = self
+            .install_of(root, &listed.id)
+            .and_then(|install| install.blocked.clone())
+        {
+            return Some(why);
+        }
         if held.contains_key(&listed.id) {
             return None;
         }
@@ -567,10 +742,14 @@ impl State {
                     return Action::task(self.find(&root));
                 }
 
+                // What its patches say of the mods is worked out now that
+                // the mods are known.
+                let judging = self.judge(&root);
+
                 // The next mod to repair after a language came, in the
                 // client shown; once done, it is looked at again.
                 let Some(repaired) = self.completing.get(&root) else {
-                    return Action::none();
+                    return Action::task(judging);
                 };
                 let next = self.found.get(&root).and_then(|found| {
                     found
@@ -584,7 +763,7 @@ impl State {
                             let _ = repaired.insert(id.clone());
                         }
                         log::info!("Repairing {id} in {}: a language came", root.display());
-                        self.update(
+                        let mut action = self.update(
                             Message::Repair(id),
                             current,
                             installation,
@@ -592,12 +771,14 @@ impl State {
                             playing,
                             client,
                             errors,
-                        )
+                        );
+                        action.task = Task::batch([action.task, judging]);
+                        action
                     }
-                    Some(_) => Action::none(),
+                    Some(_) => Action::task(judging),
                     None => {
                         let _ = self.completing.remove(&root);
-                        Action::none()
+                        Action::task(judging)
                     }
                 }
             }
@@ -624,7 +805,16 @@ impl State {
                 let (foreign, excluded) = self.conflicting(root, listed);
                 // A copy installed by hand is overridden, backed up.
                 let manual = self.status(root, &id).is_some() && !self.updating(root, &id);
-                if manual || !foreign.is_empty() || !excluded.is_empty() {
+                // What its archives override, or what overrides them, once
+                // the launcher knows. Until it does, nothing is asked: the
+                // release is downloaded and looked at first, and everything
+                // is asked at once.
+                let overrides = self
+                    .install_of(root, &id)
+                    .is_some_and(|install| !install.asks.is_empty());
+                if !self.unjudged(root, listed)
+                    && (manual || overrides || !foreign.is_empty() || !excluded.is_empty())
+                {
                     self.removing = None;
                     self.confirming = Some((root.to_path_buf(), id));
                     return Action::none();
@@ -649,6 +839,15 @@ impl State {
                     return Action::none();
                 }
 
+                // After the download: its files are in the cache, or here.
+                if self
+                    .pending
+                    .as_ref()
+                    .is_some_and(|pending| pending.fetched.is_some() && pending.listed.id == id)
+                {
+                    return self.place_pending(true, installation, config, playing, client, errors);
+                }
+
                 self.install(
                     &id,
                     true,
@@ -662,6 +861,8 @@ impl State {
             }
             Message::CancelInstall => {
                 self.confirming = None;
+                // What was downloaded stays in the cache for next time.
+                self.pending = None;
                 Action::none()
             }
             Message::Instead(id, language) => {
@@ -701,6 +902,8 @@ impl State {
                     None,
                     busy,
                     done,
+                    // The same release as there: nothing to judge.
+                    false,
                 )
             }
             Message::Remove(id) => {
@@ -745,8 +948,10 @@ impl State {
                     said: format!("Removing “{}”", listed.name),
                     stage: None,
                     steps: 0,
+                    looks: false,
                 });
                 self.done = None;
+                self.stopped = None;
 
                 let installation = installation.clone();
                 let removed = format!("“{}” is removed.", listed.name);
@@ -757,6 +962,7 @@ impl State {
             }
             Message::Dismiss => {
                 self.done = None;
+                self.stopped = None;
                 Action::none()
             }
             Message::Progressed(root, id, stage) => {
@@ -765,12 +971,102 @@ impl State {
                 }
                 Action::none()
             }
+            Message::Judged(root, ticket, verdicts) => {
+                if self.judged.get(&root) == Some(&ticket) && self.scans.contains_key(&root) {
+                    let gates = self.gates.entry(root).or_default();
+
+                    // What an install just found out stays, if this didn't
+                    // know yet.
+                    for (id, mut verdict) in verdicts {
+                        if verdict.install.is_none() {
+                            verdict.install = gates.get(&id).and_then(|old| old.install.clone());
+                        }
+                        let _ = gates.insert(id, verdict);
+                    }
+                }
+                Action::none()
+            }
+            Message::Fetched(root, id, result) => {
+                let Some(mut pending) = self
+                    .pending
+                    .take()
+                    .filter(|pending| pending.root == root && pending.listed.id == id)
+                else {
+                    return Action::none();
+                };
+
+                let fetched = match result {
+                    Ok(fetched) => fetched,
+                    Err(error) => {
+                        return self.update(
+                            Message::Done(root, id, Err(error)),
+                            current,
+                            installation,
+                            config,
+                            playing,
+                            client,
+                            errors,
+                        );
+                    }
+                };
+                self.busy = None;
+
+                if let Some(install) = &fetched.install {
+                    self.gates
+                        .entry(root.clone())
+                        .or_default()
+                        .entry(id.clone())
+                        .or_default()
+                        .install = Some(install.clone());
+                }
+                let (foreign, excluded) = self.conflicting(&root, &pending.listed);
+                let asks = fetched
+                    .install
+                    .as_ref()
+                    .is_some_and(|install| !install.asks.is_empty())
+                    || !foreign.is_empty()
+                    || !excluded.is_empty()
+                    || (self.status(&root, &id).is_some() && !self.updating(&root, &id));
+                let blocked = fetched
+                    .install
+                    .as_ref()
+                    .and_then(|install| install.blocked.clone());
+
+                // Nothing was touched: what was downloaded stays in the
+                // cache for next time.
+                if let Some(why) = blocked {
+                    log::info!("Not installing {id} in {}: {why}", root.display());
+                    self.stopped = Some(Work {
+                        root,
+                        id,
+                        said: why,
+                        stage: None,
+                        steps: 0,
+                        looks: false,
+                    });
+                    return Action::none();
+                }
+
+                pending.fetched = Some(fetched);
+                if asks && !pending.confirmed {
+                    self.removing = None;
+                    self.confirming = Some((root, id));
+                    self.pending = Some(pending);
+                    return Action::none();
+                }
+
+                let over = pending.confirmed;
+                self.pending = Some(pending);
+                self.place_pending(over, installation, config, playing, client, errors)
+            }
             Message::Done(root, id, result) => {
                 self.busy = None;
+                self.pending = None;
                 // What was known of the client is stale: the rows wait,
                 // their buttons off, for it to be looked at again, which
                 // replaces the rest.
                 let _ = self.found.remove(&root);
+                let _ = self.gates.remove(&root);
                 match result {
                     Ok(said) => {
                         log::info!("{}: {said}", root.display());
@@ -780,6 +1076,7 @@ impl State {
                             said,
                             stage: None,
                             steps: 0,
+                            looks: false,
                         });
                     }
                     Err(error) => errors.report(format!("“{}”: {error}", self.name(&id))),
@@ -831,6 +1128,8 @@ impl State {
             )
         };
         let instead = current.and_then(|root| self.instead(root, &listed));
+        // Its archives are looked at first unless it is known what they do.
+        let gated = current.is_some_and(|root| self.unjudged(root, &listed));
 
         self.start(
             installation,
@@ -844,6 +1143,7 @@ impl State {
             instead,
             busy,
             done,
+            gated,
         )
     }
 
@@ -854,7 +1154,9 @@ impl State {
     /// languages it doesn't come in get those of `instead`, or of the one
     /// its marker names. Not while its game runs (`playing`) or something
     /// else is being done. `busy` says what is being done meanwhile, with
-    /// how far it got, and `done` what was once it is.
+    /// how far it got, and `done` what was once it is. When `gated`, the
+    /// release is only downloaded and its archives looked at (see
+    /// [`fetch`]): [`State::place_pending`] goes on from what that finds.
     #[allow(clippy::too_many_arguments)]
     fn start(
         &mut self,
@@ -869,22 +1171,20 @@ impl State {
         instead: Option<Locale>,
         busy: String,
         done: String,
+        gated: bool,
     ) -> Action<Instruction, Message> {
-        let Some(installation) = installation.filter(|_| !playing && self.busy.is_none()) else {
+        let Some((installation, client)) =
+            self.ready(installation, playing, client, errors, &listed.name)
+        else {
             return Action::none();
-        };
-        let client = match client {
-            Ok(client) => client.clone(),
-            Err(error) => {
-                errors.report(format!("Could not download “{}”: {error}", listed.name));
-                return Action::none();
-            }
         };
         let root = installation.root().to_path_buf();
         let id = listed.id.clone();
         self.removing = None;
         self.confirming = None;
         self.done = None;
+        self.stopped = None;
+        self.pending = None;
 
         log::info!(
             "Installing {} {} in {}",
@@ -892,6 +1192,157 @@ impl State {
             release.version,
             root.display()
         );
+        let gate = gated
+            .then(|| Some((self.facts.clone()?, self.scans.get(&root)?.0.clone())))
+            .flatten();
+        let Some((facts, scan)) = gate else {
+            return self.place(
+                &installation,
+                config,
+                client,
+                Pending {
+                    root,
+                    listed,
+                    release,
+                    instead,
+                    busy,
+                    done,
+                    confirmed: over,
+                    fetched: None,
+                },
+                over,
+                BTreeMap::new(),
+                false,
+            );
+        };
+
+        self.busy = Some(Work {
+            root: root.clone(),
+            id: id.clone(),
+            said: busy.clone(),
+            stage: Some(Stage::Downloading {
+                received: 0,
+                total: None,
+            }),
+            steps: 3 + release.setup.len(),
+            looks: true,
+        });
+        self.pending = Some(Pending {
+            root: root.clone(),
+            listed: listed.clone(),
+            release: release.clone(),
+            instead,
+            busy,
+            done,
+            confirmed: over,
+            fetched: None,
+        });
+
+        let (progressed, fetched) = ((root.clone(), id.clone()), (root.clone(), id));
+        Action::task(Task::sip(
+            fetch(
+                client,
+                self.github.clone(),
+                installation.clone(),
+                listed,
+                release,
+                self.list.clone(),
+                instead,
+                self.cache.clone(),
+                facts,
+                scan,
+            ),
+            move |stage| Message::Progressed(progressed.0.clone(), progressed.1.clone(), stage),
+            move |result| Message::Fetched(fetched.0, fetched.1, result),
+        ))
+    }
+
+    /// The client to install in, and the way to download: not while its game
+    /// runs (`playing`) or something else is being done, and not without a
+    /// way to download.
+    fn ready(
+        &self,
+        installation: Option<&Installation>,
+        playing: bool,
+        client: Result<&reqwest::Client, &str>,
+        errors: &mut Errors,
+        name: &str,
+    ) -> Option<(Installation, reqwest::Client)> {
+        let installation = installation.filter(|_| !playing && self.busy.is_none())?;
+        let client = match client {
+            Ok(client) => client.clone(),
+            Err(error) => {
+                errors.report(format!("Could not download “{name}”: {error}"));
+                return None;
+            }
+        };
+
+        Some((installation.clone(), client))
+    }
+
+    /// Goes on with the install that [`fetch`] found out about, `over` the
+    /// files of something else or not.
+    fn place_pending(
+        &mut self,
+        over: bool,
+        installation: Option<&Installation>,
+        config: &Config,
+        playing: bool,
+        client: Result<&reqwest::Client, &str>,
+        errors: &mut Errors,
+    ) -> Action<Instruction, Message> {
+        let Some(name) = self
+            .pending
+            .as_ref()
+            .map(|pending| pending.listed.name.clone())
+        else {
+            return Action::none();
+        };
+        let Some((installation, client)) = self.ready(installation, playing, client, errors, &name)
+        else {
+            return Action::none();
+        };
+        let Some(mut pending) = self.pending.take() else {
+            return Action::none();
+        };
+        let looks = pending.fetched.is_some();
+        let carried = pending
+            .fetched
+            .take()
+            .map(|fetched| {
+                Arc::try_unwrap(fetched.downloads).unwrap_or_else(|shared| (*shared).clone())
+            })
+            .unwrap_or_default();
+
+        self.confirming = None;
+        self.place(&installation, config, client, pending, over, carried, looks)
+    }
+
+    /// Puts the release of `pending` in `installation` (see [`place`]), with
+    /// the `carried` downloads that are not in the cache; `looks` says
+    /// whether its archives were looked at first.
+    #[allow(clippy::too_many_arguments)]
+    fn place(
+        &mut self,
+        installation: &Installation,
+        config: &Config,
+        client: reqwest::Client,
+        pending: Pending,
+        over: bool,
+        carried: BTreeMap<String, Vec<u8>>,
+        looks: bool,
+    ) -> Action<Instruction, Message> {
+        let Pending {
+            root,
+            listed,
+            release,
+            instead,
+            busy,
+            done,
+            ..
+        } = pending;
+        let id = listed.id.clone();
+
         self.busy = Some(Work {
             root: root.clone(),
             id: id.clone(),
@@ -900,7 +1351,8 @@ impl State {
                 received: 0,
                 total: None,
             }),
-            steps: 2 + release.setup.len(),
+            steps: 2 + usize::from(looks) + release.setup.len(),
+            looks,
         });
 
         let alternatives: Vec<Mod> = self
@@ -911,7 +1363,7 @@ impl State {
             .collect();
         let (progressed, worked) = ((root.clone(), id.clone()), (root.clone(), id));
         Action::task(Task::sip(
-            work(
+            place(
                 client,
                 self.github.clone(),
                 installation.clone(),
@@ -922,6 +1374,7 @@ impl State {
                 over,
                 instead,
                 self.cache.clone(),
+                carried,
             ),
             move |stage| Message::Progressed(progressed.0.clone(), progressed.1.clone(), stage),
             move |result| Message::Done(worked.0, worked.1, result.map(|()| done)),
@@ -955,7 +1408,18 @@ impl State {
         let needed = self
             .status(root, &listed.id)
             .and_then(|status| Some((status, need(status)?)));
-        let done = self.done.as_ref().filter(|work| work.on(root, &listed.id));
+        // An install that was stopped says why, where its progress was.
+        let done = self
+            .stopped
+            .as_ref()
+            .filter(|work| work.on(root, &listed.id))
+            .map(|work| (work, style::Tone::Warning))
+            .or_else(|| {
+                self.done
+                    .as_ref()
+                    .filter(|work| work.on(root, &listed.id))
+                    .map(|work| (work, style::Tone::Success))
+            });
 
         let (said, buttons, tone): (Element<'a, Message>, _, _) = match (busy, needed, done) {
             (Some(work), _, _) => (
@@ -989,14 +1453,14 @@ impl State {
                     style::Tone::Warning,
                 )
             }
-            (None, None, Some(work)) => (
+            (None, None, Some((work, tone))) => (
                 text(&work.said).boxed(),
                 row![
                     button("Dismiss")
                         .style(style::quiet)
                         .on_press(Message::Dismiss)
                 ],
-                style::Tone::Success,
+                tone,
             ),
             (None, None, None) => return None,
         };
@@ -1194,7 +1658,35 @@ impl State {
         let conflicts: Vec<String> = foreign.iter().chain(excluded).cloned().collect();
         // A copy installed by hand is overridden, backed up: installing asks.
         let manual = by_hand.is_some() && found.is_some();
-        let anything = manual || !conflicts.is_empty();
+        // What the patches say of it, once its archives are known: what
+        // installing it would break, what it would override or be
+        // overridden by, and what overrides what it has.
+        let verdict = self
+            .gates
+            .get(root)
+            .and_then(|gates| gates.get(&listed.id))
+            .filter(|_| found.is_some() && !patches);
+        let judged = verdict
+            .and_then(|verdict| verdict.install.as_ref())
+            .filter(|_| installable);
+        let gate_says: Vec<&str> = judged
+            .into_iter()
+            .flat_map(|install| {
+                install
+                    .blocked
+                    .as_deref()
+                    .into_iter()
+                    .chain(install.asks.iter().map(String::as_str))
+            })
+            .chain(
+                verdict
+                    .filter(|_| status.is_some())
+                    .into_iter()
+                    .flat_map(|verdict| verdict.installed.iter().map(String::as_str)),
+            )
+            .collect();
+        let asked = judged.map_or(&[][..], |judged| judged.asks.as_slice());
+        let anything = manual || !conflicts.is_empty() || !asked.is_empty();
 
         let buttons = match status {
             None => row![newest.map(|release| install(format!("Install {}", release.version)))],
@@ -1311,7 +1803,8 @@ impl State {
                         ))
                         .size(13)
                         .boxed()
-                    }));
+                    }))
+                    .chain(asked.iter().map(|line| text(line).size(13).boxed()));
 
                 container(
                     column![
@@ -1365,6 +1858,11 @@ impl State {
                     .size(13)
                     .style(text::warning)
             }),
+            column(gate_says.into_iter().map(|line| {
+                let tone: Tone = text::warning;
+                text(line).size(13).style(tone)
+            }))
+            .spacing(4),
             self.elsewhere(root, listed, installable && newer.is_none()),
             column(problems).spacing(4),
             note,
@@ -1401,10 +1899,10 @@ fn target<'a>(listed: &'a Mod, status: &Status) -> Option<&'a Release> {
 }
 
 /// How far `work` got, when it is an install: which of its steps it is at
-/// (the download, putting the files in place, then each step of the setup),
-/// with a bar for that step, and what the setup last said. The bar fills
-/// as the step goes when the step can tell how far it got, and glides
-/// while it goes on otherwise.
+/// (the download, looking at its archives when that is a step, putting the
+/// files in place, then each step of the setup), with a bar for that step,
+/// and what the setup last said. The bar fills as the step goes when the
+/// step can tell how far it got, and glides while it goes on otherwise.
 fn progress(work: &Work) -> Option<Element<'_, Message>> {
     let stage = work.stage.as_ref()?;
     let (step, what, said) = match stage {
@@ -1416,10 +1914,18 @@ fn progress(work: &Work) -> Option<Element<'_, Message>> {
             },
             None,
         ),
-        Stage::Installing => (2, "putting its files in place".to_owned(), None),
-        Stage::SettingUp { step, said, .. } => {
-            (2 + step, "running its setup".to_owned(), said.as_deref())
-        }
+        Stage::Looking => (2, "looking at its archives".to_owned(), None),
+        // Looking at its archives is a step of its own, when it is done.
+        Stage::Installing => (
+            2 + usize::from(work.looks),
+            "putting its files in place".to_owned(),
+            None,
+        ),
+        Stage::SettingUp { step, said, .. } => (
+            2 + usize::from(work.looks) + step,
+            "running its setup".to_owned(),
+            said.as_deref(),
+        ),
     };
     let steps = work.steps.max(step);
     let bar: Element<'_, Message> = match stage.fraction() {
@@ -1485,18 +1991,163 @@ fn names(names: &[String]) -> String {
     }
 }
 
+/// Downloads the release `listed` has in `release`, as it goes in
+/// `installation`'s folder (see [`Release::downloads`]), looks at its
+/// archives, and says what installing it would do to the client's patches
+/// in `scan`'s graph (see [`gate`]), saying how far it got. Nothing is
+/// changed in the client. Each download comes from the copy kept in
+/// `cache` if there is one, else from `client`, or signed in to GitHub with
+/// `github`; and is kept there as soon as it is known to be the release, so
+/// stopping now loses nothing. What isn't kept goes on to [`place`]. What is
+/// read of the archives is kept in `facts`.
+#[allow(clippy::too_many_arguments)]
+fn fetch(
+    client: reqwest::Client,
+    github: Option<github::Signed>,
+    installation: Installation,
+    listed: Mod,
+    release: Release,
+    list: Mods,
+    instead: Option<Locale>,
+    cache: Option<PathBuf>,
+    facts: Cache,
+    scan: Arc<Scan>,
+) -> impl Straw<Fetched, Stage, String> {
+    sipper(async move |mut progress| {
+        let instead = instead.or_else(|| {
+            listed
+                .marker(installation.root())
+                .and_then(|marker| marker.instead)
+        });
+        let placed = release
+            .placed(installation.locale(), &installation.locales(), instead)
+            .ok_or_else(|| describe(&crate::core::Error::NoLanguage))?;
+        let urls: Vec<String> = placed.downloads().into_iter().map(|(url, _)| url).collect();
+        let copy_of = |url: &str| {
+            cache
+                .as_deref()
+                .map(|cache| kept(cache, &listed, &release, url))
+        };
+
+        let (downloads, cached) = gather(
+            &client,
+            github.as_ref(),
+            &urls,
+            &copy_of,
+            BTreeMap::new(),
+            &mut progress,
+        )
+        .await?;
+
+        progress.send(Stage::Looking).await;
+        let looked = tokio::task::spawn_blocking({
+            let (installation, listed, release) =
+                (installation.clone(), listed.clone(), release.clone());
+            let scratch = cache.clone();
+
+            move || {
+                let archives = mods::read_archives(
+                    installation.root(),
+                    &listed,
+                    &release,
+                    &downloads,
+                    instead,
+                    scratch.as_deref(),
+                    &facts,
+                );
+                let install = archives.map(|archives| {
+                    let change = gate::change_of(installation.root(), &list, &listed, &release);
+
+                    gate::install_in(
+                        installation.root(),
+                        &list,
+                        &listed,
+                        &change,
+                        &scan.graph,
+                        &archives,
+                    )
+                });
+
+                (install, downloads)
+            }
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        let (install, mut downloads) = looked;
+        let install = install.map_err(|error| describe(&error))?;
+
+        // What came from the net is kept now, since it is the release, and
+        // dropped from memory when it is.
+        for url in urls.iter().filter(|url| !cached.contains(url)) {
+            if let (Some(path), Some(download)) = (copy_of(url), downloads.get(url)) {
+                keep(&path, download, &release.version).await;
+
+                if tokio::fs::metadata(&path).await.is_ok() {
+                    let _ = downloads.remove(url);
+                }
+            }
+        }
+
+        Ok(Fetched {
+            install,
+            downloads: Arc::new(downloads),
+        })
+    })
+}
+
+/// Downloads what `urls` name that `copy_of` has no copy kept of, or reads
+/// the copy, saying how much arrived; the `carried` downloads are there
+/// already. Returns the downloads by address, and the addresses that came
+/// from a copy kept.
+async fn gather(
+    client: &reqwest::Client,
+    github: Option<&github::Signed>,
+    urls: &[String],
+    copy_of: &impl Fn(&str) -> Option<PathBuf>,
+    mut carried: BTreeMap<String, Vec<u8>>,
+    progress: &mut Sender<Stage>,
+) -> Result<(BTreeMap<String, Vec<u8>>, Vec<String>), String> {
+    let mut downloads = BTreeMap::new();
+    let mut cached = Vec::new();
+
+    for url in urls {
+        let download = match carried.remove(url) {
+            Some(download) => download,
+            None => {
+                let copy = match copy_of(url) {
+                    Some(path) => tokio::fs::read(path).await.ok(),
+                    None => None,
+                };
+
+                match copy {
+                    Some(copy) => {
+                        log::info!("{url}: as kept");
+                        cached.push(url.clone());
+                        copy
+                    }
+                    None => get(client, github, url, progress).await?,
+                }
+            }
+        };
+        let _ = downloads.insert(url.clone(), download);
+    }
+
+    Ok((downloads, cached))
+}
+
 /// Installs `release` of `listed` in `installation`'s folder, in place of
 /// what is there and of its `alternatives` there, and `over` the files of
 /// something else where it goes or not, then runs its setup the way
 /// `launch` starts the game, saying how far it got. Each of its downloads
-/// (one, or one per language: see [`Release::downloads`]) comes from the
-/// copy kept in `cache`, if there is one, or else is downloaded with
-/// `client`, or signed in to GitHub with `github`, and kept there once
-/// installed. Copies kept that aren't the release (cut short, or changed
-/// on disk) are downloaded again. The client's languages it doesn't come in
-/// get those of `instead`, or of the one its marker names.
+/// (one, or one per language: see [`Release::downloads`]) is one of the
+/// `carried` ones that [`fetch`] could not keep, or comes from the copy
+/// kept in `cache`, if there is one, or else is downloaded with `client`,
+/// or signed in to GitHub with `github`, and kept there once installed.
+/// Copies kept that aren't the release (cut short, or changed on disk) are
+/// downloaded again. The client's languages it doesn't come in get those of
+/// `instead`, or of the one its marker names.
 #[allow(clippy::too_many_arguments)]
-fn work(
+fn place(
     client: reqwest::Client,
     github: Option<github::Signed>,
     installation: Installation,
@@ -1507,6 +2158,7 @@ fn work(
     over: bool,
     instead: Option<Locale>,
     cache: Option<PathBuf>,
+    carried: BTreeMap<String, Vec<u8>>,
 ) -> impl Straw<(), Stage, String> {
     sipper(async move |mut progress| {
         let instead = instead.or_else(|| {
@@ -1526,23 +2178,15 @@ fn work(
         };
 
         // Downloaded before anything changes, but those kept.
-        let mut downloads = BTreeMap::new();
-        let mut cached = Vec::new();
-        for url in &urls {
-            let copy = match copy_of(url) {
-                Some(path) => tokio::fs::read(path).await.ok(),
-                None => None,
-            };
-            let download = match copy {
-                Some(copy) => {
-                    log::info!("{url}: as kept");
-                    cached.push(url.clone());
-                    copy
-                }
-                None => get(&client, github.as_ref(), url, &mut progress).await?,
-            };
-            let _ = downloads.insert(url.clone(), download);
-        }
+        let (downloads, cached) = gather(
+            &client,
+            github.as_ref(),
+            &urls,
+            &copy_of,
+            carried,
+            &mut progress,
+        )
+        .await?;
 
         progress.send(Stage::Installing).await;
         // What installing says, and the downloads back, to keep.
@@ -2273,6 +2917,7 @@ mod tests {
             said: "Installing Lumenveil 0.1.1".to_owned(),
             stage: None,
             steps: 0,
+            looks: false,
         });
 
         let mut ui = simulator(state.view(Path::new(ROOT), false));
@@ -2494,6 +3139,7 @@ mod tests {
             said: "Installing Glow".to_owned(),
             stage: None,
             steps: 0,
+            looks: false,
         });
         assert!(state.find(&root).units() == 0);
         assert!(state.finding.is_empty());
@@ -2852,7 +3498,7 @@ mod tests {
 
         let installed = || {
             let (progress, _) = Sender::channel(64);
-            work(
+            place(
                 client.clone(),
                 None,
                 installation.clone(),
@@ -2863,6 +3509,7 @@ mod tests {
                 false,
                 None,
                 Some(cache.path().to_path_buf()),
+                BTreeMap::new(),
             )
             .run(progress)
         };
@@ -2923,7 +3570,7 @@ mod tests {
         let cache = tempfile::tempdir().unwrap();
 
         let (progress, _) = Sender::channel(64);
-        work(
+        place(
             client.clone(),
             None,
             installation.clone(),
@@ -2934,6 +3581,7 @@ mod tests {
             false,
             None,
             Some(cache.path().to_path_buf()),
+            BTreeMap::new(),
         )
         .run(progress)
         .await
@@ -2964,7 +3612,7 @@ mod tests {
         // repairs keep to.
         let (_root, mexican) = crate::core::testing::client(&["Data/esMX/locale-esMX.MPQ"]);
         let (progress, _) = Sender::channel(64);
-        work(
+        place(
             client,
             None,
             mexican.clone(),
@@ -2975,6 +3623,7 @@ mod tests {
             false,
             Some(Locale::EnUs),
             Some(cache.path().to_path_buf()),
+            BTreeMap::new(),
         )
         .run(progress)
         .await
@@ -3009,6 +3658,7 @@ mod tests {
                 total: Some(1_048_576),
             }),
             steps: 3,
+            looks: false,
         });
         assert!(banner_shows(&state, false, "Installing Glow 2.0…"));
         assert!(banner_shows(
@@ -3057,6 +3707,746 @@ mod tests {
             None,
             "the setup glides, the last step included"
         );
+    }
+
+    // The gate: a client with archives made by the test, and Patch Y, whose
+    // one archive is served from this computer.
+
+    use crate::core::mpq::writer::{Options, Writer};
+
+    /// An archive holding `files` (name, bytes), with a listfile naming them.
+    fn archive(files: &[(&str, Vec<u8>)]) -> Writer {
+        files
+            .iter()
+            .fold(Writer::new(), |writer, (name, bytes)| {
+                writer.file(name, bytes)
+            })
+            .with_listfile(Options::default())
+    }
+
+    /// A table the launcher reads nothing of.
+    fn table() -> Vec<u8> {
+        b"WDBC".to_vec()
+    }
+
+    /// A model of version 264 with `skins` skins, no animations and no
+    /// textures.
+    fn model(skins: u32) -> Vec<u8> {
+        let mut bytes = vec![0; 0x58];
+
+        bytes[..4].copy_from_slice(b"MD20");
+        bytes[4..8].copy_from_slice(&264u32.to_le_bytes());
+        bytes[0x44..0x48].copy_from_slice(&skins.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&0x58u32.to_le_bytes());
+        bytes[0x54..0x58].copy_from_slice(&0x58u32.to_le_bytes());
+
+        bytes
+    }
+
+    /// Every file under `root`, by path, with its contents.
+    fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
+        fn walk(root: &Path, folder: &Path, files: &mut BTreeMap<String, Vec<u8>>) {
+            for entry in fs::read_dir(folder).unwrap() {
+                let path = entry.unwrap().path();
+
+                if path.is_dir() {
+                    walk(root, &path, files);
+                } else {
+                    let name = path.strip_prefix(root).unwrap().display().to_string();
+                    let _ = files.insert(name, fs::read(&path).unwrap());
+                }
+            }
+        }
+
+        let mut files = BTreeMap::new();
+        walk(root, root, &mut files);
+
+        files
+    }
+
+    /// A client in a temporary folder, a Blizzard archive of its language
+    /// and `archives` (path, archive); the state of the mods there, with
+    /// Patch Y listed, whose archive is `brings`, and the launcher's
+    /// caches in temporary folders too.
+    struct Gated {
+        _root: tempfile::TempDir,
+        installation: Installation,
+        state: State,
+        client: reqwest::Client,
+        requests: Arc<AtomicUsize>,
+        downloads: tempfile::TempDir,
+        facts: tempfile::TempDir,
+        brings: Vec<u8>,
+    }
+
+    impl Gated {
+        async fn new(archives: &[(&str, &Writer)], brings: &Writer, excludes: &[&str]) -> Self {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            let (root, _) = crate::core::testing::client(&[]);
+            let player = archive(&[("x.txt", b"x".to_vec())]);
+
+            for (path, archive) in archives
+                .iter()
+                .chain(&[("Data/enUS/locale-enUS.MPQ", &player)])
+            {
+                let target = root.path().join(path);
+                fs::create_dir_all(target.parent().unwrap()).unwrap();
+                archive.write(&target);
+            }
+            let installation = Installation::open(root.path()).unwrap();
+            assert_eq!(installation.locale(), Some(Locale::EnUs));
+
+            let brings = brings.build();
+            let (server, requests) = serve(brings.clone()).await;
+            let mut listed = glow();
+            listed.id = "patch-y".to_owned();
+            listed.name = "Patch Y".to_owned();
+            listed.settings.clear();
+            listed.excludes = excludes.iter().map(|path| (*path).to_owned()).collect();
+            listed.releases.truncate(1);
+            listed.releases[0] = Release {
+                version: "3.1.0".to_owned(),
+                url: format!("{server}/Patch-Y.mpq"),
+                files: vec![("Data/patch-y.mpq".to_owned(), mods::sha256(&brings))],
+                setup: Vec::new(),
+                ..listed.releases[0].clone()
+            };
+
+            let mut state = State {
+                list: Mods {
+                    version: Mods::VERSION,
+                    mods: vec![listed, glow()],
+                },
+                ..State::default()
+            };
+            let downloads = tempfile::tempdir().unwrap();
+            let facts = tempfile::tempdir().unwrap();
+            state.keep_downloads_in(downloads.path().to_path_buf());
+            state.keep_facts_in(Cache::at(facts.path()));
+
+            let mut gated = Self {
+                _root: root,
+                installation,
+                state,
+                client: crate::http_client().build().unwrap(),
+                requests,
+                downloads,
+                facts,
+                brings,
+            };
+            gated.looked();
+
+            gated
+        }
+
+        fn root(&self) -> PathBuf {
+            self.installation.root().to_path_buf()
+        }
+
+        fn listed(&self) -> Mod {
+            self.state.listed("patch-y").unwrap().clone()
+        }
+
+        /// The client's mods are looked at, and its patches too (the
+        /// launcher does it in the background, in this order or the
+        /// other).
+        fn looked(&mut self) {
+            let root = self.root();
+            let seen = look(&root, &self.state.list);
+            let _ = self.state.unfit.insert(root.clone(), seen.unfit.clone());
+            let _ = self
+                .state
+                .excluded
+                .insert(root.clone(), seen.excluded.clone());
+            let _ = self.state.found.insert(root.clone(), seen.held);
+            let _ = self.state.foreign.insert(root.clone(), seen.foreign);
+            let _ = self.state.gates.remove(&root);
+            let _ = self.state.scans.remove(&root);
+
+            let scan = crate::patches::look(
+                &root,
+                Locale::EnUs,
+                &Cache::at(self.facts.path().join("client")),
+                &|_| {},
+            )
+            .unwrap();
+            let _ = self
+                .state
+                .patched(&root, Some(Arc::new(scan)), Locale::EnUs);
+        }
+
+        /// What the patches say of the mods is worked out, as the
+        /// launcher does in the background.
+        fn judged(&mut self) {
+            let root = self.root();
+            let (scan, locale) = self.state.scans[&root].clone();
+            let _ = self.state.judge(&root);
+            let ticket = self.state.judged[&root];
+            let verdicts = gate::judge(
+                &root,
+                &self.state.list,
+                &self.state.found[&root],
+                &scan,
+                locale,
+                self.state.facts.as_ref().unwrap(),
+            );
+
+            let _ = self.go(Message::Judged(root, ticket, verdicts));
+        }
+
+        /// What pressing something asks of the state, for the client.
+        fn go(&mut self, message: Message) -> Action<Instruction, Message> {
+            self.state.update(
+                message,
+                Some(self.installation.root()),
+                Some(&self.installation),
+                &Config::default(),
+                false,
+                Ok(&self.client),
+                &mut Errors::default(),
+            )
+        }
+
+        fn shows(&self, wanted: &str) -> bool {
+            let root = self.root();
+            let mut ui = simulator(self.state.view(&root, false));
+
+            ui.find(wanted).is_ok()
+        }
+
+        fn banner_shows(&self, wanted: &str) -> bool {
+            let root = self.root();
+
+            self.state
+                .banner(&root, false)
+                .is_some_and(|banner| simulator(banner).find(wanted).is_ok())
+        }
+
+        /// What the install in [`State::start`] does first, run here: the
+        /// download and the look at its archives, the stages it went
+        /// through.
+        async fn fetched(&self) -> (Fetched, Vec<Stage>) {
+            let (progress, stages) = Sender::channel(64);
+            let scan = self.state.scans[&self.root()].0.clone();
+            let fetched = fetch(
+                self.client.clone(),
+                None,
+                self.installation.clone(),
+                self.listed(),
+                self.listed().releases[0].clone(),
+                self.state.list.clone(),
+                None,
+                Some(self.downloads.path().to_path_buf()),
+                self.state.facts.clone().unwrap(),
+                scan,
+            )
+            .run(progress)
+            .await
+            .unwrap();
+
+            (fetched, stages.collect().await)
+        }
+
+        /// What it does after, run here too.
+        async fn placed(&self, over: bool, carried: BTreeMap<String, Vec<u8>>) {
+            let (progress, _) = Sender::channel(64);
+            let listed = self.listed();
+
+            place(
+                self.client.clone(),
+                None,
+                self.installation.clone(),
+                Launch::default(),
+                listed.clone(),
+                listed.releases[0].clone(),
+                Vec::new(),
+                over,
+                None,
+                Some(self.downloads.path().to_path_buf()),
+                carried,
+            )
+            .run(progress)
+            .await
+            .unwrap();
+        }
+
+        /// The archive of Patch Y is kept in the launcher's downloads.
+        fn kept(&self) -> bool {
+            let listed = self.listed();
+
+            kept(
+                self.downloads.path(),
+                &listed,
+                &listed.releases[0],
+                &listed.releases[0].url,
+            )
+            .is_file()
+        }
+
+        fn requests(&self) -> usize {
+            self.requests.load(Ordering::SeqCst)
+        }
+    }
+
+    fn install(gated: &mut Gated) {
+        let _ = gated.go(Message::Install("patch-y".to_owned()));
+    }
+
+    /// The tables of the players' patches and Patch Y's, that it replaces.
+    fn tables(names: &[&str]) -> Vec<(String, Vec<u8>)> {
+        names
+            .iter()
+            .map(|name| (format!("DBFilesClient\\{name}.dbc"), table()))
+            .collect()
+    }
+
+    fn archive_of(files: &[(String, Vec<u8>)]) -> Writer {
+        let files: Vec<(&str, Vec<u8>)> = files
+            .iter()
+            .map(|(name, bytes)| (name.as_str(), bytes.clone()))
+            .collect();
+
+        archive(&files)
+    }
+
+    #[tokio::test]
+    async fn a_first_install_downloads_looks_at_its_archives_and_then_asks() {
+        let g = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let brings = archive_of(&tables(&["CreatureDisplayInfo", "Spell"]));
+        let mut gated = Gated::new(&[("Data/patch-G.mpq", &g)], &brings, &[]).await;
+
+        // Nothing is known of its archives yet: it downloads, and asks
+        // nothing before.
+        assert!(!gated.shows("Installing “Patch Y” would override the tables your custom Data/patch-G.mpq replaces: CreatureDisplayInfo.dbc."));
+        install(&mut gated);
+        assert!(gated.state.confirming.is_none());
+        assert!(gated.state.pending.is_some());
+        assert_eq!(gated.requests(), 0);
+        assert!(gated.banner_shows("Step 1 of 3: downloading, 0 KB"));
+        let _ = gated.go(Message::Progressed(
+            gated.root(),
+            "patch-y".to_owned(),
+            Stage::Looking,
+        ));
+        assert!(gated.banner_shows("Step 2 of 3: looking at its archives"));
+
+        let (fetched, stages) = gated.fetched().await;
+        assert_eq!(gated.requests(), 1);
+        assert!(stages.contains(&Stage::Looking), "{stages:?}");
+        assert!(
+            gated.kept(),
+            "kept as soon as it is known to be the release"
+        );
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+
+        // Nothing is placed until the player says yes.
+        assert!(gated.state.busy.is_none());
+        assert!(!gated.root().join("Data/patch-y.mpq").exists());
+        assert!(gated.shows("Install “Patch Y” anyway?"));
+        assert!(gated.shows(
+            "Installing “Patch Y” would override the tables your custom Data/patch-G.mpq \
+             replaces: CreatureDisplayInfo.dbc."
+        ));
+
+        let _ = gated.go(Message::ConfirmInstall);
+        assert!(gated.state.busy.is_some(), "now it puts its files in place");
+        assert_eq!(gated.state.busy.as_ref().map(|work| work.looks), Some(true));
+        assert!(gated.state.pending.is_none());
+        let _ = gated.go(Message::Progressed(
+            gated.root(),
+            "patch-y".to_owned(),
+            Stage::Installing,
+        ));
+        assert!(gated.banner_shows("Step 3 of 3: putting its files in place"));
+
+        gated.placed(true, BTreeMap::new()).await;
+        assert!(gated.root().join("Data/patch-y.mpq").is_file());
+        assert_eq!(gated.requests(), 1, "downloaded once");
+    }
+
+    #[tokio::test]
+    async fn an_install_that_would_break_a_custom_patch_stops_before_touching_anything() {
+        // Patch G's model needs a skin that only Patch F provides, and
+        // Patch Y excludes Patch F (the HD pack's language archive isn't
+        // there, so it is half a pack: backed up).
+        let f = archive(&[("Creature\\Foo\\Foo00.skin", b"skin".to_vec())]);
+        let g = archive(&[("Creature\\Foo\\Foo.m2", model(1))]);
+        let brings = archive(&[("x.txt", b"y".to_vec())]);
+        let mut gated = Gated::new(
+            &[("Data/patch-F.mpq", &f), ("Data/patch-G.mpq", &g)],
+            &brings,
+            &["Data/patch-F.mpq", "Data/{locale}/patch-{locale}-F.MPQ"],
+        )
+        .await;
+        let before = tree(&gated.root());
+        let sentence = "Your custom Data/patch-G.mpq's models need Data/patch-F.mpq, which \
+                        installing “Patch Y” would override.";
+
+        install(&mut gated);
+        assert!(gated.state.pending.is_some(), "nothing is known yet");
+        let (fetched, _) = gated.fetched().await;
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+
+        // It stopped where the progress was, and says so in the row.
+        assert!(gated.state.busy.is_none() && gated.state.pending.is_none());
+        assert!(gated.state.confirming.is_none());
+        assert!(gated.banner_shows(sentence));
+        assert!(gated.shows(sentence));
+        assert_eq!(
+            gated.state.blocked(&gated.root(), &gated.listed()),
+            Some(sentence.to_owned()),
+            "the button is off, with it for a tip"
+        );
+        let root = gated.root();
+        let mut ui = simulator(gated.state.view(&root, false));
+        let _ = ui.click("Install 3.1.0").unwrap();
+        assert_eq!(ui.into_messages().count(), 0);
+
+        // Nothing was touched, and the download is kept.
+        assert_eq!(tree(&gated.root()), before);
+        assert!(gated.kept());
+        assert_eq!(gated.requests(), 1);
+
+        // Pressing it again does nothing.
+        install(&mut gated);
+        assert!(gated.state.busy.is_none());
+        assert_eq!(gated.requests(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_install_that_overrides_a_custom_patchs_tables_asks_first() {
+        let mut g = tables(&["CreatureDisplayInfo", "CreatureModelData"]);
+        g.push(("Creature\\Kept.m2".to_owned(), model(0)));
+        let h = archive(&[
+            ("Creature\\A.m2", model(0)),
+            ("Creature\\B.m2", model(0)),
+            ("Textures\\A.blp", b"blp".to_vec()),
+        ]);
+        let mut brings = tables(&["CreatureDisplayInfo", "CreatureModelData"]);
+        brings.extend([
+            ("Creature\\A.m2".to_owned(), model(0)),
+            ("Creature\\B.m2".to_owned(), model(0)),
+            ("Textures\\A.blp".to_owned(), b"other".to_vec()),
+        ]);
+        let mut gated = Gated::new(
+            &[
+                ("Data/patch-G.mpq", &archive_of(&g)),
+                ("Data/patch-H.mpq", &h),
+            ],
+            &archive_of(&brings),
+            &[],
+        )
+        .await;
+
+        install(&mut gated);
+        let (fetched, _) = gated.fetched().await;
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+
+        for wanted in [
+            "Installing “Patch Y” would override the tables your custom Data/patch-G.mpq \
+             replaces: CreatureDisplayInfo.dbc and CreatureModelData.dbc.",
+            "Installing “Patch Y” would override 2 models and 1 texture your custom \
+             Data/patch-H.mpq replaces.",
+            "Install “Patch Y” anyway?",
+        ] {
+            assert!(gated.shows(wanted), "{wanted}");
+        }
+        assert!(gated.state.stopped.is_none(), "it is no break");
+        assert!(!gated.root().join("Data/patch-y.mpq").exists());
+
+        // The player's patches stay where they are.
+        let _ = gated.go(Message::ConfirmInstall);
+        assert!(gated.state.busy.is_some());
+        gated.placed(true, BTreeMap::new()).await;
+        assert!(gated.root().join("Data/patch-y.mpq").is_file());
+        assert!(gated.root().join("Data/patch-G.mpq").is_file());
+        assert!(gated.root().join("Data/patch-H.mpq").is_file());
+    }
+
+    #[tokio::test]
+    async fn an_install_a_higher_patch_would_override_says_so_and_asks() {
+        let z = archive_of(&tables(&["WorldMapArea", "DungeonMap"]));
+        let brings = archive_of(&tables(&["WorldMapArea", "DungeonMap", "Other"]));
+        let mut gated = Gated::new(&[("Data/patch-Z.mpq", &z)], &brings, &[]).await;
+        let sentence = "Data/patch-Z.mpq would override the tables “Patch Y” brings: \
+                        DungeonMap.dbc and WorldMapArea.dbc.";
+
+        install(&mut gated);
+        let (fetched, _) = gated.fetched().await;
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+
+        assert!(gated.state.stopped.is_none());
+        assert!(gated.shows(sentence));
+        assert!(gated.shows("Install “Patch Y” anyway?"));
+        assert!(!gated.root().join("Data/patch-y.mpq").exists());
+    }
+
+    #[tokio::test]
+    async fn a_release_whose_facts_are_cached_is_judged_before_the_download() {
+        let g = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let brings = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let mut gated = Gated::new(&[("Data/patch-G.mpq", &g)], &brings, &[]).await;
+        let sentence = "Installing “Patch Y” would override the tables your custom \
+                        Data/patch-G.mpq replaces: CreatureDisplayInfo.dbc.";
+
+        // Before the launcher read its archives, the row says nothing.
+        gated.judged();
+        assert!(!gated.shows(sentence));
+
+        // Read once, by an install in this client or another.
+        let listed = gated.listed();
+        let download = BTreeMap::from([(listed.releases[0].url.clone(), gated.brings.clone())]);
+        let _ = mods::read_archives(
+            &gated.root(),
+            &listed,
+            &listed.releases[0],
+            &download,
+            None,
+            None,
+            gated.state.facts.as_ref().unwrap(),
+        )
+        .unwrap();
+        gated.judged();
+
+        // Now the verdict shows before any press, and the question comes
+        // before the download.
+        assert!(gated.shows(sentence));
+        install(&mut gated);
+        assert!(gated.state.busy.is_none() && gated.state.pending.is_none());
+        assert!(gated.state.confirming.is_some());
+        assert!(gated.shows("Install “Patch Y” anyway?"));
+        assert_eq!(gated.requests(), 0);
+
+        let _ = gated.go(Message::ConfirmInstall);
+        assert_eq!(gated.requests(), 0, "downloading is the next step");
+        assert_eq!(
+            gated.state.busy.as_ref().map(|work| work.looks),
+            Some(false)
+        );
+        gated.placed(true, BTreeMap::new()).await;
+        assert_eq!(gated.requests(), 1);
+        assert!(gated.root().join("Data/patch-y.mpq").is_file());
+    }
+
+    #[tokio::test]
+    async fn an_installed_mod_says_which_patch_overrides_it() {
+        let z = archive_of(&tables(&["WorldMapArea", "DungeonMap"]));
+        let brings = archive_of(&tables(&["WorldMapArea", "DungeonMap", "Other"]));
+        let mut gated = Gated::new(&[("Data/patch-Z.mpq", &z)], &brings, &[]).await;
+        let listed = gated.listed();
+        let sentence = "Data/patch-Z.mpq overrides the tables it brings: DungeonMap.dbc and \
+                        WorldMapArea.dbc.";
+
+        mods::install(
+            &gated.installation,
+            &listed,
+            &listed.releases[0],
+            &gated.brings,
+            &[],
+            false,
+        )
+        .unwrap();
+        let download = BTreeMap::from([(listed.releases[0].url.clone(), gated.brings.clone())]);
+        let _ = mods::read_archives(
+            &gated.root(),
+            &listed,
+            &listed.releases[0],
+            &download,
+            None,
+            None,
+            gated.state.facts.as_ref().unwrap(),
+        )
+        .unwrap();
+        gated.looked();
+        gated.judged();
+
+        assert_eq!(
+            gated.state.found[&gated.root()]["patch-y"],
+            status(Some("3.1.0"), Vec::new())
+        );
+        assert!(gated.shows(sentence));
+        assert!(gated.shows("Version 3.1.0 installed."));
+        assert!(!gated.shows("Install 3.1.0"), "nothing to install");
+    }
+
+    #[tokio::test]
+    async fn a_mod_without_archives_keeps_todays_flow() {
+        let brings = archive(&[("x.txt", b"x".to_vec())]);
+        let mut gated = Gated::new(&[], &brings, &[]).await;
+        gated.judged();
+        assert!(
+            gated
+                .state
+                .gates
+                .get(&gated.root())
+                .is_none_or(|gates| !gates.contains_key("glow"))
+        );
+
+        // Glow has none: the download starts at once, then the files go in
+        // place, then the setup.
+        let _ = gated.go(Message::Install("glow".to_owned()));
+        assert!(gated.state.pending.is_none());
+        assert!(gated.state.confirming.is_none());
+        let work = gated.state.busy.as_ref().unwrap();
+        assert_eq!((work.steps, work.looks), (3, false));
+        assert!(gated.banner_shows("Step 1 of 3: downloading, 0 KB"));
+
+        // Files of something else where it goes are asked about before
+        // the download, as always.
+        let mut asking = Gated::new(&[], &brings, &[]).await;
+        let root = asking.root();
+        let _ = asking.state.foreign.insert(
+            root,
+            BTreeMap::from([("glow".to_owned(), vec!["version.dll".to_owned()])]),
+        );
+        let _ = asking.go(Message::Install("glow".to_owned()));
+        assert!(asking.state.busy.is_none() && asking.state.confirming.is_some());
+        assert!(asking.shows("Install “Glow” anyway?"));
+    }
+
+    #[tokio::test]
+    async fn cancelling_after_the_download_keeps_it_for_next_time() {
+        let g = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let brings = archive_of(&tables(&["CreatureDisplayInfo"]));
+        let mut gated = Gated::new(&[("Data/patch-G.mpq", &g)], &brings, &[]).await;
+
+        install(&mut gated);
+        let (fetched, _) = gated.fetched().await;
+        let _ = gated.go(Message::Fetched(
+            gated.root(),
+            "patch-y".to_owned(),
+            Ok(fetched),
+        ));
+        assert!(gated.state.confirming.is_some());
+
+        let _ = gated.go(Message::CancelInstall);
+        assert!(gated.state.confirming.is_none() && gated.state.pending.is_none());
+        assert!(!gated.root().join("Data/patch-y.mpq").exists());
+        assert!(gated.kept());
+
+        // Next time it is known what it does: asked before, and the copy
+        // kept is used.
+        gated.judged();
+        install(&mut gated);
+        assert!(gated.state.confirming.is_some() && gated.state.busy.is_none());
+        let _ = gated.go(Message::ConfirmInstall);
+        gated.placed(true, BTreeMap::new()).await;
+        assert_eq!(gated.requests(), 1, "downloaded once");
+        assert!(gated.root().join("Data/patch-y.mpq").is_file());
+    }
+
+    /// `OLD_LAUNCHER_TEST_CLIENT=<client folder> cargo test --release --lib
+    /// clients::mods::tests::the_gate -- --ignored --nocapture`, the folder
+    /// only ever read: downloads Lau's Patch Y for clients without the HD
+    /// models and says what installing it would do to the client's
+    /// patches, with the rules the list had when installing it crashed
+    /// Dalaran (it excluded `patch-f.mpq` too) and with today's. Scratch
+    /// files and the caches are in temporary folders.
+    #[tokio::test]
+    #[ignore = "downloads Patch Y from GitHub and reads every archive of the client in $OLD_LAUNCHER_TEST_CLIENT"]
+    async fn the_gate_on_a_real_client_says_what_installing_patch_y_does() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let root = PathBuf::from(
+            std::env::var("OLD_LAUNCHER_TEST_CLIENT")
+                .expect("OLD_LAUNCHER_TEST_CLIENT is a client folder"),
+        );
+        let locale = Installation::open(&root)
+            .expect("it is a client")
+            .locale()
+            .expect("it has a language");
+        let json = fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
+        let list = Mods::parse(&json).unwrap();
+        let today = list
+            .mods
+            .iter()
+            .find(|listed| listed.id == "lau-non-hd")
+            .unwrap()
+            .clone();
+        let mut then = today.clone();
+        then.excludes = vec![
+            "Data/patch-f.mpq".to_owned(),
+            "Data/{locale}/patch-{locale}-F.MPQ".to_owned(),
+        ];
+        let release = today.newest().unwrap().clone();
+
+        // Everything the client holds, to see it is as it was.
+        fn listing(folder: &Path, files: &mut BTreeMap<PathBuf, (u64, std::time::SystemTime)>) {
+            for entry in fs::read_dir(folder).unwrap().flatten() {
+                let metadata = entry.metadata().unwrap();
+
+                if metadata.is_dir() {
+                    listing(&entry.path(), files);
+                } else {
+                    let _ =
+                        files.insert(entry.path(), (metadata.len(), metadata.modified().unwrap()));
+                }
+            }
+        }
+        let mut before = BTreeMap::new();
+        listing(&root, &mut before);
+
+        let scratch = tempfile::tempdir().unwrap();
+        let facts = Cache::at(scratch.path().join("facts"));
+        let started = std::time::Instant::now();
+        let scan = crate::patches::look(&root, locale, &facts, &|_| {}).unwrap();
+        println!("looked at the patches in {:?}", started.elapsed());
+
+        let client = crate::http_client().build().unwrap();
+        let (mut progress, _) = Sender::channel(1);
+        let download = get(&client, None, &release.url, &mut progress)
+            .await
+            .unwrap();
+        let downloads = BTreeMap::from([(release.url.clone(), download)]);
+        let started = std::time::Instant::now();
+        let archives = mods::read_archives(
+            &root,
+            &today,
+            &release,
+            &downloads,
+            None,
+            Some(scratch.path()),
+            &facts,
+        )
+        .unwrap();
+        println!("read its archives in {:?}", started.elapsed());
+
+        for (rules, listed) in [("old", &then), ("current", &today)] {
+            let started = std::time::Instant::now();
+            let change = gate::change_of(&root, &list, listed, &release);
+            let install = gate::install_in(&root, &list, listed, &change, &scan.graph, &archives)
+                .expect("it goes in the client");
+
+            println!("--- with the {rules} rules ({:?})", started.elapsed());
+            println!("removes {:?}", change.removes);
+            println!("adds {:?}", change.adds);
+            for lost in &scan.graph.gate(&change, &archives).breaks {
+                println!("break: {lost:?}");
+            }
+            println!("blocked: {:?}", install.blocked);
+            for line in &install.asks {
+                println!("asks: {line}");
+            }
+        }
+
+        let mut after = BTreeMap::new();
+        listing(&root, &mut after);
+        assert_eq!(before, after, "the client is as it was");
     }
 
     #[tokio::test]
