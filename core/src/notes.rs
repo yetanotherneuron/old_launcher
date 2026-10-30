@@ -9,6 +9,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +27,29 @@ const PARTIAL: &str = ".old_launcher.toml.partial";
 /// One change to a folder's notes at a time: the mods and the torrent
 /// change them from different threads.
 static CHANGING: Mutex<()> = Mutex::new(());
+
+/// What tells a file changed: its length, and when it last was. A file
+/// noted with a stamp that is still its own was found as it should be, and
+/// is not read again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Stamp {
+    length: u64,
+    /// In nanoseconds since 1970.
+    modified: u64,
+}
+
+impl Stamp {
+    /// The stamp of a file with this `metadata`, if it tells when it was
+    /// modified.
+    pub(crate) fn of(metadata: &fs::Metadata) -> Option<Self> {
+        let modified = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
+
+        Some(Self {
+            length: metadata.len(),
+            modified: u64::try_from(modified.as_nanos()).ok()?,
+        })
+    }
+}
 
 /// What a client folder notes.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -95,6 +119,7 @@ mod tests {
                                 url: "https://example.com".into(),
                                 set_up: true,
                                 instead: None,
+                                files: BTreeMap::new(),
                             },
                         );
                     })

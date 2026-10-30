@@ -29,7 +29,6 @@ use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 
 use librqbit_core::torrent_metainfo::torrent_from_bytes;
 use serde::{Deserialize, Serialize};
@@ -42,7 +41,7 @@ use crate::installation::{
     LARGE_ADDRESS_AWARE, characteristics, large_address_aware, set_large_address_aware,
 };
 use crate::locale::Locale;
-use crate::notes::Notes;
+use crate::notes::{Notes, Stamp};
 
 /// What a file being copied across disks is named after, beside where it
 /// goes, until it is whole.
@@ -103,14 +102,6 @@ pub(crate) struct Verified {
     files: BTreeMap<String, Stamp>,
 }
 
-/// What tells a file changed: its length, and when it last was.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-struct Stamp {
-    length: u64,
-    /// In nanoseconds since 1970.
-    modified: u64,
-}
-
 impl Verified {
     /// What the client of `torrent`, whose files go in `folder`, notes was
     /// found as `torrent` has it.
@@ -124,17 +115,6 @@ impl Verified {
     /// Notes it in the client of `torrent`, whose files go in `folder`.
     fn write(self, folder: &Path, torrent: &Torrent) -> Result<(), Error> {
         Notes::change(&torrent.root(folder), |notes| notes.verified = Some(self))
-    }
-}
-
-impl Stamp {
-    fn of(metadata: &fs::Metadata) -> Option<Self> {
-        let modified = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
-
-        Some(Self {
-            length: metadata.len(),
-            modified: u64::try_from(modified.as_nanos()).ok()?,
-        })
     }
 }
 

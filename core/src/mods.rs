@@ -8,7 +8,9 @@
 //! in the notes beside `Wow.exe`, written when the launcher installs a
 //! release or recognizes one already there, by its files. A copy that
 //! matches no release, with no marker, isn't known to be the mod's:
-//! installing over it backs it up.
+//! installing over it backs it up. The marker also notes the size and
+//! modification time of each file found as released, so a look at the client
+//! reads only the files that changed since; [`verify`] reads them all.
 //!
 //! A path in the list may name a language, as [`LOCALE`]: a mod's files can
 //! go in the folder of `Data` of each language the client has, so it plays
@@ -28,7 +30,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::io_at;
 use crate::installation::{STAGING_PREFIX, child, config_setting};
-use crate::notes::Notes;
+use crate::notes::{Notes, Stamp};
 use crate::patches::{Cache, Change, Facts, Opened};
 use crate::{Error, Installation, Locale, archive};
 
@@ -213,6 +215,11 @@ pub struct Marker {
         deserialize_with = "crate::locale::lenient::option"
     )]
     pub instead: Option<Locale>,
+    /// The release's files, by path, as they were when last found as
+    /// released: a look reads only those that no longer are (see [`check`]),
+    /// and [`verify`] reads them all. A marker written before this has none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) files: BTreeMap<String, Stamp>,
 }
 
 /// What a client folder holds of a mod, and what keeps it from being as
@@ -593,25 +600,49 @@ impl Mod {
     }
 
     /// Notes in the client folder at `root` that it holds `release`, and
-    /// whether its setup ran to the end.
+    /// whether its setup ran to the end; `files` are the stamps of those
+    /// found as released.
     fn mark(
         &self,
         root: &Path,
         release: &Release,
         set_up: bool,
         instead: Option<Locale>,
+        files: BTreeMap<String, Stamp>,
     ) -> Result<(), Error> {
         let marker = Marker {
             version: release.version.clone(),
             url: release.url.clone(),
             set_up,
             instead,
+            files,
         };
         Notes::change(root, |notes| {
             let _ = notes.mods.insert(self.id.clone(), marker);
         })?;
 
         remove(&self.old_marker_path(root))
+    }
+
+    /// Notes in the client folder at `root` that the files of the release
+    /// `marker` names were found as released with these `files` stamps,
+    /// unless they are the ones noted, or another release was marked since.
+    fn stamp(&self, root: &Path, marker: &Marker, files: BTreeMap<String, Stamp>) {
+        if marker.files == files {
+            return;
+        }
+
+        let noted = Notes::change(root, |notes| {
+            if let Some(held) = notes.mods.get_mut(&self.id)
+                && held.version == marker.version
+                && held.url == marker.url
+            {
+                held.files = files;
+            }
+        });
+        if let Err(error) = noted {
+            log::warn!("Could not note the files of {}: {error}", self.name);
+        }
     }
 
     /// Forgets its marker in the client folder at `root`.
@@ -848,25 +879,81 @@ fn owns(root: &Path, game_mod: &Mod, path: &str, sum: &str) -> bool {
             .is_some_and(|release| release.files.iter().any(|(file, _)| file == path))
 }
 
+/// How a look at a client folder goes about its files.
+struct Looking<'a> {
+    /// Whether to read every file, whatever its stamp, instead of only
+    /// those that no longer have the one noted.
+    thorough: bool,
+    /// Whether to note the stamps of what it finds as released.
+    note: bool,
+    /// Hears how many bytes each file read was.
+    read: &'a mut dyn FnMut(u64),
+}
+
+/// What reading the files of a release found.
+#[derive(Default)]
+struct Comparison {
+    /// Those that are missing.
+    missing: Vec<String>,
+    /// Those that differ.
+    changed: Vec<String>,
+    /// The stamps of those found as released.
+    stamps: BTreeMap<String, Stamp>,
+}
+
+impl Comparison {
+    /// Whether every file is there as released.
+    fn whole(&self) -> bool {
+        self.missing.is_empty() && self.changed.is_empty()
+    }
+}
+
 /// The files of `release` in the client folder at `root` that are missing,
-/// and those that differ, but the player's.
-fn compare(root: &Path, game_mod: &Mod, release: &Release) -> (Vec<String>, Vec<String>) {
-    let mut missing = Vec::new();
-    let mut changed = Vec::new();
+/// and those that differ, but the player's; and the stamps of those found
+/// as released. A file whose stamp is the one in `trusted` is as released
+/// and not read.
+fn compare(
+    root: &Path,
+    game_mod: &Mod,
+    release: &Release,
+    trusted: &BTreeMap<String, Stamp>,
+    read: &mut dyn FnMut(u64),
+) -> Comparison {
+    let mut found = Comparison::default();
 
     for (path, sum) in &release.files {
         if game_mod.is_setting(path) {
             continue;
         }
 
-        match fs::read(at(root, path)) {
-            Err(_) => missing.push(path.clone()),
-            Ok(bytes) if sha256(&bytes) != *sum => changed.push(path.clone()),
-            Ok(_) => {}
+        let there = at(root, path);
+        // Taken before reading: a file written meanwhile is read again.
+        let stamp = fs::metadata(&there)
+            .ok()
+            .filter(fs::Metadata::is_file)
+            .as_ref()
+            .and_then(Stamp::of);
+        if let Some(stamp) = stamp
+            && trusted.get(path) == Some(&stamp)
+        {
+            let _ = found.stamps.insert(path.clone(), stamp);
+            continue;
+        }
+
+        match fs::read(&there) {
+            Err(_) => found.missing.push(path.clone()),
+            Ok(bytes) => {
+                read(bytes.len() as u64);
+                if sha256(&bytes) != *sum {
+                    found.changed.push(path.clone());
+                } else if let Some(stamp) = stamp {
+                    let _ = found.stamps.insert(path.clone(), stamp);
+                }
+            }
         }
     }
 
-    (missing, changed)
+    found
 }
 
 /// What the client folder at `root` holds of `game_mod`, if anything (see
@@ -877,12 +964,26 @@ pub fn status(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Option<Stat
     let game_mod = game_mod.placed_in(root)?;
     let alternatives = placed_all(alternatives, root);
 
-    status_of(root, &game_mod, &alternatives.iter().collect::<Vec<_>>())
+    status_of(
+        root,
+        &game_mod,
+        &alternatives.iter().collect::<Vec<_>>(),
+        &mut Looking {
+            thorough: false,
+            note: false,
+            read: &mut |_| {},
+        },
+    )
 }
 
 /// [`status`], of `game_mod` and its `alternatives` placed in the client
-/// folder at `root`.
-fn status_of(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Option<Status> {
+/// folder at `root`, `looking` as it says.
+fn status_of(
+    root: &Path,
+    game_mod: &Mod,
+    alternatives: &[&Mod],
+    looking: &mut Looking,
+) -> Option<Status> {
     if !present(root, game_mod, alternatives) {
         return None;
     }
@@ -899,12 +1000,26 @@ fn status_of(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Option<Statu
     match game_mod.release(&marker.version) {
         None => problems.push(Problem::Unlisted(marker.version.clone())),
         Some(release) => {
-            let (missing, changed) = compare(root, game_mod, release);
-            if !missing.is_empty() {
-                problems.push(Problem::Missing(missing));
+            let no_stamps = BTreeMap::new();
+            let found = compare(
+                root,
+                game_mod,
+                release,
+                if looking.thorough {
+                    &no_stamps
+                } else {
+                    &marker.files
+                },
+                looking.read,
+            );
+            if looking.note {
+                game_mod.stamp(root, &marker, found.stamps);
             }
-            if !changed.is_empty() {
-                problems.push(Problem::Changed(changed));
+            if !found.missing.is_empty() {
+                problems.push(Problem::Missing(found.missing));
+            }
+            if !found.changed.is_empty() {
+                problems.push(Problem::Changed(found.changed));
             }
 
             let not_set_up: Vec<String> = release
@@ -1035,7 +1150,75 @@ fn foreign_of(
 /// with its `alternatives`), which is
 /// [`Problem::Unknown`] when it matches none: a copy installed by hand,
 /// with the version its files say and the DLLs it has beside `Wow.exe`.
+///
+/// The files of the release its marker names are read only if they no longer
+/// have the size and modification time noted when they were last found as
+/// released, which this notes anew: [`verify`] reads them all.
 pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Option<Status>, Error> {
+    look_at(
+        root,
+        game_mod,
+        alternatives,
+        &mut Looking {
+            thorough: false,
+            note: true,
+            read: &mut |_| {},
+        },
+    )
+}
+
+/// [`check`], but reading every file of the release the marker names,
+/// whatever its stamp: a byte changed since is found, and the stamps are
+/// noted anew. `read` hears how many bytes each file read was.
+pub fn verify(
+    root: &Path,
+    game_mod: &Mod,
+    alternatives: &[&Mod],
+    read: &mut dyn FnMut(u64),
+) -> Result<Option<Status>, Error> {
+    look_at(
+        root,
+        game_mod,
+        alternatives,
+        &mut Looking {
+            thorough: true,
+            note: true,
+            read,
+        },
+    )
+}
+
+/// How many bytes the files of the release `game_mod`'s marker names in the
+/// client folder at `root` take there: what [`verify`] reads, give or take
+/// what it doesn't find. Only looks at the folder, reading nothing.
+pub fn weight(root: &Path, game_mod: &Mod) -> u64 {
+    let Some(game_mod) = game_mod.placed_in(root) else {
+        return 0;
+    };
+    let Some(release) = game_mod
+        .marker(root)
+        .and_then(|marker| game_mod.release(&marker.version).cloned())
+    else {
+        return 0;
+    };
+
+    release
+        .files
+        .iter()
+        .filter(|(path, _)| !game_mod.is_setting(path))
+        .filter_map(|(path, _)| fs::metadata(at(root, path)).ok())
+        .filter(fs::Metadata::is_file)
+        .map(|metadata| metadata.len())
+        .sum()
+}
+
+/// [`check`] of `game_mod` and its `alternatives`, `looking` as it says.
+fn look_at(
+    root: &Path,
+    game_mod: &Mod,
+    alternatives: &[&Mod],
+    looking: &mut Looking,
+) -> Result<Option<Status>, Error> {
     let Some(game_mod) = game_mod.placed_in(root) else {
         return Ok(None);
     };
@@ -1045,8 +1228,7 @@ pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Optio
 
     if game_mod.marker(root).is_none() {
         let whole = |game_mod: &Mod, release: &Release| {
-            let (missing, changed) = compare(root, game_mod, release);
-            missing.is_empty() && changed.is_empty()
+            compare(root, game_mod, release, &BTreeMap::new(), &mut |_| {})
         };
         let size = |game_mod: &Mod, release: &Release| {
             release
@@ -1060,34 +1242,36 @@ pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Optio
         let recognized = if alternatives.iter().any(|other| other.marked(root)) {
             None
         } else {
-            game_mod
-                .releases
-                .iter()
-                .find(|release| whole(game_mod, release))
+            game_mod.releases.iter().find_map(|release| {
+                let found = whole(game_mod, release);
+                found.whole().then_some((release, found.stamps))
+            })
         };
         // Editions of one thing that share files: the one with the most
         // files there is the one there, and when they tie, neither is known.
-        let taken = recognized.is_some_and(|release| {
+        let taken = recognized.as_ref().is_some_and(|(release, _)| {
             let wanted = size(game_mod, release);
             alternatives.iter().any(|other| {
                 other
                     .releases
                     .iter()
                     .filter(|held| size(other, held) >= wanted)
-                    .any(|held| whole(other, held))
+                    .any(|held| whole(other, held).whole())
             })
         });
 
         match recognized.filter(|_| !taken) {
-            Some(release) => {
+            Some((release, stamps)) => {
                 let set_up = release
                     .setup
                     .iter()
                     .all(|step| at(root, &step.creates).exists());
-                game_mod.mark(root, release, set_up, None)?;
+                game_mod.mark(root, release, set_up, None, stamps)?;
+                // Every file was just read.
+                looking.thorough = false;
             }
             None => {
-                return Ok(status_of(root, game_mod, &alternatives).map(|_| {
+                return Ok(status_of(root, game_mod, &alternatives, looking).map(|_| {
                     let mut natives: Vec<String> = game_mod
                         .releases
                         .iter()
@@ -1109,7 +1293,7 @@ pub fn check(root: &Path, game_mod: &Mod, alternatives: &[&Mod]) -> Result<Optio
         }
     }
 
-    Ok(status_of(root, game_mod, &alternatives))
+    Ok(status_of(root, game_mod, &alternatives, looking))
 }
 
 /// The suffix of a file backed up: the game doesn't load it.
@@ -1431,7 +1615,14 @@ pub fn install_downloaded(
         };
         placed.map_err(io_at(&target))?;
     }
-    game_mod.mark(root, release, release.setup.is_empty(), instead)?;
+    // Its files weren't read yet: the next look does.
+    game_mod.mark(
+        root,
+        release,
+        release.setup.is_empty(),
+        instead,
+        BTreeMap::new(),
+    )?;
 
     for (name, value) in &game_mod.config {
         if config_setting(root, name).is_none_or(|set| !set.eq_ignore_ascii_case(value)) {
@@ -1450,9 +1641,15 @@ pub fn finish_setup(
     release: &Release,
 ) -> Result<(), Error> {
     let root = installation.root();
-    let instead = game_mod.marker(root).and_then(|marker| marker.instead);
+    let marker = game_mod.marker(root);
+    let instead = marker.as_ref().and_then(|marker| marker.instead);
+    // The files of the same release are as they were found.
+    let files = marker
+        .filter(|marker| marker.version == release.version)
+        .map(|marker| marker.files)
+        .unwrap_or_default();
 
-    game_mod.mark(root, release, true, instead)
+    game_mod.mark(root, release, true, instead, files)
 }
 
 /// Removes `game_mod` from `installation`'s folder: the files of the release
@@ -2130,6 +2327,178 @@ mod tests {
             }]
         );
         assert_eq!(game_mod.marker(root), None);
+    }
+
+    /// Writes `contents` at `path`, whose modification time stays the same.
+    fn rewrite(path: &Path, contents: &str) {
+        let modified = fs::metadata(path).unwrap().modified().unwrap();
+        fs::write(path, contents).unwrap();
+        set_modified(path, modified);
+    }
+
+    /// Makes `path` last modified at `time`.
+    fn set_modified(path: &Path, time: std::time::SystemTime) {
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(time)
+            .unwrap();
+    }
+
+    /// Glow 2.0, as installed and set up in a new client folder.
+    fn glowing() -> (tempfile::TempDir, Installation, Mod) {
+        let (game_mod, _, _) = glow();
+        let (root, installation) = crate::testing::client_with(&[
+            ("version.dll", "loader 2"),
+            ("Glow.dll", "renderer 2"),
+            ("Glow/setup.exe", "setup"),
+            ("glow.bin", ""),
+        ]);
+
+        (root, installation, game_mod)
+    }
+
+    #[test]
+    fn a_file_found_as_released_is_not_hashed_again_until_its_stamp_changes() {
+        let (_root, installation, game_mod) = glowing();
+        let root = installation.root();
+        let dll = root.join("Glow.dll");
+
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        let marker = game_mod.marker(root).unwrap();
+        assert_eq!(
+            marker.files.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["Glow.dll", "Glow/setup.exe", "version.dll"],
+            "the files found as released, but the player's"
+        );
+
+        // A byte flipped under the same size and time is not looked for.
+        rewrite(&dll, "renderer 3");
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        assert_eq!(status(root, &game_mod, &[]).unwrap().problems, []);
+        assert_eq!(game_mod.marker(root).unwrap(), marker, "nothing to note");
+
+        // Once its time changes, it is read.
+        let modified = fs::metadata(&dll).unwrap().modified().unwrap();
+        set_modified(&dll, modified + std::time::Duration::from_secs(2));
+        let changed = vec![Problem::Changed(vec!["Glow.dll".to_owned()])];
+        assert_eq!(
+            status(root, &game_mod, &[]).unwrap().problems,
+            changed,
+            "a look that notes nothing reads it too"
+        );
+        assert_eq!(
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
+            changed
+        );
+        assert!(
+            !game_mod
+                .marker(root)
+                .unwrap()
+                .files
+                .contains_key("Glow.dll"),
+            "a file that differs is not noted"
+        );
+
+        // Its size changing is enough.
+        rewrite(&dll, "renderer 2");
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        assert!(
+            game_mod
+                .marker(root)
+                .unwrap()
+                .files
+                .contains_key("Glow.dll")
+        );
+
+        fs::remove_file(&dll).unwrap();
+        assert_eq!(
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
+            [Problem::Missing(vec!["Glow.dll".to_owned()])],
+            "a missing file is missing, trusted or not"
+        );
+    }
+
+    #[test]
+    fn a_marker_without_stamps_is_read_as_before() {
+        let (_root, installation, game_mod) = glowing();
+        let root = installation.root();
+        // What 1.1.2 noted.
+        fs::write(
+            root.join(crate::notes::FILE),
+            "[mods.glow]\nversion = \"2.0\"\nurl = \"https://example.com/Glow-2.0.zip\"\n\
+             set_up = true\n",
+        )
+        .unwrap();
+
+        let marker = game_mod.marker(root).unwrap();
+        assert_eq!(marker.version, "2.0");
+        assert!(marker.files.is_empty());
+
+        rewrite(&root.join("Glow.dll"), "patched!!!");
+        assert_eq!(
+            status(root, &game_mod, &[]).unwrap().problems,
+            [Problem::Changed(vec!["Glow.dll".to_owned()])],
+            "every file is read"
+        );
+        rewrite(&root.join("Glow.dll"), "renderer 2");
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        assert_eq!(game_mod.marker(root).unwrap().files.len(), 3, "now noted");
+        assert!(game_mod.marker(root).unwrap().set_up);
+    }
+
+    #[test]
+    fn verifying_hashes_everything_and_renews_the_stamps() {
+        let (_root, installation, game_mod) = glowing();
+        let root = installation.root();
+        let dll = root.join("Glow.dll");
+        let total = ("loader 2".len() + "renderer 2".len() + "setup".len()) as u64;
+
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        assert_eq!(weight(root, &game_mod), total);
+
+        let mut read = 0;
+        let held = verify(root, &game_mod, &[], &mut |bytes| read += bytes);
+        assert_eq!(held.unwrap().unwrap().problems, []);
+        assert_eq!(read, total, "every file, though all are stamped");
+
+        // A byte flipped under the same size and time: only verifying finds it.
+        rewrite(&dll, "renderer 3");
+        assert_eq!(check(root, &game_mod, &[]).unwrap().unwrap().problems, []);
+        let mut read = 0;
+        let held = verify(root, &game_mod, &[], &mut |bytes| read += bytes);
+        assert_eq!(
+            held.unwrap().unwrap().problems,
+            [Problem::Changed(vec!["Glow.dll".to_owned()])]
+        );
+        assert_eq!(read, total);
+        assert!(
+            !game_mod
+                .marker(root)
+                .unwrap()
+                .files
+                .contains_key("Glow.dll")
+        );
+        assert_eq!(
+            check(root, &game_mod, &[]).unwrap().unwrap().problems,
+            [Problem::Changed(vec!["Glow.dll".to_owned()])],
+            "so a look finds it now"
+        );
+
+        // What is as released is stamped as it is now.
+        rewrite(&dll, "renderer 2");
+        let version = root.join("version.dll");
+        let modified = fs::metadata(&version).unwrap().modified().unwrap();
+        set_modified(&version, modified + std::time::Duration::from_secs(2));
+        let held = verify(root, &game_mod, &[], &mut |_| {});
+        assert_eq!(held.unwrap().unwrap().problems, []);
+        let files = game_mod.marker(root).unwrap().files;
+        assert_eq!(files.len(), 3);
+        assert_eq!(
+            files["version.dll"],
+            Stamp::of(&fs::metadata(&version).unwrap()).unwrap()
+        );
     }
 
     #[test]
@@ -3265,7 +3634,7 @@ mod tests {
         assert!(list.owned(root).is_empty(), "no marker: not owned");
 
         game_mod
-            .mark(root, &game_mod.releases[0], true, None)
+            .mark(root, &game_mod.releases[0], true, None, BTreeMap::new())
             .unwrap();
         let expected: BTreeMap<String, String> = [
             "version.dll",
@@ -3285,7 +3654,7 @@ mod tests {
 
         // The older release the marker names has no such file.
         game_mod
-            .mark(root, &game_mod.releases[1], true, None)
+            .mark(root, &game_mod.releases[1], true, None, BTreeMap::new())
             .unwrap();
         let owned = list.owned(root);
         assert!(owned.contains_key("glow/old.txt"));
@@ -3294,7 +3663,9 @@ mod tests {
         // Naming a release no longer listed, it owns every path.
         let mut elsewhere = game_mod.releases[0].clone();
         elsewhere.version = "0.1".to_owned();
-        game_mod.mark(root, &elsewhere, true, None).unwrap();
+        game_mod
+            .mark(root, &elsewhere, true, None, BTreeMap::new())
+            .unwrap();
         let owned = list.owned(root);
         assert_eq!(owned.len(), expected.len() + 1, "and the older's");
         assert!(owned.contains_key("glow/old.txt"));

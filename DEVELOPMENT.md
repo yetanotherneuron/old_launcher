@@ -83,8 +83,9 @@ launcher gets again from the peers when a copy is missing.
   and their `.toc`, the `.old_launcher.toml` marker left in each folder the
   launcher installs (`core/src/marker.rs`), and one `.old_launcher.toml`
   beside `Wow.exe` for the torrent, what was verified against it, and the
-  mods (`core/src/notes.rs`). A client forgotten and added back loses
-  nothing.
+  mods (`core/src/notes.rs`), with the size and mtime of each file found as
+  released, so a look reads only what changed. A client forgotten and added
+  back loses nothing.
 - **Mods are data.** A mod is a module in `indexer/src/mods/` writing to
   `index/mods.json`; the launcher gains only generic capabilities (a file
   to put in place, a setup step to run, a setting to make), never code for

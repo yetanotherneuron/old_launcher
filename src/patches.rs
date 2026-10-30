@@ -45,6 +45,7 @@ use iced::{Center, Element, Function, Task, Widget};
 use sha2::{Digest, Sha256};
 
 use crate::activity::activity;
+use crate::core::mods::{Mods, Problem, Status};
 use crate::core::mpq::{Key, key};
 use crate::core::patches::facts::{Entry, Opened, Source};
 use crate::core::patches::order::{Reason, order_with};
@@ -263,6 +264,46 @@ impl Findings {
 
         lines
     }
+}
+
+/// What is wrong with the files of the mods in `list` that `held` says a
+/// client folder holds, a line each: those that are missing or not as
+/// released, which Repair puts back.
+pub fn mods_lines(mods: &Mods, held: &BTreeMap<String, Status>) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    for listed in &mods.mods {
+        let Some(status) = held.get(&listed.id) else {
+            continue;
+        };
+        for problem in &status.problems {
+            let (files, what) = match problem {
+                Problem::Missing(files) => (files, "missing"),
+                Problem::Changed(files) => (files, "not as released"),
+                _ => continue,
+            };
+            // The first few are named.
+            let named: Vec<String> = files
+                .iter()
+                .take(3)
+                .cloned()
+                .chain((files.len() > 3).then(|| format!("{} more", files.len() - 3)))
+                .collect();
+            let (verb, them) = if files.len() == 1 {
+                ("is", "it")
+            } else {
+                ("are", "them")
+            };
+
+            lines.push(format!(
+                "“{}”'s {} {verb} {what}: Repair, under Mods, puts {them} back.",
+                listed.name,
+                list(&named)
+            ));
+        }
+    }
+
+    lines
 }
 
 /// `names` as a sentence lists them: `a, b and c`.

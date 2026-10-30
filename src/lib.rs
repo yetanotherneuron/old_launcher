@@ -663,6 +663,13 @@ impl App {
                         self.config.downloads.push(torrent);
                         Task::batch([task, self.save()])
                     }
+                    Some(download::Instruction::Verified(root, seen)) => {
+                        // What the check read replaces what the look knew.
+                        let verified = self.update(Message::Clients(clients::Message::Mods(
+                            clients::mods::Message::Verified(root, seen),
+                        )));
+                        Task::batch([task, verified])
+                    }
                     Some(download::Instruction::Discarded(info_hash)) => {
                         self.config
                             .downloads
@@ -2087,6 +2094,94 @@ mod tests {
         let mut ui = simulator(app.view());
         assert!(ui.find("The files of WotLK").is_ok());
         assert!(ui.find("Finding the torrent…").is_ok());
+    }
+
+    #[test]
+    fn the_check_lists_a_mods_file_that_changed_under_its_stamp_and_the_row_offers_repair() {
+        let (_root, installation) =
+            core::testing::client_with(&[("version.dll", "loader, as released")]);
+        let root = installation.root().to_path_buf();
+        let list = core::mods::Mods::parse(
+            format!(
+                r#"{{"version":{},"mods":[{{"id":"lumenveil","name":"Lumenveil",
+                "source":{{"name":"x","page":"https://example.com"}},
+                "releases":[{{"version":"1.0","url":"https://example.com/lumenveil.zip",
+                "files":[["version.dll","{}"]]}}]}}]}}"#,
+                core::mods::Mods::VERSION,
+                core::mods::sha256(b"loader, as released")
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let mut app = opened(installation);
+        app.download.mods(list.clone());
+        let _ = app.clients.list_mods(list.clone(), Some(&root));
+
+        // A look recognizes it, and notes the file as it is.
+        let seen = clients::mods::look(&root, &list);
+        assert_eq!(seen.held["lumenveil"].problems, []);
+        let _ = app.update(Message::Clients(clients::Message::Mods(
+            clients::mods::Message::Found(root.clone(), seen),
+        )));
+
+        // A byte flips; its size and time stay the same.
+        let file = root.join("version.dll");
+        let modified = std::fs::metadata(&file).unwrap().modified().unwrap();
+        std::fs::write(&file, "loader, AS released").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        assert_eq!(
+            clients::mods::look(&root, &list).held["lumenveil"].problems,
+            [],
+            "a look trusts what its size and time say"
+        );
+
+        // The patches were looked at.
+        let folder = tempfile::tempdir().unwrap();
+        let cache = core::patches::Cache::at(folder.path());
+        let _ = app.patches.look(&root, Locale::EnUs);
+        let scan = patches::look(&root, Locale::EnUs, &cache, &|_| {});
+        let _ = app.patches.update(
+            patches::Message::Looked(root.clone(), scan.map(std::sync::Arc::new)),
+            &mut Errors::default(),
+        );
+
+        let _ = app.update(Message::ManageClients);
+        let messages: Vec<Message> = {
+            let mut ui = simulator(app.view());
+            assert!(ui.find("Repair").is_err(), "all seems well");
+            let _ = ui.click("Check").unwrap();
+            ui.into_messages().collect()
+        };
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert!(app.download.is_running(), "it reads the mod's files");
+
+        // What reading them found.
+        let seen = clients::mods::verify(&root, &list, &mut |_| {});
+        let _ = app.update(Message::Download(download::Message::Verified(1, Ok(seen))));
+
+        assert!(!app.download.is_running());
+        let mut ui = simulator(app.view());
+        for text in [
+            "This client has 1 thing to look at:",
+            "“Lumenveil”'s version.dll is not as released: Repair, under Mods, puts it back.",
+        ] {
+            assert!(ui.find(text).is_ok(), "{text}");
+        }
+        let _ = ui.click("Close").unwrap();
+        let messages: Vec<Message> = ui.into_messages().collect();
+        for message in messages {
+            let _ = app.update(message);
+        }
+
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Repair").is_ok(), "the row offers it");
     }
 
     #[test]

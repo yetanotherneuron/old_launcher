@@ -30,12 +30,13 @@ use iced::{Center, Element, Fill, Function, Subscription, Task, Widget};
 
 use crate::action::Action;
 use crate::activity::activity;
+use crate::clients::mods::{self as clients_mods, Seen};
 use crate::core::config::ClientTorrent;
 use crate::core::mods::Mods;
 use crate::core::torrent::{Check, Torrent, client_in, folder_of_client, keep_origin, origin};
 use crate::core::{Config, Installation, Locale};
 use crate::errors::Errors;
-use crate::patches::Findings;
+use crate::patches::{Findings, mods_lines};
 use crate::torrent::{self, Download, Engine, Progress, Source};
 use crate::{blocking, counted, describe, size, style};
 
@@ -153,6 +154,9 @@ struct Job {
     /// What a check found amiss with the client's patches and mods, a line
     /// each: none if they couldn't be looked at.
     patches: Option<Vec<String>>,
+    /// What a check waits to put in `patches` once it has read the files of
+    /// the mods, and how to fetch the torrent after.
+    verifying: Option<(Option<Findings>, Result<reqwest::Client, String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +196,12 @@ enum Stage {
     Checking {
         read: Arc<AtomicU64>,
         stop: Arc<AtomicBool>,
+    },
+    /// Reading the files of the mods in the client, `total` bytes of which
+    /// are known once it began: `read` says how far it got.
+    Verifying {
+        read: Arc<AtomicU64>,
+        total: Arc<AtomicU64>,
     },
     /// A client without a torrent was checked: what the job's `patches`
     /// say is all there is to tell.
@@ -261,6 +271,8 @@ pub enum Message {
     Identified(u64, Result<Installation, String>),
     /// The new client's torrent was kept, and all of it asked for.
     Selected(u64, Result<(), String>),
+    /// The files of the mods in the client were read.
+    Verified(u64, Result<Seen, String>),
     /// The client was compared with its torrent; `None` when stopped.
     Checked(u64, Result<Option<Check>, String>),
     /// The files that differ were copied beside the download.
@@ -328,6 +340,9 @@ pub enum Instruction {
     LanguageDeleted(PathBuf),
     /// The download with this info hash was discarded.
     Discarded(String),
+    /// A check read every file of the mods in the client at this folder:
+    /// this is what it found, which replaces what the look knew.
+    Verified(PathBuf, Seen),
 }
 
 /// What is left to do after a job stops.
@@ -421,18 +436,45 @@ impl State {
                 (Kind::Resume, Some(saved), None, task)
             }
             Request::Check(root, findings) => {
-                let lines = findings.map(|findings| self.lines(&root, &findings));
-                match &lines {
-                    Some(lines) => {
-                        let _ = self.looked.insert(root.clone(), lines.len());
-                    }
-                    None => {
-                        let _ = self.looked.remove(&root);
-                    }
+                let saved = config.torrents.get(&root).cloned();
+
+                // The files of the mods installed are read first, all of
+                // them: a look only reads those that changed.
+                if !self.mods.mods.is_empty() {
+                    log::info!("Reading the files of the mods in {}", root.display());
+                    let _ = self.checked.remove(&root);
+                    let read = Arc::new(AtomicU64::new(0));
+                    let total = Arc::new(AtomicU64::new(0));
+                    let task = Task::perform(
+                        blocking({
+                            let (root, mods) = (root.clone(), self.mods.clone());
+                            let (read, total) = (read.clone(), total.clone());
+                            move || {
+                                total.store(clients_mods::weight(&root, &mods), Ordering::Relaxed);
+                                Ok(clients_mods::verify(&root, &mods, &mut |bytes| {
+                                    let _ = read.fetch_add(bytes, Ordering::Relaxed);
+                                }))
+                            }
+                        }),
+                        Message::Verified.with(id),
+                    );
+                    self.job = Some(Job {
+                        verifying: Some((findings, client)),
+                        ..Job::new(
+                            id,
+                            Kind::Check,
+                            saved,
+                            Some(root),
+                            Stage::Verifying { read, total },
+                        )
+                    });
+                    return task;
                 }
 
+                let lines = self.checked_lines(&root, findings, Vec::new());
+
                 // Without a torrent, its patches are all there is to check.
-                let Some(saved) = config.torrents.get(&root).cloned() else {
+                let Some(saved) = saved else {
                     log::info!("Checking the patches of {}", root.display());
                     let _ = self.checked.remove(&root);
                     self.job = Some(Job {
@@ -519,6 +561,29 @@ impl State {
         });
 
         task
+    }
+
+    /// What `findings` about the patches of the client at `root` say, with
+    /// what is amiss with the files of its mods (`mods`, a line each), a
+    /// line each; none if the patches couldn't be looked at. Takes note of
+    /// how many.
+    fn checked_lines(
+        &mut self,
+        root: &Path,
+        findings: Option<Findings>,
+        mods: Vec<String>,
+    ) -> Option<Vec<String>> {
+        let lines = findings.map(|findings| self.lines(root, &Findings { mods, ..findings }));
+        match &lines {
+            Some(lines) => {
+                let _ = self.looked.insert(root.to_path_buf(), lines.len());
+            }
+            None => {
+                let _ = self.looked.remove(root);
+            }
+        }
+
+        lines
     }
 
     /// What `findings` about the patches of the client at `root` say, a line
@@ -616,7 +681,7 @@ impl State {
         if let Some(job) = job {
             match &job.stage {
                 Stage::Finding => return Some("Finding its torrent…".to_owned()),
-                Stage::Checking { .. } => {
+                Stage::Checking { .. } | Stage::Verifying { .. } => {
                     return Some(format!("Checking: {}", percent(&job.progress)));
                 }
                 Stage::Staging
@@ -862,6 +927,11 @@ impl State {
                         job.progress.done = read.load(Ordering::Relaxed);
                         return Action::none();
                     }
+                    Stage::Verifying { read, total } => {
+                        job.progress.done = read.load(Ordering::Relaxed);
+                        job.progress.total = total.load(Ordering::Relaxed);
+                        return Action::none();
+                    }
                     Stage::Moving { moved } => {
                         job.progress.done = moved.load(Ordering::Relaxed);
                         return Action::none();
@@ -1031,6 +1101,75 @@ impl State {
                     }
                     (Ok(()), None) => Action::none(),
                     (Err(error), _) => Action::task(self.fail(error)),
+                }
+            }
+            Message::Verified(id, seen) => {
+                let Some(job) = self.job.as_mut().filter(|job| job.id == id) else {
+                    return Action::none();
+                };
+                // Stopped meanwhile: what it found is still what the look
+                // should know.
+                if job.stopping {
+                    log::info!("Stopped checking {}", job.name());
+                    let root = job.root.clone();
+                    self.job = None;
+                    return match (root, seen) {
+                        (Some(root), Ok(seen)) => Action {
+                            instruction: Some(Instruction::Verified(root, seen)),
+                            task: Task::none(),
+                        },
+                        _ => Action::none(),
+                    };
+                }
+                let (Some((findings, client)), Some(root)) =
+                    (job.verifying.take(), job.root.clone())
+                else {
+                    return Action::none();
+                };
+                let seen = match seen {
+                    Ok(seen) => seen,
+                    Err(error) => {
+                        return Action::task(
+                            self.fail(format!("Could not check the files of the mods: {error}")),
+                        );
+                    }
+                };
+
+                let mods = mods_lines(&self.mods, &seen.held);
+                let lines = self.checked_lines(&root, findings, mods);
+                let Some(job) = &mut self.job else {
+                    return Action::none();
+                };
+                let saved = job.saved.clone();
+                job.patches = lines;
+                let verified = Some(Instruction::Verified(root.clone(), seen));
+
+                // Without a torrent, that is all there is to check.
+                let Some(saved) = saved else {
+                    log::info!("Checked the patches of {}", root.display());
+                    job.stage = Stage::Checked;
+                    return Action {
+                        instruction: verified,
+                        task: Task::none(),
+                    };
+                };
+                log::info!("Checking the files of {}", root.display());
+                job.stage = Stage::Finding;
+                let task = Task::perform(
+                    find_again(
+                        saved,
+                        root,
+                        self.store.clone(),
+                        self.engine.clone(),
+                        client,
+                        self.peers.clone(),
+                    ),
+                    Message::Found.with(id),
+                );
+
+                Action {
+                    instruction: verified,
+                    task,
                 }
             }
             Message::Checked(id, check) => {
@@ -1412,7 +1551,11 @@ impl State {
         };
         // What is fetched is left unread: nothing was made yet.
         let waiting = match job.stage {
-            Stage::Beginning | Stage::Opening | Stage::Staging | Stage::Moving { .. } => true,
+            Stage::Beginning
+            | Stage::Opening
+            | Stage::Staging
+            | Stage::Verifying { .. }
+            | Stage::Moving { .. } => true,
             Stage::Checking { ref stop, .. } => {
                 stop.store(true, Ordering::Relaxed);
                 true
@@ -1482,6 +1625,7 @@ impl State {
                 Stage::Identifying
                     | Stage::Downloading { .. }
                     | Stage::Checking { .. }
+                    | Stage::Verifying { .. }
                     | Stage::Moving { .. }
             )
         });
@@ -1663,6 +1807,15 @@ impl State {
                     .boxed(),
                     row![hide, stop("Stop")],
                 ),
+                Stage::Verifying { .. } => (
+                    column![
+                        text("Checking the files of the mods installed…"),
+                        bar(&job.progress),
+                    ]
+                    .spacing(10)
+                    .boxed(),
+                    row![hide, stop("Stop")],
+                ),
                 Stage::Checked => (checked(job.patches.as_deref()), row![stop("Close")]),
                 Stage::Intact(check) => (
                     column![text(
@@ -1772,6 +1925,7 @@ impl Job {
             stopping: false,
             pending: None,
             patches: None,
+            verifying: None,
         }
     }
 
@@ -1828,6 +1982,11 @@ impl Job {
             Stage::Confirming { .. } => format!("{} is ready to download.", self.name()),
             Stage::Checking { .. } => format!(
                 "Checking the files of {}: {}",
+                self.name(),
+                percent(&self.progress)
+            ),
+            Stage::Verifying { .. } => format!(
+                "Checking the mods of {}: {}",
                 self.name(),
                 percent(&self.progress)
             ),
@@ -3844,6 +4003,11 @@ mod tests {
         state.mods(list.clone());
 
         let _ = state.start(Request::Check(root.clone(), None), &config, Err("offline"));
+        // The files of the mods are read first.
+        assert!(matches!(job(&state).stage, Stage::Verifying { .. }));
+        let seen = crate::clients::mods::verify(&root, &list, &mut |_| {});
+        let verified = update(&mut state, Message::Verified(1, Ok(seen)), &config, false);
+        assert!(matches!(verified, Some(Instruction::Verified(..))));
         let found = find_again(
             saved,
             root.clone(),

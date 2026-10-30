@@ -240,6 +240,9 @@ pub struct Seen {
 pub enum Message {
     /// What a client folder holds of the mods was looked at.
     Found(PathBuf, Seen),
+    /// The File integrity check read every file of the mods in a client
+    /// folder: what it found, to replace what the look knew.
+    Verified(PathBuf, Seen),
     /// A mod's name, a link to its page, was pressed.
     OpenPage(String),
     /// Its page couldn't be opened: why.
@@ -313,12 +316,40 @@ fn find(root: &Path, list: &Mods) -> Task<Message> {
 /// found is known by its release, or as installed by hand; the files of
 /// something else where each would put its own; and the mods that don't
 /// suit it.
+///
+/// Those that were found as released and haven't changed in size or time
+/// since are not read again.
 pub fn look(root: &Path, list: &Mods) -> Seen {
+    see(root, list, None)
+}
+
+/// [`look`], but reading every file of the mods there, whatever its size and
+/// time: what the File integrity check does. `read` hears how many bytes
+/// each file read was.
+pub fn verify(root: &Path, list: &Mods, read: &mut dyn FnMut(u64)) -> Seen {
+    see(root, list, Some(read))
+}
+
+/// How many bytes [`verify`] reads in the client folder at `root`, give or
+/// take: nothing is read to tell.
+pub fn weight(root: &Path, list: &Mods) -> u64 {
+    list.mods
+        .iter()
+        .map(|listed| mods::weight(root, listed))
+        .sum()
+}
+
+/// [`look`], reading every file if `verifying` hears how much of them.
+fn see(root: &Path, list: &Mods, mut verifying: Option<&mut dyn FnMut(u64)>) -> Seen {
     let mut seen = Seen::default();
 
     for listed in &list.mods {
         let alternatives = list.alternatives(listed);
-        let status = match mods::check(root, listed, &alternatives) {
+        let checked = match verifying.as_deref_mut() {
+            Some(read) => mods::verify(root, listed, &alternatives, read),
+            None => mods::check(root, listed, &alternatives),
+        };
+        let status = match checked {
             Ok(status) => status,
             Err(error) => {
                 log::warn!(
@@ -703,6 +734,26 @@ impl State {
             .collect()
     }
 
+    /// Takes note of what the client folder at `root` holds of the mods, as
+    /// `seen` says.
+    fn note(&mut self, root: &Path, seen: Seen) {
+        for (id, status) in &seen.held {
+            log::info!("{id} in {}: {status:?}", root.display());
+        }
+        for (id, files) in &seen.foreign {
+            log::info!(
+                "{id} in {}: {} belong to something else",
+                root.display(),
+                files.join(", ")
+            );
+        }
+        let _ = self.found.insert(root.to_path_buf(), seen.held);
+        let _ = self.foreign.insert(root.to_path_buf(), seen.foreign);
+        let _ = self.unfit.insert(root.to_path_buf(), seen.unfit);
+        let _ = self.excluded.insert(root.to_path_buf(), seen.excluded);
+        let _ = self.lacking.insert(root.to_path_buf(), seen.lacking);
+    }
+
     /// Handles an interaction with the banners or the section of the
     /// `current` client, `installation` once it opened: `config` says how it
     /// starts, nothing is changed while its game runs (`playing`),
@@ -721,22 +772,15 @@ impl State {
         let installation = installation.filter(|installation| Some(installation.root()) == current);
 
         match message {
+            Message::Verified(root, seen) => {
+                // A look going on keeps going: it reads what this found
+                // amiss, as the files that differ are no longer trusted.
+                self.note(&root, seen);
+
+                Action::task(self.judge(&root))
+            }
             Message::Found(root, seen) => {
-                for (id, status) in &seen.held {
-                    log::info!("{id} in {}: {status:?}", root.display());
-                }
-                for (id, files) in &seen.foreign {
-                    log::info!(
-                        "{id} in {}: {} belong to something else",
-                        root.display(),
-                        files.join(", ")
-                    );
-                }
-                let _ = self.found.insert(root.clone(), seen.held);
-                let _ = self.foreign.insert(root.clone(), seen.foreign);
-                let _ = self.unfit.insert(root.clone(), seen.unfit);
-                let _ = self.excluded.insert(root.clone(), seen.excluded);
-                let _ = self.lacking.insert(root.clone(), seen.lacking);
+                self.note(&root, seen);
                 // Asked meanwhile: the folder may have changed since.
                 if self.finding.remove(&root) == Some(true) {
                     return Action::task(self.find(&root));
