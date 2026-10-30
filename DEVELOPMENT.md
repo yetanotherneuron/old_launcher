@@ -173,7 +173,9 @@ On Windows, `Wow.exe` from the client folder. Elsewhere, the client's
 command run by `sh`, the way Steam runs launch options: `%command%` stands
 for `Wow.exe`, the environment variables come first, and the default is
 `umu-run` (Proton) or `wine`, under `gamemoderun` when installed, in a
-`.prefix` folder beside `Wow.exe` (`core/src/launch.rs`). Mods' setups run
+prefix of the client's own in the user's data folder, never in the client
+folder: `Wow.exe` goes through every file there as it starts and quits
+(`core/src/launch.rs`). Mods' setups run
 through the same command, which is why it must have `%command%`; the
 module says what differs for them. With the Discord setting on, the game
 runs as a child of the launcher's own binary started with `--discord`
@@ -243,6 +245,11 @@ OLD_LAUNCHER_TEST_TORRENT='magnet:?xt=…' OLD_LAUNCHER_TEST_TORRENT_CLIENT=/tmp
 # another disk, which renaming can't do (a tmpfs /tmp and /home will do):
 OLD_LAUNCHER_TEST_OTHER_DISK=~/somewhere \
     cargo test -p old_launcher_core torrent::tests::files_move_across_disks -- --ignored
+# Copies a Wine prefix, only read, into the temporary folder, moves the
+# copy to that other disk, and compares it with the prefix:
+OLD_LAUNCHER_TEST_PREFIX="/path/to/World of Warcraft 3.3.5a/.prefix" \
+    OLD_LAUNCHER_TEST_OTHER_DISK=~/somewhere \
+    cargo test -p old_launcher_core launch::tests::a_real_prefix -- --ignored --nocapture
 # Makes a torrent of a client folder, only read, and checks a folder of
 # links to it against it, twice:
 OLD_LAUNCHER_TEST_CLIENT_FILES="/path/to/World of Warcraft 3.3.5a" \
@@ -283,14 +290,16 @@ SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
 ```
 
 The committed screenshots are rendered inside a container, so the demo
-client sits at `/home/player/Games/World of Warcraft 3.3.5a` and the text
-is drawn with the bundled fonts alone. Render into an empty folder: the
-test only writes an image that isn't there.
+client sits at `/home/player/Games/World of Warcraft 3.3.5a`, its Wine
+prefix under `/home/player`, and the text is drawn with the bundled fonts
+alone. Render into an empty folder: the test only writes an image that
+isn't there.
 
 ```sh
 podman run --rm -v "$PWD:/src:ro" -v old_launcher-target:/target \
     -v ~/.cargo/registry:/usr/local/cargo/registry -v ~/.cargo/git:/usr/local/cargo/git \
     -v /tmp/shots:/out -w /src -e CARGO_TARGET_DIR=/target -e ICED_TEST_BACKEND=tiny-skia \
+    -e HOME=/home/player \
     -e "SCREENSHOT_CLIENT=/home/player/Games/World of Warcraft 3.3.5a" -e SCREENSHOT_OUT=/out \
     docker.io/library/rust:1.98.1 cargo test --locked --lib screenshots -- --ignored
 ```

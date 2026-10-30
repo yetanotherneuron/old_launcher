@@ -83,7 +83,8 @@ impl State {
     /// Starts `installation`'s game as `launch` says, with Wine told to load
     /// the `natives` mods put beside `Wow.exe` (see [`launch::command`]),
     /// unless it is running already, for Discord to show while it runs when
-    /// `discord`. What fails goes to `errors`.
+    /// `discord`. A prefix left in the client folder is moved out first (see
+    /// [`launch::move_old_prefix`]). What fails goes to `errors`.
     pub fn play(
         &mut self,
         installation: &Installation,
@@ -118,7 +119,20 @@ impl State {
                     },
                 );
 
-                Task::perform(play(command), Message::Exited.with(root))
+                let (folder, launch) = (root.clone(), launch.clone());
+                let moving = move || launch::move_old_prefix(&folder, &launch);
+
+                Task::perform(
+                    async move {
+                        blocking(moving).await.map_err(|error| {
+                            format!(
+                                "could not move the client's Wine prefix out of its folder: {error}"
+                            )
+                        })?;
+                        play(command).await
+                    },
+                    Message::Exited.with(root),
+                )
             }
             Err(error) => {
                 errors.report(format!("Could not start World of Warcraft: {error}"));

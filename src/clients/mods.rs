@@ -2639,7 +2639,8 @@ fn spoilt(error: &crate::core::Error) -> bool {
 /// Runs the setup of `release` in `installation`'s folder, the way `launch`
 /// starts the game, saying which step it is at and what it last printed.
 /// What it prints goes to the launcher's log, and so does what Wine says
-/// meanwhile, at the debug level.
+/// meanwhile, at the debug level. A prefix left in the client folder is
+/// moved out first (see [`launch::move_old_prefix`]).
 async fn set_up(
     installation: &Installation,
     launch: &Launch,
@@ -2647,6 +2648,15 @@ async fn set_up(
     progress: &mut Sender<Stage>,
 ) -> Result<(), String> {
     let steps = release.setup.len();
+
+    if steps > 0 {
+        let (root, client) = (installation.root().to_path_buf(), launch.clone());
+        blocking(move || launch::move_old_prefix(&root, &client))
+            .await
+            .map_err(|error| {
+                format!("could not move the client's Wine prefix out of its folder: {error}")
+            })?;
+    }
 
     for (index, step) in release.setup.iter().enumerate() {
         let number = index + 1;

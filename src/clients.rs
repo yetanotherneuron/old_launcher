@@ -1893,7 +1893,11 @@ mod tests {
         let (mut state, mut config) = opened(Some(details(None)));
         let root = Path::new(WOTLK);
         let heading = "Automatically added environment variables (define again to override):";
-        let prefix = "- WINEPREFIX=/games/wotlk/.prefix";
+        let prefix = format!(
+            "- {}",
+            launch::Defaults::of(Path::new(WOTLK)).env().unwrap()[0]
+        );
+        let prefix = prefix.as_str();
 
         let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
         for line in [heading, prefix] {
@@ -1949,8 +1953,9 @@ mod tests {
         let (mut state, mut config) = opened(None);
         let root = Path::new(WOTLK);
 
+        let prefix = launch::Defaults::of(root).env().unwrap().remove(0);
         let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
-        for default in ["WINEPREFIX=/games/wotlk/.prefix", launch::default_command()] {
+        for default in [prefix.as_str(), launch::default_command()] {
             assert!(ui.find(default).is_ok(), "what is set instead: {default}");
         }
         let _ = ui.click(selector::id(ENV)).unwrap();
