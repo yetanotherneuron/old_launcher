@@ -200,8 +200,12 @@ fn read(directory: &Path) -> Result<(Vec<PathBuf>, Tocs), Error> {
 }
 
 /// The name and `.toc` of the addon in `directory`, among its `tocs`, when
-/// it holds any: the `.toc` named like the folder, otherwise the shortest
-/// stem, so `Foo.toc` beats flavor variants like `Foo_Wrath.toc`.
+/// it holds any: the `.toc` named like the folder; otherwise the shortest
+/// stem of those made for 3.3.5a, or of all when none is, so `Foo.toc`
+/// beats flavor variants like `Foo_Wrath.toc`. The client loads only the
+/// `.toc` named like its folder, so a snapshot named after a commit holding
+/// the addon's (`Foo-335.toc`, for 3.3.5a) and a stub for any other folder
+/// name (`Foo.toc`, saying to rename it) is the addon's.
 fn pick(directory: &Path, mut tocs: Tocs) -> Option<(String, PathBuf)> {
     if tocs.is_empty() {
         return None;
@@ -211,11 +215,15 @@ fn pick(directory: &Path, mut tocs: Tocs) -> Option<(String, PathBuf)> {
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let for_wotlk = |path: &Path| {
+        fs::read(path).is_ok_and(|bytes| Toc::parse(&bytes).interface == Some(Toc::WOTLK_INTERFACE))
+    };
 
     tocs.sort_by(|(a, _), (b, _)| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
     let index = tocs
         .iter()
         .position(|(stem, _)| stem.eq_ignore_ascii_case(&directory_name))
+        .or_else(|| tocs.iter().position(|(_, path)| for_wotlk(path)))
         .unwrap_or(0);
 
     Some(tocs.swap_remove(index))
@@ -412,6 +420,25 @@ mod tests {
         let root = tree(&["DalaranAH/DalaranAH_Wrath.toc", "DalaranAH/DalaranAH.toc"]);
 
         assert_eq!(names(root.path()), ["DalaranAH"]);
+    }
+
+    #[test]
+    fn a_snapshot_named_after_a_commit_is_the_addon_made_for_3_3_5a() {
+        let root = tree_of(&[
+            ("Questie-908a40b/Questie-335.toc", "## Interface: 30300\n"),
+            (
+                "Questie-908a40b/Questie.toc",
+                "## Interface: 00000\n## Title: Questie install folder problem\n",
+            ),
+        ]);
+        assert_eq!(names(root.path()), ["Questie-335"], "not the stub");
+
+        // Named after its branch, the folder still says which.
+        let root = tree_of(&[
+            ("Questie-335/Questie-335.toc", "## Interface: 30300\n"),
+            ("Questie-335/Questie.toc", "## Interface: 00000\n"),
+        ]);
+        assert_eq!(names(root.path()), ["Questie-335"]);
     }
 
     #[test]

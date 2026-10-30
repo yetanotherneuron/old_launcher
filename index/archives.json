@@ -22087,17 +22087,6 @@
     "notes": "Enhancements for your maps.",
     "updated": "2026-10-26"
   },
-  "https://github.com/Aldori15/Questie/archive/908a40b38bd6938b34eca4ce5e776dca2c70de8a.zip": {
-    "folders": [
-      {
-        "name": "Questie",
-        "title": "Questie install folder problem",
-        "interface": 0
-      }
-    ],
-    "notes": "Questie-335 did not load. Rename the Addons folder to Questie-335 so WoW can load Questie-335.toc. Do not rename TOC files.",
-    "updated": "2026-10-28"
-  },
   "https://github.com/Arcitec/GearScoreLite_Reborn/archive/a396cdc93894bca2cab351627c97996253f86236.zip": {
     "folders": [
       {
