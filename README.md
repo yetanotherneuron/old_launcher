@@ -45,6 +45,12 @@ It's a portable program: nothing to install, just run it.
 
 ![A client's details, and how it starts on Linux: Proton through umu-launcher](assets/screenshots/clients.png)
 
+![A client's mods, one installed and the others offered, below a warning about the custom MPQ files the launcher doesn't recognise](assets/screenshots/mods.png)
+
+![A client checked: two patches whose names differ only in case, and a mod's file changed since it was installed](assets/screenshots/check.png)
+
+![A client to download from a torrent, in the two languages chosen of its five, with its size](assets/screenshots/download.png)
+
 ![Importing addons and saved settings exported on another computer](assets/screenshots/import.png)
 
 Shortcuts: <kbd>Ctrl</kbd>+<kbd>F</kbd> search, <kbd>F5</kbd> refresh,
