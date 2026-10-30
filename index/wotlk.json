@@ -37,6 +37,11 @@
       "homepage": "https://github.com/Sattva-108"
     },
     {
+      "id": "github-trimitor-wdm-addons",
+      "name": "Trimitor on GitHub",
+      "homepage": "https://github.com/Trimitor/WDM-addons"
+    },
+    {
       "id": "github-wrath-addons",
       "name": "Wrath-AddOns on GitHub",
       "homepage": "https://github.com/Wrath-AddOns"
@@ -230,6 +235,116 @@
       ]
     },
     {
+      "name": "[ManaCode]  Market Based Auction",
+      "description": "Auction prices and history, crafting batches with obtaining paths, material shopping, disenchanting, prospecting, milling, vendor trades and a trade ledger for the original WotLK 3.3.5a client. Russian and English; Auctionator optional.",
+      "image": "https://media.forgecdn.net/attachments/2120/860/screenshot_50-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "[ManaCode]  Market Based Auction",
+          "url": "https://edge.forgecdn.net/files/9364/367/ManaCode_AuctionScan-0.11.0-beta.1.zip",
+          "updated": "2026-10-29",
+          "page": "https://www.curseforge.com/wow/addons/manacode-market-based-auction",
+          "changes": "https://www.curseforge.com/wow/addons/manacode-market-based-auction/files",
+          "folders": [
+            {
+              "name": "ManaCode_AuctionScan",
+              "title": "[MANACODE] Market Based Auction",
+              "version": "0.11.0-beta.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "[ManaCode]  Vendor",
+      "description": "All merchant goods in one window: gear sets, search, filters, bulk buying, emblem exchange chains, Keep/Spare bag marks, junk selling and repairs.",
+      "image": "https://media.forgecdn.net/attachments/2105/347/01-window-jpg.jpg",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "[ManaCode]  Vendor",
+          "url": "https://edge.forgecdn.net/files/9325/2/ManaCode_Vendor-1.0.0.zip",
+          "updated": "2026-10-25",
+          "page": "https://www.curseforge.com/wow/addons/manacode-vendor",
+          "changes": "https://www.curseforge.com/wow/addons/manacode-vendor/files",
+          "folders": [
+            {
+              "name": "ManaCode_Vendor",
+              "title": "[MANACODE] Vendor",
+              "version": "1.0.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "[ManaCode] Raid Helper",
+      "description": "Raid review from the combat log for WotLK 3.3.5a: attempt summary, deaths with causes, a timeline of every player, threat, a 3D replay of ICC rooms, raid summary with consumables. Plus a raid gathering tool. Window: /mrh.",
+      "image": "https://media.forgecdn.net/attachments/2081/476/screenshot_28-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "[ManaCode] Raid Helper",
+          "url": "https://edge.forgecdn.net/files/9367/124/ManaCode_RaidHelper-1.8.0.zip",
+          "updated": "2026-10-29",
+          "page": "https://www.curseforge.com/wow/addons/manacode-raidhelper",
+          "changes": "https://www.curseforge.com/wow/addons/manacode-raidhelper/files",
+          "folders": [
+            {
+              "name": "ManaCode_RaidHelper",
+              "title": "[MANACODE] Raid Helper",
+              "version": "1.8.0",
+              "interface": 30300
+            },
+            {
+              "name": "ManaCode_RaidHelper_ICC",
+              "title": "[MANACODE] Raid Helper: 3D ICC",
+              "version": "1.8.0",
+              "interface": 30300
+            },
+            {
+              "name": "ManaCode_RaidHelper_RS",
+              "title": "[MANACODE] Raid Helper: 3D RS",
+              "version": "1.8.0",
+              "interface": 30300
+            },
+            {
+              "name": "ManaCode_RaidHelper_TOC",
+              "title": "[MANACODE] Raid Helper: 3D ToC",
+              "version": "1.8.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "[ManaCode] Raid Waiting Arcade",
+      "description": "Twenty mini-games inside the game window — for the 5 to 20 minutes while the raid gathers. Pauses on combat and ready check, never takes your chat. Chess, Checkers, Pairs and Chests can be played with a friend.",
+      "image": "https://media.forgecdn.net/attachments/1965/191/sudoku-jpg.jpg",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "[ManaCode] Raid Waiting Arcade",
+          "url": "https://edge.forgecdn.net/files/9363/550/ManaCode_RaidWaitingArcade-v1.0.0.zip",
+          "updated": "2026-10-29",
+          "page": "https://www.curseforge.com/wow/addons/raid-waiting-arcade",
+          "changes": "https://www.curseforge.com/wow/addons/raid-waiting-arcade/files",
+          "folders": [
+            {
+              "name": "ManaCode_RaidWaitingArcade",
+              "title": "[MANACODE] Arcade - while the raid gathers",
+              "version": "1.0.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "_Corpse",
       "description": "_Corpse zeigt im Tooltip von Leichen an, welcher Fraktion diese angehören und ob der Charakter online ist.",
       "image": "https://addons.rising-gods.de/sites/default/files/2016-11/636141530616842783%5B1%5D.png",
@@ -303,7 +418,7 @@
         {
           "source": "github-khalgh",
           "name": "_VirtualPlates-WotLK",
-          "url": "https://github.com/KhalGH/_VirtualPlates-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/_VirtualPlates-WotLK/archive/e5fb05546839694a7cdc9964f28ed5780b912731.zip",
           "updated": "2025-08-17",
           "page": "https://github.com/KhalGH/_VirtualPlates-WotLK",
           "changes": "https://github.com/KhalGH/_VirtualPlates-WotLK/commits/main",
@@ -495,7 +610,7 @@
         {
           "source": "github-wrath-addons",
           "name": "AceAddon-3.0",
-          "url": "https://github.com/Wrath-AddOns/AceAddon-3.0/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/AceAddon-3.0/archive/4d9835455ede08ff7e7477d1b3bf41920e4c3ec7.zip",
           "updated": "2010-10-06",
           "page": "https://github.com/Wrath-AddOns/AceAddon-3.0",
           "changes": "https://github.com/Wrath-AddOns/AceAddon-3.0/commits/master",
@@ -679,7 +794,7 @@
         {
           "source": "github-xurkon",
           "name": "AckisRecipeList",
-          "url": "https://github.com/Xurkon/AckisRecipeList/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/AckisRecipeList/archive/036e52ce32de33ceb5d0e50527873295e7811a44.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/AckisRecipeList",
           "changes": "https://github.com/Xurkon/AckisRecipeList/commits/main",
@@ -710,7 +825,7 @@
         {
           "source": "nom0re",
           "name": "Ackis Recipe List",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/AckisRecipeList.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/AckisRecipeList.zip",
           "updated": "2010-08-25",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/AckisRecipeList.zip",
           "links": [
@@ -776,7 +891,7 @@
         {
           "source": "nom0re",
           "name": "Action Bar Saver 2",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ActionBarSaver.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ActionBarSaver.zip",
           "updated": "2024-05-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ActionBarSaver.zip",
           "links": [
@@ -838,7 +953,7 @@
         {
           "source": "nom0re",
           "name": "AddEmote",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/addemote.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/addemote.zip",
           "updated": "2021-10-18",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/addemote.zip",
           "links": [
@@ -895,7 +1010,7 @@
         {
           "source": "nom0re",
           "name": "AddFriend-3.3.5a",
-          "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/0a8a808b63e1aa95055e2e5175fb9bb28e4b6745.zip",
           "updated": "2024-07-07",
           "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
@@ -949,7 +1064,7 @@
         {
           "source": "nom0re",
           "name": "Addon Control Panel",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ACP.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ACP.zip",
           "updated": "2010-10-29",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ACP.zip",
           "links": [
@@ -1036,7 +1151,7 @@
         {
           "source": "github-sattva-108",
           "name": "AdiBags",
-          "url": "https://github.com/Sattva-108/AdiBags/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/AdiBags/archive/d8b49ed56ddf81825ab2a4bc22c08fb7a0d59eed.zip",
           "updated": "2025-07-09",
           "page": "https://github.com/Sattva-108/AdiBags",
           "changes": "https://github.com/Sattva-108/AdiBags/commits/main",
@@ -1090,7 +1205,7 @@
         {
           "source": "nom0re",
           "name": "AdiBags",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/AdiBags.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/AdiBags.zip",
           "updated": "2023-08-16",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/AdiBags.zip",
           "links": [
@@ -1129,7 +1244,7 @@
         {
           "source": "github-sattva-108",
           "name": "AdiBags-ItemOverlayPlus",
-          "url": "https://github.com/Sattva-108/AdiBags-ItemOverlayPlus/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/AdiBags-ItemOverlayPlus/archive/335c8f3dfd5675dc3f787999a7346044764092da.zip",
           "updated": "2025-05-13",
           "page": "https://github.com/Sattva-108/AdiBags-ItemOverlayPlus",
           "changes": "https://github.com/Sattva-108/AdiBags-ItemOverlayPlus/commits/master",
@@ -1151,7 +1266,7 @@
         {
           "source": "github-sattva-108",
           "name": "AdiBags-WoTLK-3.3.5-Mods",
-          "url": "https://github.com/Sattva-108/AdiBags-WoTLK-3.3.5-Mods/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/AdiBags-WoTLK-3.3.5-Mods/archive/8e4b07c9d151687e0aadabeaa834b95f06f15fe6.zip",
           "updated": "2025-07-08",
           "page": "https://github.com/Sattva-108/AdiBags-WoTLK-3.3.5-Mods",
           "changes": "https://github.com/Sattva-108/AdiBags-WoTLK-3.3.5-Mods/commits/main",
@@ -1281,7 +1396,7 @@
         {
           "source": "nom0re",
           "name": "Afflicted",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Afflicted.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Afflicted.zip",
           "updated": "2015-03-17",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Afflicted.zip",
           "links": [
@@ -1480,7 +1595,7 @@
         {
           "source": "github-s0h2x",
           "name": "AI_VoiceOver-WotLK",
-          "url": "https://github.com/s0h2x/AI_VoiceOver-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/AI_VoiceOver-WotLK/archive/5ebe8c17ef511fac462b8c1ecb8ef964c0035646.zip",
           "updated": "2023-04-16",
           "page": "https://github.com/s0h2x/AI_VoiceOver-WotLK",
           "changes": "https://github.com/s0h2x/AI_VoiceOver-WotLK/commits/master",
@@ -1575,7 +1690,7 @@
         {
           "source": "github-zidras",
           "name": "AllCheatersMustDie",
-          "url": "https://github.com/Zidras/AllCheatersMustDie/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/AllCheatersMustDie/archive/ee186d123d5fe94796925dadbce21e46e63e27b5.zip",
           "updated": "2024-12-03",
           "page": "https://github.com/Zidras/AllCheatersMustDie",
           "changes": "https://github.com/Zidras/AllCheatersMustDie/commits/main",
@@ -1659,7 +1774,7 @@
         {
           "source": "nom0re",
           "name": "AllStats",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/AllStats.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/AllStats.zip",
           "updated": "2023-12-20",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/AllStats.zip",
           "links": [
@@ -1755,7 +1870,7 @@
         {
           "source": "github-wrath-addons",
           "name": "Altoholic",
-          "url": "https://github.com/Wrath-AddOns/Altoholic/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/Altoholic/archive/3f490605ab7f607f9bbf8c949734e0c0f1c0f900.zip",
           "updated": "2010-07-06",
           "page": "https://github.com/Wrath-AddOns/Altoholic",
           "changes": "https://github.com/Wrath-AddOns/Altoholic/commits/master",
@@ -1784,7 +1899,7 @@
         {
           "source": "nom0re",
           "name": "Altoholic",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Altoholic.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Altoholic.zip",
           "updated": "2010-07-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Altoholic.zip",
           "links": [
@@ -2097,7 +2212,7 @@
         {
           "source": "nom0re",
           "name": "AmILockedOut",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/AmILockedOut.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/AmILockedOut.zip",
           "updated": "2022-01-07",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/AmILockedOut.zip",
           "links": [
@@ -2266,7 +2381,7 @@
         {
           "source": "github-wrath-addons",
           "name": "AnnouncerFilter",
-          "url": "https://github.com/Wrath-AddOns/AnnouncerFilter/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/AnnouncerFilter/archive/8e1c445837a3b533973ef0c6408f72e641527fb6.zip",
           "updated": "2021-04-04",
           "page": "https://github.com/Wrath-AddOns/AnnouncerFilter",
           "changes": "https://github.com/Wrath-AddOns/AnnouncerFilter/commits/master",
@@ -2613,6 +2728,28 @@
       ]
     },
     {
+      "name": "Astrolabe",
+      "description": "Fix for Astrolabe",
+      "downloads": [
+        {
+          "source": "github-trimitor-wdm-addons",
+          "name": "Astrolabe",
+          "url": "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/Astrolabe.zip",
+          "updated": "2026-06-11",
+          "page": "https://github.com/Trimitor/WDM-addons",
+          "changes": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+          "folders": [
+            {
+              "name": "!Astrolabe",
+              "title": "Astrolabe",
+              "version": "0.5",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Athene's Upgrade Estimator",
       "description": "What does it do? This is an addon for those who want help at figuring out what items are upgrades, and are tired of/don't understand complex spreadsheets. It is made for DPS and healing.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw33946.jpg",
@@ -2642,7 +2779,7 @@
         {
           "source": "nom0re",
           "name": "Atlas",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Atlas.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Atlas.zip",
           "updated": "2014-11-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Atlas.zip",
           "links": [
@@ -2756,7 +2893,7 @@
         {
           "source": "github-wrath-addons",
           "name": "AtlasLoot_ChromieCraft",
-          "url": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft/archive/20873d01d7d3c69a3cc974c3d1b8663fb5295a1d.zip",
           "updated": "2023-09-24",
           "page": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft",
           "changes": "https://github.com/Wrath-AddOns/AtlasLoot_ChromieCraft/commits/master",
@@ -2808,7 +2945,7 @@
         {
           "source": "nom0re",
           "name": "AtlasLoot Enhanced",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/AtlasLoot.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/AtlasLoot.zip",
           "updated": "2010-08-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/AtlasLoot.zip",
           "links": [
@@ -3262,7 +3399,7 @@
         {
           "source": "nom0re",
           "name": "Auctionator (Cata Port Version)",
-          "url": "https://github.com/alchem1ster/WotLK-Auctionator/archive/refs/heads/main.zip",
+          "url": "https://github.com/alchem1ster/WotLK-Auctionator/archive/b4e3eb68dcc7cc1142b73d8a978d471bf0d4110a.zip",
           "updated": "2023-05-14",
           "changes": "https://github.com/alchem1ster/WotLK-Auctionator/commits/main",
           "links": [
@@ -3319,7 +3456,7 @@
         {
           "source": "github-wrath-addons",
           "name": "AuctionHouseDepositFixer",
-          "url": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer/archive/0703f943231558c3389123637cab8e567ffc19b8.zip",
           "updated": "2021-07-02",
           "page": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer",
           "changes": "https://github.com/Wrath-AddOns/AuctionHouseDepositFixer/commits/master",
@@ -3419,7 +3556,7 @@
         {
           "source": "github-bunny67",
           "name": "Aurora",
-          "url": "https://github.com/Bunny67/Aurora/archive/refs/heads/master.zip",
+          "url": "https://github.com/Bunny67/Aurora/archive/7928066113700c03a0d9fc039c101d9935e905cf.zip",
           "updated": "2017-08-06",
           "page": "https://github.com/Bunny67/Aurora",
           "changes": "https://github.com/Bunny67/Aurora/commits/master",
@@ -3528,7 +3665,7 @@
         {
           "source": "nom0re",
           "name": "AutoFlood",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/autoflood.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/autoflood.zip",
           "updated": "2017-10-15",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/autoflood.zip",
           "links": [
@@ -3642,7 +3779,7 @@
         {
           "source": "nom0re",
           "name": "AutomaticWeaponRemoval",
-          "url": "https://github.com/SecretX33/AutomaticWeaponRemoval/archive/refs/heads/main.zip",
+          "url": "https://github.com/SecretX33/AutomaticWeaponRemoval/archive/0fc4d8a02f95cf18d28a0c13f03fa083a0decda5.zip",
           "updated": "2025-01-12",
           "changes": "https://github.com/SecretX33/AutomaticWeaponRemoval/commits/main",
           "links": [
@@ -3707,7 +3844,7 @@
         {
           "source": "github-sattva-108",
           "name": "AutoRankSwap",
-          "url": "https://github.com/Sattva-108/AutoRankSwap/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/AutoRankSwap/archive/1a7bb091f7b0182d5069e05ba65d20101cdc4112.zip",
           "updated": "2026-07-30",
           "page": "https://github.com/Sattva-108/AutoRankSwap",
           "changes": "https://github.com/Sattva-108/AutoRankSwap/commits/master",
@@ -3730,7 +3867,7 @@
         {
           "source": "nom0re",
           "name": "AutoRepair",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/autorepair.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/autorepair.zip",
           "updated": "2015-11-24",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/autorepair.zip",
           "links": [
@@ -3815,7 +3952,7 @@
         {
           "source": "github-khalgh",
           "name": "AwesomePlates-WotLK",
-          "url": "https://github.com/KhalGH/AwesomePlates-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/AwesomePlates-WotLK/archive/07afb3d5ae5d7e04df5e107eddba41e26185d5b0.zip",
           "updated": "2025-09-18",
           "page": "https://github.com/KhalGH/AwesomePlates-WotLK",
           "changes": "https://github.com/KhalGH/AwesomePlates-WotLK/commits/main",
@@ -4226,7 +4363,7 @@
         {
           "source": "nom0re",
           "name": "Bagnon Backport with Search and Sort Functionality",
-          "url": "https://github.com/RichSteini/Bagnon-3.3.5/archive/refs/heads/main.zip",
+          "url": "https://github.com/RichSteini/Bagnon-3.3.5/archive/27a08f89819311d772e7ec7a71a41eafb813f122.zip",
           "updated": "2023-10-18",
           "changes": "https://github.com/RichSteini/Bagnon-3.3.5/commits/main",
           "links": [
@@ -4468,7 +4605,7 @@
         {
           "source": "nom0re",
           "name": "Bartender4",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Bartender4.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Bartender4.zip",
           "updated": "2010-07-18",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Bartender4.zip",
           "links": [
@@ -4560,7 +4697,7 @@
         {
           "source": "github-khalgh",
           "name": "BattleGroundBalance-WotLK",
-          "url": "https://github.com/KhalGH/BattleGroundBalance-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/BattleGroundBalance-WotLK/archive/dec258b102853e3ff60511884874e7cde4b91c23.zip",
           "updated": "2026-08-28",
           "page": "https://github.com/KhalGH/BattleGroundBalance-WotLK",
           "changes": "https://github.com/KhalGH/BattleGroundBalance-WotLK/commits/main",
@@ -4604,7 +4741,7 @@
         {
           "source": "github-khalgh",
           "name": "BattleGroundHealers-WotLK",
-          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/a1f531f2e19c8b4e8534584d30078471abbda02c.zip",
           "updated": "2026-09-27",
           "page": "https://github.com/KhalGH/BattleGroundHealers-WotLK",
           "changes": "https://github.com/KhalGH/BattleGroundHealers-WotLK/commits/main",
@@ -4626,7 +4763,7 @@
         {
           "source": "github-khalgh",
           "name": "BattlegroundTargets-WotLK",
-          "url": "https://github.com/KhalGH/BattlegroundTargets-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/BattlegroundTargets-WotLK/archive/9a1360c03c9773730cf5a09bd516a4c962cf6559.zip",
           "updated": "2026-10-23",
           "page": "https://github.com/KhalGH/BattlegroundTargets-WotLK",
           "changes": "https://github.com/KhalGH/BattlegroundTargets-WotLK/commits/main",
@@ -5034,7 +5171,7 @@
         {
           "source": "github-xurkon",
           "name": "BigDebuffs",
-          "url": "https://github.com/Xurkon/BigDebuffs/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/BigDebuffs/archive/38e9d396460e084e458eaec0354c569a47b78cc0.zip",
           "updated": "2026-01-15",
           "page": "https://github.com/Xurkon/BigDebuffs",
           "changes": "https://github.com/Xurkon/BigDebuffs/commits/main",
@@ -5050,7 +5187,7 @@
         {
           "source": "nom0re",
           "name": "BigDebuffs",
-          "url": "https://gitlab.com/tsoukie-3.3.5/bigdebuffs/-/archive/main/bigdebuffs-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/bigdebuffs/-/archive/a3e2a23e6127bdd6e81de4a3c6377e3b0285d7fa/bigdebuffs-a3e2a23e6127bdd6e81de4a3c6377e3b0285d7fa.zip",
           "updated": "2026-09-18",
           "links": [
             {
@@ -5214,7 +5351,7 @@
         {
           "source": "github-bkader",
           "name": "BigWigs-WoTLK",
-          "url": "https://github.com/bkader/BigWigs-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/BigWigs-WoTLK/archive/8fec48586899bcd7191db5049b2c51133c8c5039.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/BigWigs-WoTLK",
           "changes": "https://github.com/bkader/BigWigs-WoTLK/commits/main",
@@ -5307,7 +5444,7 @@
         {
           "source": "nom0re",
           "name": "BindPad",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/BindPad.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/BindPad.zip",
           "updated": "2023-08-26",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/BindPad.zip",
           "links": [
@@ -5400,7 +5537,7 @@
         {
           "source": "nom0re",
           "name": "BlizzMove",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/BlizzMove.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/BlizzMove.zip",
           "updated": "2024-03-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/BlizzMove.zip",
           "links": [
@@ -5465,7 +5602,7 @@
         {
           "source": "github-bkader",
           "name": "BloodyMask",
-          "url": "https://github.com/bkader/BloodyMask/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/BloodyMask/archive/4bb889a868ba66595d7e45ca58d5e71534887d82.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/BloodyMask",
           "changes": "https://github.com/bkader/BloodyMask/commits/main",
@@ -5525,7 +5662,7 @@
         {
           "source": "nom0re",
           "name": "BLT",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/BLT.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/BLT.zip",
           "updated": "2022-04-30",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/BLT.zip",
           "links": [
@@ -5574,7 +5711,7 @@
         {
           "source": "nom0re",
           "name": "BNetToast",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/BNetToast.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/BNetToast.zip",
           "updated": "2016-09-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/BNetToast.zip",
           "links": [
@@ -6599,7 +6736,7 @@
         {
           "source": "github-sattva-108",
           "name": "Buffet-WoTLK-3.3.5",
-          "url": "https://github.com/Sattva-108/Buffet-WoTLK-3.3.5/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/Buffet-WoTLK-3.3.5/archive/e64d69259e96e9404751a613b3ae65d68e4f90ee.zip",
           "updated": "2024-03-11",
           "page": "https://github.com/Sattva-108/Buffet-WoTLK-3.3.5",
           "changes": "https://github.com/Sattva-108/Buffet-WoTLK-3.3.5/commits/master",
@@ -6713,7 +6850,7 @@
         {
           "source": "nom0re",
           "name": "BugSack",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/BugSack.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/BugSack.zip",
           "updated": "2024-03-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/BugSack.zip",
           "links": [
@@ -6890,7 +7027,7 @@
         {
           "source": "github-bkader",
           "name": "ButtonFacade",
-          "url": "https://github.com/bkader/ButtonFacade/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/ButtonFacade/archive/e9ea605c14d3394abfb6bcca20c83444f5ceea24.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/ButtonFacade",
           "changes": "https://github.com/bkader/ButtonFacade/commits/main",
@@ -7228,7 +7365,7 @@
         {
           "source": "github-wrath-addons",
           "name": "CallbackHandler-1.0",
-          "url": "https://github.com/Wrath-AddOns/CallbackHandler-1.0/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/CallbackHandler-1.0/archive/1ba064024378e6c0273f303965533d44ec1f6d49.zip",
           "updated": "2010-08-08",
           "page": "https://github.com/Wrath-AddOns/CallbackHandler-1.0",
           "changes": "https://github.com/Wrath-AddOns/CallbackHandler-1.0/commits/master",
@@ -7387,7 +7524,7 @@
         {
           "source": "github-xurkon",
           "name": "Carbonite",
-          "url": "https://github.com/Xurkon/Carbonite/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Carbonite/archive/6b8c6145e56e8aba2be535088e8f6ecb902886c3.zip",
           "updated": "2025-12-24",
           "page": "https://github.com/Xurkon/Carbonite",
           "changes": "https://github.com/Xurkon/Carbonite/commits/main",
@@ -7410,7 +7547,7 @@
         {
           "source": "nom0re",
           "name": "Carbonite (Maps / QuestHelper)",
-          "url": "https://github.com/anzz1/Carbonite-3.3.5/archive/refs/heads/master.zip",
+          "url": "https://github.com/anzz1/Carbonite-3.3.5/archive/ca4254e623d987a5f7c6d57f9efd86a6eaf0a4b2.zip",
           "updated": "2025-10-18",
           "changes": "https://github.com/anzz1/Carbonite-3.3.5/commits/master",
           "links": [
@@ -7533,7 +7670,7 @@
         {
           "source": "nom0re",
           "name": "Cartographer",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Cartographer.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Cartographer.zip",
           "updated": "2024-01-21",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Cartographer.zip",
           "links": [
@@ -7639,7 +7776,7 @@
         {
           "source": "nom0re",
           "name": "CartoMapper",
-          "url": "https://github.com/Zendevve/CartoMapper/archive/HEAD.zip",
+          "url": "https://github.com/Zendevve/CartoMapper/archive/1ee5409bedf0568321ed511f133e3ff0f420ae69.zip",
           "updated": "2026-08-18",
           "changes": "https://github.com/Zendevve/CartoMapper/commits",
           "links": [
@@ -7830,17 +7967,22 @@
       ]
     },
     {
-      "name": "Cell-WotLK",
-      "description": "A World of Warcraft raid frame addon.",
+      "name": "Cell",
+      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/refs/heads/main.zip",
+          "name": "Cell",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/releases/download/r279-b4cfc79/Cell.zip",
           "updated": "2026-10-20",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/releases",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/Cell-WotLK"
+            }
+          ],
           "folders": [
             {
               "name": "Cell",
@@ -7852,16 +7994,11 @@
         },
         {
           "source": "nom0re",
-          "name": "Cell",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/releases/latest/download/Cell.zip",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/b4cfc797a02e71cd70be3b7a4d2e8557797bab53.zip",
           "updated": "2026-10-20",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/releases",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/Cell-WotLK"
-            }
-          ],
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -8207,7 +8344,7 @@
         {
           "source": "nom0re",
           "name": "Chatter",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Chatter.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Chatter.zip",
           "updated": "2010-09-04",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Chatter.zip",
           "links": [
@@ -8266,7 +8403,7 @@
         {
           "source": "nom0re",
           "name": "Cheese",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Cheese.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Cheese.zip",
           "updated": "2014-02-05",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Cheese.zip",
           "folders": [
@@ -8495,7 +8632,7 @@
         {
           "source": "nom0re",
           "name": "ClassicAPI",
-          "url": "https://gitlab.com/tsoukie-3.3.5/classicapi/-/archive/main/classicapi-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/classicapi/-/archive/b0e2b6754129d7ac5a896775b4d141385ef896c5/classicapi-b0e2b6754129d7ac5a896775b4d141385ef896c5.zip",
           "updated": "2026-10-28",
           "links": [
             {
@@ -8515,17 +8652,22 @@
       ]
     },
     {
-      "name": "ClassicNumbers-WotLK",
-      "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
+      "name": "ClassicNumbers",
+      "description": "ClassicNumbers replaces the default floating damage text with the classic popping animation. It offers configurable size, transparency, duration, scroll speed, damage-school colors, number shortening, and filters for small hits and critical strikes. Open its options with /cn.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "ClassicNumbers-WotLK",
-          "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/refs/heads/main.zip",
+          "name": "ClassicNumbers",
+          "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/5c2ef10b0c36da7d91b3dc33d23826a6c331777d.zip",
           "updated": "2026-07-13",
-          "page": "https://github.com/NoM0Re/ClassicNumbers-WotLK",
           "changes": "https://github.com/NoM0Re/ClassicNumbers-WotLK/commits/main",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK"
+            }
+          ],
           "folders": [
             {
               "name": "ClassicNumbers",
@@ -8545,7 +8687,7 @@
         {
           "source": "nom0re",
           "name": "ClassLoot",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ClassLoot.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ClassLoot.zip",
           "updated": "2010-07-13",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ClassLoot.zip",
           "links": [
@@ -8658,7 +8800,7 @@
         {
           "source": "nom0re",
           "name": "CleanMinimap",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/CleanMinimap.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/CleanMinimap.zip",
           "updated": "2024-03-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/CleanMinimap.zip",
           "links": [
@@ -8708,7 +8850,7 @@
         {
           "source": "nom0re",
           "name": "Clique",
-          "url": "https://gitlab.com/tsoukie-3.3.5/clique/-/archive/main/clique-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/clique/-/archive/ae1a5ced86c684f8ca99b82bae455954188c423b/clique-ae1a5ced86c684f8ca99b82bae455954188c423b.zip",
           "updated": "2026-09-18",
           "links": [
             {
@@ -8789,7 +8931,7 @@
         {
           "source": "nom0re",
           "name": "Collectinator",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Collectinator.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Collectinator.zip",
           "updated": "2023-12-20",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Collectinator.zip",
           "links": [
@@ -8833,7 +8975,7 @@
         {
           "source": "nom0re",
           "name": "Color Picker Advanced",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ColorPickerAdvanced.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ColorPickerAdvanced.zip",
           "updated": "2024-04-08",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ColorPickerAdvanced.zip",
           "links": [
@@ -8927,7 +9069,7 @@
         {
           "source": "github-khalgh",
           "name": "CombatLogFix-WotLK",
-          "url": "https://github.com/KhalGH/CombatLogFix-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/CombatLogFix-WotLK/archive/dcc92b64005b6b29cea1ce3c1d9c932e58152dec.zip",
           "updated": "2025-08-01",
           "page": "https://github.com/KhalGH/CombatLogFix-WotLK",
           "changes": "https://github.com/KhalGH/CombatLogFix-WotLK/commits/main",
@@ -9081,7 +9223,7 @@
         {
           "source": "github-bkader",
           "name": "Comix-WotLK",
-          "url": "https://github.com/bkader/Comix-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Comix-WotLK/archive/a4119d58509702eca7130d341f52ad8f953fad8c.zip",
           "updated": "2022-08-07",
           "page": "https://github.com/bkader/Comix-WotLK",
           "changes": "https://github.com/bkader/Comix-WotLK/commits/main",
@@ -9125,7 +9267,7 @@
         {
           "source": "nom0re",
           "name": "Compact Raid Frame",
-          "url": "https://gitlab.com/tsoukie-3.3.5/compactraidframe/-/archive/main/compactraidframe-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/compactraidframe/-/archive/6295d25492475af7f2bc90932e59be5e7234ce31/compactraidframe-6295d25492475af7f2bc90932e59be5e7234ce31.zip",
           "updated": "2026-09-18",
           "links": [
             {
@@ -9253,7 +9395,7 @@
         {
           "source": "nom0re",
           "name": "Cooldowns",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/cooldowns.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/cooldowns.zip",
           "updated": "2010-01-23",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/cooldowns.zip",
           "links": [
@@ -9532,7 +9674,7 @@
         {
           "source": "nom0re",
           "name": "Critline",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Critline.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Critline.zip",
           "updated": "2010-07-31",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Critline.zip",
           "links": [
@@ -9664,7 +9806,7 @@
         {
           "source": "nom0re",
           "name": "Cromulent",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Cromulent.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Cromulent.zip",
           "updated": "2010-10-13",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Cromulent.zip",
           "links": [
@@ -9722,7 +9864,7 @@
         {
           "source": "github-bkader",
           "name": "Crosshairs-WotLK",
-          "url": "https://github.com/bkader/Crosshairs-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Crosshairs-WotLK/archive/952f8fd3d1447e177f2f03f11cd530826fb28dc8.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/Crosshairs-WotLK",
           "changes": "https://github.com/bkader/Crosshairs-WotLK/commits/main",
@@ -9896,7 +10038,7 @@
         {
           "source": "nom0re",
           "name": "DalaranAH",
-          "url": "https://github.com/NoM0Re/DalaranAH/releases/latest/download/DalaranAH.zip",
+          "url": "https://github.com/NoM0Re/DalaranAH/releases/download/1.3.1/DalaranAH.zip",
           "updated": "2026-09-09",
           "changes": "https://github.com/NoM0Re/DalaranAH/releases",
           "links": [
@@ -10252,7 +10394,7 @@
         {
           "source": "nom0re",
           "name": "DBM Deadly Boss Mods Warmane",
-          "url": "https://github.com/Zidras/DBM-Warmane/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/DBM-Warmane/archive/6165654fb413f4166b1c142809ae287b1227ba6a.zip",
           "updated": "2026-08-16",
           "changes": "https://github.com/Zidras/DBM-Warmane/commits/main",
           "links": [
@@ -10455,7 +10597,7 @@
         {
           "source": "github-zidras",
           "name": "FiuhrerDBM",
-          "url": "https://github.com/Zidras/FiuhrerDBM/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/FiuhrerDBM/archive/3197cac64d4f6f4966b8f984b8fbfbfcaed2d3e0.zip",
           "updated": "2025-10-12",
           "page": "https://github.com/Zidras/FiuhrerDBM",
           "changes": "https://github.com/Zidras/FiuhrerDBM/commits/main",
@@ -10649,7 +10791,7 @@
         {
           "source": "github-zidras",
           "name": "DBM-Supremacy",
-          "url": "https://github.com/Zidras/DBM-Supremacy/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/DBM-Supremacy/archive/73f0f380f4f5f09021c12a8340fdb92008f6f157.zip",
           "updated": "2024-08-20",
           "page": "https://github.com/Zidras/DBM-Supremacy",
           "changes": "https://github.com/Zidras/DBM-Supremacy/commits/main",
@@ -11542,7 +11684,7 @@
         {
           "source": "nom0re",
           "name": "Decursive",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Decursive.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Decursive.zip",
           "updated": "2010-10-10",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Decursive.zip",
           "links": [
@@ -11807,7 +11949,7 @@
         {
           "source": "github-bunny67",
           "name": "Details-WotLK",
-          "url": "https://github.com/Bunny67/Details-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/Bunny67/Details-WotLK/archive/97e1cac2e4b5f68a3572f2f4872c9422759a1bca.zip",
           "updated": "2021-04-12",
           "page": "https://github.com/Bunny67/Details-WotLK",
           "changes": "https://github.com/Bunny67/Details-WotLK/commits/master",
@@ -12052,7 +12194,7 @@
         {
           "source": "nom0re",
           "name": "DialogUI",
-          "url": "https://github.com/ghbset/DialogUI-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/ghbset/DialogUI-WotLK/archive/505c5ff941f270e03c983e38a6cfac3759108ada.zip",
           "updated": "2026-09-27",
           "changes": "https://github.com/ghbset/DialogUI-WotLK/commits/main",
           "links": [
@@ -12272,7 +12414,7 @@
         {
           "source": "nom0re",
           "name": "DocsCorporeality(IMO better than HalionHelper)",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/DocsCorporeality_r3.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/DocsCorporeality_r3.zip",
           "updated": "2010-07-31",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/DocsCorporeality_r3.zip",
           "links": [
@@ -12550,7 +12692,7 @@
         {
           "source": "nom0re",
           "name": "Dominos",
-          "url": "https://github.com/bkader/Dominos/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Dominos/archive/1a7a1a477941019c9320676341c6de65efd3e0e2.zip",
           "updated": "2022-05-25",
           "changes": "https://github.com/bkader/Dominos/commits/main",
           "links": [
@@ -12718,8 +12860,8 @@
         {
           "source": "nom0re",
           "name": "DragonUI",
-          "url": "https://github.com/NeticSoul/DragonUI/archive/refs/heads/main.zip",
-          "updated": "2026-10-28",
+          "url": "https://github.com/NeticSoul/DragonUI/archive/b142a7fa97273a6bf0b045410d1c52f64f154d11.zip",
+          "updated": "2026-10-30",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -12789,7 +12931,7 @@
         {
           "source": "nom0re",
           "name": "DrDamage",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/DrDamage.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/235b9e4cd5b429b94f4cb33ba9308d3c78f6bcad/src/Addons/DrDamage.zip",
           "updated": "2010-11-20",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/DrDamage.zip",
           "folders": [
@@ -12855,7 +12997,7 @@
         {
           "source": "nom0re",
           "name": "DressMe",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/DressMe.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/334a38a60bfd2f6145d60cf2162f43168aad4151/src/Addons/DressMe.zip",
           "updated": "2021-05-13",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/DressMe.zip",
           "links": [
@@ -12937,7 +13079,7 @@
         {
           "source": "github-sattva-108",
           "name": "DropTheCheapestThing",
-          "url": "https://github.com/Sattva-108/DropTheCheapestThing/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/DropTheCheapestThing/archive/f02c9b34e338c8bc9a67eb5c7fc72184ef34dffb.zip",
           "updated": "2024-03-15",
           "page": "https://github.com/Sattva-108/DropTheCheapestThing",
           "changes": "https://github.com/Sattva-108/DropTheCheapestThing/commits/main",
@@ -13309,6 +13451,29 @@
       ]
     },
     {
+      "name": "EbonBroadcaster",
+      "description": "Broadcaster and auto-invite, raid toolbox with announcements and teleports, whisper box, top bar, themes, as well as the optional dependencies EbonAPI and ElvUI.",
+      "image": "https://media.forgecdn.net/attachments/2122/881/broadcaster-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "EbonBroadcaster",
+          "url": "https://edge.forgecdn.net/files/9369/844/EbonBroadcaster_v1_4.zip",
+          "updated": "2026-10-30",
+          "page": "https://www.curseforge.com/wow/addons/ebonbroadcaster",
+          "changes": "https://www.curseforge.com/wow/addons/ebonbroadcaster/files",
+          "folders": [
+            {
+              "name": "EbonBroadcaster",
+              "title": "EbonBroadcaster",
+              "version": "1.4",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "EclipseBar",
       "description": "EclipseBar displays a druid Eclipse bar whose marker follows the remaining Eclipse duration instead of a power value.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Eclipse.gif",
@@ -13316,7 +13481,7 @@
         {
           "source": "nom0re",
           "name": "EclipseBar",
-          "url": "https://github.com/bkader/EclipseBar-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/EclipseBar-WotLK/archive/c42b6a82a75abbdb17bb3eb322a5b67fb97d1d53.zip",
           "updated": "2022-08-07",
           "changes": "https://github.com/bkader/EclipseBar-WotLK/commits/main",
           "links": [
@@ -13712,7 +13877,7 @@
         {
           "source": "github-bkader",
           "name": "ElvinCDs",
-          "url": "https://github.com/bkader/ElvinCDs/archive/refs/heads/master.zip",
+          "url": "https://github.com/bkader/ElvinCDs/archive/5050de93463f61bb67e339eaf6c38823d060f419.zip",
           "updated": "2022-08-07",
           "page": "https://github.com/bkader/ElvinCDs",
           "changes": "https://github.com/bkader/ElvinCDs/commits/master",
@@ -13751,7 +13916,7 @@
         {
           "source": "nom0re",
           "name": "ElvUI",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI/archive/58ea24f7979740221389ce09685eb445723a6346.zip",
           "updated": "2022-10-26",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI/commits/master",
           "links": [
@@ -13853,7 +14018,7 @@
         {
           "source": "github-xurkon",
           "name": "ElvUI-X",
-          "url": "https://github.com/Xurkon/ElvUI-X/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/ElvUI-X/archive/12070261190ba2a50c9f48cef5d58471b571339e.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/ElvUI-X",
           "changes": "https://github.com/Xurkon/ElvUI-X/commits/main",
@@ -13911,7 +14076,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_AddOnSkins",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_AddOnSkins/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_AddOnSkins/archive/265e9cf95a0d3158ddf794fa67483cb6ae819f69.zip",
           "updated": "2024-02-25",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_AddOnSkins",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_AddOnSkins/commits/master",
@@ -13933,7 +14098,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_AuraBarsMovers",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_AuraBarsMovers/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_AuraBarsMovers/archive/e04466cb0668d9d8667c322ee9c4647b17d6483f.zip",
           "updated": "2019-08-20",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_AuraBarsMovers",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_AuraBarsMovers/commits/master",
@@ -13955,7 +14120,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_BagControl",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_BagControl/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_BagControl/archive/da8dced2f847574f068263bf726b714d0b859e0f.zip",
           "updated": "2019-08-20",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_BagControl",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_BagControl/commits/master",
@@ -13977,7 +14142,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_CastBarOverlay",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_CastBarOverlay/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_CastBarOverlay/archive/01de00215f0242c1fdab20f1e25213916f33ee8f.zip",
           "updated": "2019-08-20",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_CastBarOverlay",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_CastBarOverlay/commits/master",
@@ -13999,7 +14164,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_CustomTags",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_CustomTags/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_CustomTags/archive/6e9c2899742de148dfeb79d7682ed14e24844530.zip",
           "updated": "2019-08-17",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_CustomTags",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_CustomTags/commits/master",
@@ -14021,7 +14186,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_CustomTweaks",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_CustomTweaks/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_CustomTweaks/archive/0ce336b3973606b51ab0d1e356cf57fe8b596579.zip",
           "updated": "2019-08-28",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_CustomTweaks",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_CustomTweaks/commits/master",
@@ -14043,7 +14208,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_DataTextColors",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_DataTextColors/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_DataTextColors/archive/2b6bea94ebece9ffc2be2725b2470ba08d217ab8.zip",
           "updated": "2019-09-29",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_DataTextColors",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_DataTextColors/commits/master",
@@ -14065,7 +14230,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_DTBars2",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_DTBars2/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_DTBars2/archive/55119ffdeba6a7c3b82cbdfa8629a13852f42ee7.zip",
           "updated": "2021-06-16",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_DTBars2",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_DTBars2/commits/master",
@@ -14087,7 +14252,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_Enhanced",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_Enhanced/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_Enhanced/archive/245e896ce72a309d020dbfdb84f523f9709e1cab.zip",
           "updated": "2021-09-08",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_Enhanced",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_Enhanced/commits/master",
@@ -14108,7 +14273,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_EnhancedFriendsList",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_EnhancedFriendsList/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_EnhancedFriendsList/archive/116fea0e05a9a8ab05ab687a9f00bc3bd40ee739.zip",
           "updated": "2019-08-17",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_EnhancedFriendsList",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_EnhancedFriendsList/commits/master",
@@ -14130,7 +14295,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_ExtraActionBars",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_ExtraActionBars/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_ExtraActionBars/archive/e5f310ae8f7f254012d112eb317ffa118a9775dc.zip",
           "updated": "2019-08-17",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_ExtraActionBars",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_ExtraActionBars/commits/master",
@@ -14152,7 +14317,7 @@
         {
           "source": "github-zidras",
           "name": "ElvUI_ImprovedSpecSwitch",
-          "url": "https://github.com/Zidras/ElvUI_ImprovedSpecSwitch/archive/refs/heads/master.zip",
+          "url": "https://github.com/Zidras/ElvUI_ImprovedSpecSwitch/archive/0bfb681b9e7341cd496165624ba4beb02d7b069b.zip",
           "updated": "2020-03-18",
           "page": "https://github.com/Zidras/ElvUI_ImprovedSpecSwitch",
           "changes": "https://github.com/Zidras/ElvUI_ImprovedSpecSwitch/commits/master",
@@ -14174,7 +14339,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_LocPlus",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_LocPlus/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_LocPlus/archive/ffca1929e4e6b83bb09cd12f95187899ff8b0acc.zip",
           "updated": "2019-08-21",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_LocPlus",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_LocPlus/commits/master",
@@ -14195,7 +14360,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_MicrobarEnhancement",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_MicrobarEnhancement/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_MicrobarEnhancement/archive/6968e7de29d2ff6830c0d03b11a36d56e0a9bc90.zip",
           "updated": "2019-08-17",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_MicrobarEnhancement",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_MicrobarEnhancement/commits/master",
@@ -14217,7 +14382,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_ProfileConverter",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_ProfileConverter/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_ProfileConverter/archive/90ee39bca41bd111ac1aab6cc92766f3ab8840ec.zip",
           "updated": "2025-08-20",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_ProfileConverter",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_ProfileConverter/commits/master",
@@ -14239,7 +14404,7 @@
         {
           "source": "github-zidras",
           "name": "ElvUI_ProjectZidras",
-          "url": "https://github.com/Zidras/ElvUI_ProjectZidras/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/ElvUI_ProjectZidras/archive/302cc9590a26f818fc3fb66f8a6d15a1c5f84323.zip",
           "updated": "2026-01-27",
           "page": "https://github.com/Zidras/ElvUI_ProjectZidras",
           "changes": "https://github.com/Zidras/ElvUI_ProjectZidras/commits/main",
@@ -14261,7 +14426,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_RaidMarkers",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_RaidMarkers/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_RaidMarkers/archive/9cda1f05ed257e38f259112146a2243de7968c2c.zip",
           "updated": "2019-08-17",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_RaidMarkers",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_RaidMarkers/commits/master",
@@ -14283,7 +14448,7 @@
         {
           "source": "github-bunny67",
           "name": "ElvUI_Sirus",
-          "url": "https://github.com/Bunny67/ElvUI_Sirus/archive/refs/heads/master.zip",
+          "url": "https://github.com/Bunny67/ElvUI_Sirus/archive/b9e874b06c5c52aa7e96f4bcb55ad5dcd54a2610.zip",
           "updated": "2021-08-21",
           "page": "https://github.com/Bunny67/ElvUI_Sirus",
           "changes": "https://github.com/Bunny67/ElvUI_Sirus/commits/master",
@@ -14304,7 +14469,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_SwingBar",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_SwingBar/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_SwingBar/archive/dca0e453d65477fb584c8b687c14533c74103262.zip",
           "updated": "2020-07-14",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_SwingBar",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_SwingBar/commits/master",
@@ -14326,7 +14491,7 @@
         {
           "source": "github-elvui-wotlk",
           "name": "ElvUI_VisualProcs",
-          "url": "https://github.com/ElvUI-WotLK/ElvUI_VisualProcs/archive/refs/heads/master.zip",
+          "url": "https://github.com/ElvUI-WotLK/ElvUI_VisualProcs/archive/49fa7e73c5450b49ce6c83ced42f4ac03b0ab1f5.zip",
           "updated": "2020-03-22",
           "page": "https://github.com/ElvUI-WotLK/ElvUI_VisualProcs",
           "changes": "https://github.com/ElvUI-WotLK/ElvUI_VisualProcs/commits/master",
@@ -14681,7 +14846,7 @@
         {
           "source": "nom0re",
           "name": "EnsidiaFails",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/EnsidiaFails.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/EnsidiaFails.zip",
           "updated": "2022-10-16",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/EnsidiaFails.zip",
           "links": [
@@ -14788,7 +14953,7 @@
         {
           "source": "nom0re",
           "name": "Equipence",
-          "url": "https://github.com/s0h2x/Equipence/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/Equipence/archive/c18cf61ea2de1df52e71fc4d6289e18a468de4ed.zip",
           "updated": "2026-05-09",
           "changes": "https://github.com/s0h2x/Equipence/commits/master",
           "links": [
@@ -14961,7 +15126,7 @@
         {
           "source": "nom0re",
           "name": "EventHorizon",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/EventHorizon.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/EventHorizon.zip",
           "updated": "2010-06-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/EventHorizon.zip",
           "links": [
@@ -15190,7 +15355,7 @@
         {
           "source": "nom0re",
           "name": "EveryQuest",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/EveryQuest.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/EveryQuest.zip",
           "updated": "2024-03-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/EveryQuest.zip",
           "links": [
@@ -15580,7 +15745,7 @@
         {
           "source": "github-xurkon",
           "name": "FarmHud",
-          "url": "https://github.com/Xurkon/FarmHud/archive/refs/heads/master.zip",
+          "url": "https://github.com/Xurkon/FarmHud/archive/1bf8ecdacaed759a21c76e3433dab5c2f39c7d95.zip",
           "updated": "2026-03-06",
           "page": "https://github.com/Xurkon/FarmHud",
           "changes": "https://github.com/Xurkon/FarmHud/commits/master",
@@ -15596,7 +15761,7 @@
         {
           "source": "github-sattva-108",
           "name": "FarmHud",
-          "url": "https://github.com/Sattva-108/FarmHud/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/FarmHud/archive/1c54ed20d4050500c488f97a20ad1b06fd01ac91.zip",
           "updated": "2026-07-18",
           "page": "https://github.com/Sattva-108/FarmHud",
           "changes": "https://github.com/Sattva-108/FarmHud/commits/master",
@@ -15920,7 +16085,7 @@
         {
           "source": "github-bkader",
           "name": "FixGroups-WoTLK",
-          "url": "https://github.com/bkader/FixGroups-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/FixGroups-WoTLK/archive/b6cd4a4b031d3dd94359a7e1a52c841fed9c7d77.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/FixGroups-WoTLK",
           "changes": "https://github.com/bkader/FixGroups-WoTLK/commits/main",
@@ -16087,7 +16252,7 @@
         {
           "source": "github-khalgh",
           "name": "flyPlateBuffs-WotLK",
-          "url": "https://github.com/KhalGH/flyPlateBuffs-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/flyPlateBuffs-WotLK/archive/b73b17830361cd99522114c2b50c1dfa70c23368.zip",
           "updated": "2025-09-23",
           "page": "https://github.com/KhalGH/flyPlateBuffs-WotLK",
           "changes": "https://github.com/KhalGH/flyPlateBuffs-WotLK/commits/main",
@@ -16224,7 +16389,7 @@
         {
           "source": "nom0re",
           "name": "ForteXorcist",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ForteXorcist.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ForteXorcist.zip",
           "updated": "2010-10-05",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ForteXorcist.zip",
           "links": [
@@ -16457,7 +16622,7 @@
         {
           "source": "nom0re",
           "name": "Friend & Ignore Share",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/FriendShare.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/FriendShare.zip",
           "updated": "2023-11-25",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/FriendShare.zip",
           "links": [
@@ -17263,7 +17428,7 @@
         {
           "source": "github-bkader",
           "name": "GarbageProtector",
-          "url": "https://github.com/bkader/GarbageProtector/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/GarbageProtector/archive/427b4c2c092d556724c912a8283605e2d29b0e51.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/GarbageProtector",
           "changes": "https://github.com/bkader/GarbageProtector/commits/main",
@@ -17311,6 +17476,22 @@
       "image": "https://addons.rising-gods.de/sites/default/files/2016-12/GatherMate_0%5B1%5D.jpg",
       "downloads": [
         {
+          "source": "github-trimitor-wdm-addons",
+          "name": "GatherMate",
+          "url": "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/GatherMate.zip",
+          "updated": "2026-06-11",
+          "page": "https://github.com/Trimitor/WDM-addons",
+          "changes": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+          "folders": [
+            {
+              "name": "GatherMate",
+              "title": "GatherMate",
+              "version": "v.1.25",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "rising-gods",
           "name": "GatherMate",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/GatherMate-v.1.25.zip",
@@ -17334,7 +17515,7 @@
         {
           "source": "github-xurkon",
           "name": "GatherMate2",
-          "url": "https://github.com/Xurkon/GatherMate2/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/GatherMate2/archive/b0ef6eb3f3f75ee4beb6ae9f27e57caebe541e46.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/GatherMate2",
           "changes": "https://github.com/Xurkon/GatherMate2/commits/main",
@@ -17479,7 +17660,7 @@
         {
           "source": "nom0re",
           "name": "GearScore",
-          "url": "https://github.com/Arcitec/GearScoreLite_Reborn/archive/refs/heads/main.zip",
+          "url": "https://github.com/Arcitec/GearScoreLite_Reborn/archive/a396cdc93894bca2cab351627c97996253f86236.zip",
           "updated": "2024-06-27",
           "changes": "https://github.com/Arcitec/GearScoreLite_Reborn/commits/main",
           "links": [
@@ -17740,7 +17921,7 @@
         {
           "source": "nom0re",
           "name": "Gladdy",
-          "url": "https://gitlab.com/tsoukie-3.3.5/gladdy/-/archive/main/gladdy-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/gladdy/-/archive/a174a9a55402461a9b54437f63374e0e664f63c5/gladdy-a174a9a55402461a9b54437f63374e0e664f63c5.zip",
           "updated": "2026-10-17",
           "links": [
             {
@@ -17760,7 +17941,7 @@
         {
           "source": "github-xurkon",
           "name": "Gladdy",
-          "url": "https://github.com/Xurkon/Gladdy/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Gladdy/archive/20334bdaa2a2350bb86fa1265b39e63b1744d62b.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/Gladdy",
           "changes": "https://github.com/Xurkon/Gladdy/commits/main",
@@ -17820,7 +18001,7 @@
         {
           "source": "nom0re",
           "name": "GladiusEx",
-          "url": "https://github.com/ManneN1/GladiusEx-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/ManneN1/GladiusEx-WotLK/archive/25a676c6e6fdedf7ba4ee5ab35a94f93c9d19848.zip",
           "updated": "2026-07-04",
           "changes": "https://github.com/ManneN1/GladiusEx-WotLK/commits/master",
           "links": [
@@ -17972,7 +18153,7 @@
         {
           "source": "github-sattva-108",
           "name": "GoAgainAH",
-          "url": "https://github.com/Sattva-108/GoAgainAH/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/GoAgainAH/archive/95c1be3851f525b2b12c049cf8fcb7839fba776c.zip",
           "updated": "2026-05-26",
           "page": "https://github.com/Sattva-108/GoAgainAH",
           "changes": "https://github.com/Sattva-108/GoAgainAH/commits/main",
@@ -18167,7 +18348,7 @@
         {
           "source": "nom0re",
           "name": "Grid2",
-          "url": "https://github.com/bkader/Grid2-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Grid2-WoTLK/archive/fc8d5e139b9490236b6676e1d891f98bfe4b2a10.zip",
           "updated": "2022-10-03",
           "changes": "https://github.com/bkader/Grid2-WoTLK/commits/main",
           "links": [
@@ -18638,7 +18819,7 @@
         {
           "source": "nom0re",
           "name": "GroupBulletinBoard",
-          "url": "https://github.com/fondlez/GroupBulletinBoard/archive/refs/heads/main.zip",
+          "url": "https://github.com/fondlez/GroupBulletinBoard/archive/fbf8ed267da1d86e5fa812cc5d7629aedabbe17a.zip",
           "updated": "2026-04-27",
           "changes": "https://github.com/fondlez/GroupBulletinBoard/commits/main",
           "links": [
@@ -18740,7 +18921,7 @@
         {
           "source": "nom0re",
           "name": "GTFO: Stop standing in fire!",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/GTFO.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/8d74404e3819988c9032b0e349c63b6242d21866/src/Addons/GTFO.zip",
           "updated": "2010-10-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/GTFO.zip",
           "links": [
@@ -19170,7 +19351,7 @@
         {
           "source": "nom0re",
           "name": "HalionHelper",
-          "url": "https://github.com/bkader/HalionHelper-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/HalionHelper-WoTLK/archive/fab3d0f7b496a6cbed352d796876efbd6f826305.zip",
           "updated": "2022-08-07",
           "changes": "https://github.com/bkader/HalionHelper-WoTLK/commits/main",
           "links": [
@@ -19352,7 +19533,7 @@
         {
           "source": "nom0re",
           "name": "Healbot",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/HealBot.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/HealBot.zip",
           "updated": "2010-10-03",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/HealBot.zip",
           "links": [
@@ -19589,7 +19770,7 @@
         {
           "source": "github-bkader",
           "name": "Hermes-WotLK",
-          "url": "https://github.com/bkader/Hermes-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Hermes-WotLK/archive/2c4a794700011eee42ef0d61916f9459e159a579.zip",
           "updated": "2022-08-07",
           "page": "https://github.com/bkader/Hermes-WotLK",
           "changes": "https://github.com/bkader/Hermes-WotLK/commits/main",
@@ -20221,7 +20402,7 @@
         {
           "source": "nom0re",
           "name": "IgnoreMore",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/IgnoreMore.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/IgnoreMore.zip",
           "updated": "2010-07-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/IgnoreMore.zip",
           "links": [
@@ -20307,7 +20488,7 @@
         {
           "source": "nom0re",
           "name": "Immersion",
-          "url": "https://github.com/s0h2x/Immersion-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/Immersion-WotLK/archive/e0b208b2ae38b3ccfd2b682689021bba7523395f.zip",
           "updated": "2024-11-05",
           "changes": "https://github.com/s0h2x/Immersion-WotLK/commits/master",
           "links": [
@@ -20356,7 +20537,7 @@
         {
           "source": "nom0re",
           "name": "Improved Profession Capper",
-          "url": "https://github.com/DarkChimu/Improved-Profession-Capper/archive/refs/heads/master.zip",
+          "url": "https://github.com/DarkChimu/Improved-Profession-Capper/archive/ffa4838c10779491b78bbed093682665762103d2.zip",
           "updated": "2026-10-21",
           "changes": "https://github.com/DarkChimu/Improved-Profession-Capper/commits/master",
           "links": [
@@ -20508,7 +20689,7 @@
         {
           "source": "nom0re",
           "name": "InspectEquip",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/InspectEquip.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/InspectEquip.zip",
           "updated": "2010-07-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/InspectEquip.zip",
           "links": [
@@ -20556,7 +20737,7 @@
         {
           "source": "nom0re",
           "name": "Instance-Spell-Collector-WotLK",
-          "url": "https://github.com/NoM0Re/Instance-Spell-Collector-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/Instance-Spell-Collector-WotLK/archive/606ad6adcd5fb9bcd36d7ac73d1b86af0589169c.zip",
           "updated": "2026-08-31",
           "page": "https://github.com/NoM0Re/Instance-Spell-Collector-WotLK",
           "changes": "https://github.com/NoM0Re/Instance-Spell-Collector-WotLK/commits/main",
@@ -20579,7 +20760,7 @@
         {
           "source": "nom0re",
           "name": "InterruptBar",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/InterruptBar.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/InterruptBar.zip",
           "updated": "2012-04-22",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/InterruptBar.zip",
           "links": [
@@ -20710,7 +20891,7 @@
         {
           "source": "nom0re",
           "name": "iTargetingFrames",
-          "url": "https://github.com/CH33T4/iTargetingFrames/archive/refs/heads/main.zip",
+          "url": "https://github.com/CH33T4/iTargetingFrames/archive/477f07bc0859ed69c4a1c13345ae382d63cd03eb.zip",
           "updated": "2025-03-13",
           "changes": "https://github.com/CH33T4/iTargetingFrames/commits/main",
           "links": [
@@ -20759,7 +20940,7 @@
         {
           "source": "github-khalgh",
           "name": "ItemLevel-WotLK",
-          "url": "https://github.com/KhalGH/ItemLevel-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/ItemLevel-WotLK/archive/3ffca79e0c87ae7dc6526208e40ccbedb24d226e.zip",
           "updated": "2025-06-27",
           "page": "https://github.com/KhalGH/ItemLevel-WotLK",
           "changes": "https://github.com/KhalGH/ItemLevel-WotLK/commits/main",
@@ -20873,7 +21054,7 @@
         {
           "source": "github-xurkon",
           "name": "ITPI",
-          "url": "https://github.com/Xurkon/ITPI/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/ITPI/archive/a8090311097ecb1a1a83bed6a48a4b8073031294.zip",
           "updated": "2026-05-04",
           "page": "https://github.com/Xurkon/ITPI",
           "changes": "https://github.com/Xurkon/ITPI/commits/main",
@@ -21237,8 +21418,8 @@
         {
           "source": "gitlab-juxuanu",
           "name": "kekator",
-          "url": "https://gitlab.com/juxuanu/kekator/-/archive/master/kekator-master.zip",
-          "updated": "2026-10-26",
+          "url": "https://gitlab.com/juxuanu/kekator/-/archive/bb96a15615436cc6e84eb40ad00af93e2c3f568d/kekator-bb96a15615436cc6e84eb40ad00af93e2c3f568d.zip",
+          "updated": "2026-10-30",
           "page": "https://gitlab.com/juxuanu/kekator",
           "changes": "https://gitlab.com/juxuanu/kekator/-/commits/master",
           "folders": [
@@ -21266,7 +21447,7 @@
         {
           "source": "nom0re",
           "name": "Key Bind Profiles",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/KeyBindingsProfiler.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/KeyBindingsProfiler.zip",
           "updated": "2023-08-26",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/KeyBindingsProfiler.zip",
           "links": [
@@ -21386,7 +21567,7 @@
         {
           "source": "github-s0h2x",
           "name": "KIbsItemLevel",
-          "url": "https://github.com/s0h2x/KIbsItemLevel/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/KIbsItemLevel/archive/2771c6ae0d3ef419aaafdcf054fab5e7ec2b7883.zip",
           "updated": "2022-04-16",
           "page": "https://github.com/s0h2x/KIbsItemLevel",
           "changes": "https://github.com/s0h2x/KIbsItemLevel/commits/master",
@@ -21637,7 +21818,7 @@
         {
           "source": "github-bkader",
           "name": "KPack",
-          "url": "https://github.com/bkader/KPack/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/KPack/archive/0a5f96b8864e4b0c04adb56935318273ce6ac4e8.zip",
           "updated": "2022-10-28",
           "page": "https://github.com/bkader/KPack",
           "changes": "https://github.com/bkader/KPack/commits/main",
@@ -21701,7 +21882,7 @@
         {
           "source": "nom0re",
           "name": "KRT: Kader Raid Tools",
-          "url": "https://github.com/bkader/KRT/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/KRT/archive/a9d7df381c9bd665ba206633a473c5cbd8a6c05a.zip",
           "updated": "2026-08-10",
           "changes": "https://github.com/bkader/KRT/commits/main",
           "links": [
@@ -21733,7 +21914,7 @@
         {
           "source": "nom0re",
           "name": "KRU - Kader's Raid Utilities",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/KRU.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/KRU.zip",
           "updated": "2024-02-19",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/KRU.zip",
           "links": [
@@ -21762,7 +21943,7 @@
         {
           "source": "github-bkader",
           "name": "KRU-WoTLK",
-          "url": "https://github.com/bkader/KRU-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/KRU-WoTLK/archive/2282c3c4be9acebc4d76a554abf49685af42b555.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/KRU-WoTLK",
           "changes": "https://github.com/bkader/KRU-WoTLK/commits/main",
@@ -21801,7 +21982,7 @@
         {
           "source": "github-bkader",
           "name": "KTracker",
-          "url": "https://github.com/bkader/KTracker/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/KTracker/archive/dc2565bc6dd053a873aca690c4f67d916bd6c6a7.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/KTracker",
           "changes": "https://github.com/bkader/KTracker/commits/main",
@@ -21823,7 +22004,7 @@
         {
           "source": "github-bkader",
           "name": "KuiNameplates-WoTLK",
-          "url": "https://github.com/bkader/KuiNameplates-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/KuiNameplates-WoTLK/archive/ad42794e2fa277adcfa887abfb1129c316838c59.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/KuiNameplates-WoTLK",
           "changes": "https://github.com/bkader/KuiNameplates-WoTLK/commits/main",
@@ -21916,7 +22097,7 @@
         {
           "source": "github-sattva-108",
           "name": "lazyscan",
-          "url": "https://github.com/Sattva-108/lazyscan/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/lazyscan/archive/3a78499a34835be59a1869e3892291b6c1194893.zip",
           "updated": "2026-08-11",
           "page": "https://github.com/Sattva-108/lazyscan",
           "changes": "https://github.com/Sattva-108/lazyscan/commits/master",
@@ -22049,7 +22230,7 @@
         {
           "source": "nom0re",
           "name": "Leatrix Maps",
-          "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/refs/heads/main.zip",
+          "url": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/50b1cc82122f3dab2b7dac18f1656ca0bad36c3d.zip",
           "updated": "2026-10-26",
           "changes": "https://github.com/5Buttons/Leatrix-Maps-3.3.5/commits/main",
           "links": [
@@ -22098,7 +22279,7 @@
         {
           "source": "github-sattva-108",
           "name": "Leatrix_Plus",
-          "url": "https://github.com/Sattva-108/Leatrix_Plus/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/Leatrix_Plus/archive/cfa45770ac1364591b161e98bb509cc2c1467220.zip",
           "updated": "2026-08-30",
           "page": "https://github.com/Sattva-108/Leatrix_Plus",
           "changes": "https://github.com/Sattva-108/Leatrix_Plus/commits/main",
@@ -22114,7 +22295,7 @@
         {
           "source": "github-xurkon",
           "name": "Leatrix-Plus",
-          "url": "https://github.com/Xurkon/Leatrix-Plus/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Leatrix-Plus/archive/6e100f856d5df6c6e2b09ecc3a5bcd55ca6ef3a3.zip",
           "updated": "2025-12-29",
           "page": "https://github.com/Xurkon/Leatrix-Plus",
           "changes": "https://github.com/Xurkon/Leatrix-Plus/commits/main",
@@ -22130,7 +22311,7 @@
         {
           "source": "github-sattva-108",
           "name": "LeatrixPlus-WoTLK-3.3.5",
-          "url": "https://github.com/Sattva-108/LeatrixPlus-WoTLK-3.3.5/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/LeatrixPlus-WoTLK-3.3.5/archive/c2df814c4104eebd4a1a8434aeede64ba868e288.zip",
           "updated": "2024-11-05",
           "page": "https://github.com/Sattva-108/LeatrixPlus-WoTLK-3.3.5",
           "changes": "https://github.com/Sattva-108/LeatrixPlus-WoTLK-3.3.5/commits/main",
@@ -22540,7 +22721,7 @@
         {
           "source": "github-bkader",
           "name": "LibCompat-1.0",
-          "url": "https://github.com/bkader/LibCompat-1.0/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/LibCompat-1.0/archive/1ca7116cad4bf525e0fb94285e9585778f71caf0.zip",
           "updated": "2022-05-24",
           "page": "https://github.com/bkader/LibCompat-1.0",
           "changes": "https://github.com/bkader/LibCompat-1.0/commits/main",
@@ -23430,7 +23611,7 @@
         {
           "source": "nom0re",
           "name": "LoseControl",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/LoseControl.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/LoseControl.zip",
           "updated": "2010-03-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/LoseControl.zip",
           "links": [
@@ -23563,7 +23744,7 @@
         {
           "source": "nom0re",
           "name": "Ludwig",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Ludwig.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Ludwig.zip",
           "updated": "2010-08-26",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Ludwig.zip",
           "links": [
@@ -23934,7 +24115,7 @@
         {
           "source": "nom0re",
           "name": "MacroBank",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/MacroBank.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/MacroBank.zip",
           "updated": "2010-09-10",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/MacroBank.zip",
           "links": [
@@ -24065,7 +24246,7 @@
         {
           "source": "nom0re",
           "name": "Mage Nuggets",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/MageNuggets.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/MageNuggets.zip",
           "updated": "2010-07-07",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/MageNuggets.zip",
           "links": [
@@ -24314,70 +24495,6 @@
       ]
     },
     {
-      "name": "ManaCode Vendor",
-      "description": "All merchant goods in one window: gear sets, search, filters, bulk buying, emblem exchange chains, Keep/Spare bag marks, junk selling and repairs.",
-      "image": "https://media.forgecdn.net/attachments/2105/347/01-window-jpg.jpg",
-      "downloads": [
-        {
-          "source": "curseforge",
-          "name": "ManaCode Vendor",
-          "url": "https://edge.forgecdn.net/files/9325/2/ManaCode_Vendor-1.0.0.zip",
-          "updated": "2026-10-25",
-          "page": "https://www.curseforge.com/wow/addons/manacode-vendor",
-          "changes": "https://www.curseforge.com/wow/addons/manacode-vendor/files",
-          "folders": [
-            {
-              "name": "ManaCode_Vendor",
-              "title": "[MANACODE] Vendor",
-              "version": "1.0.0",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "ManaCode_RaidHelper",
-      "description": "Raid review from the combat log for WotLK 3.3.5a: attempt summary, deaths with causes, a timeline of every player, threat, a 3D replay of ICC rooms, raid summary with consumables. Plus a raid gathering tool. Window: /mrh.",
-      "image": "https://media.forgecdn.net/attachments/2081/476/screenshot_28-png.png",
-      "downloads": [
-        {
-          "source": "curseforge",
-          "name": "ManaCode_RaidHelper",
-          "url": "https://edge.forgecdn.net/files/9296/984/ManaCode_RaidHelper-1.7.0.zip",
-          "updated": "2026-10-23",
-          "page": "https://www.curseforge.com/wow/addons/manacode-raidhelper",
-          "changes": "https://www.curseforge.com/wow/addons/manacode-raidhelper/files",
-          "folders": [
-            {
-              "name": "ManaCode_RaidHelper",
-              "title": "[MANACODE] Raid Helper",
-              "version": "1.7.0",
-              "interface": 30300
-            },
-            {
-              "name": "ManaCode_RaidHelper_ICC",
-              "title": "[MANACODE] Raid Helper: 3D ICC",
-              "version": "1.7.0",
-              "interface": 30300
-            },
-            {
-              "name": "ManaCode_RaidHelper_RS",
-              "title": "[MANACODE] Raid Helper: 3D RS",
-              "version": "1.7.0",
-              "interface": 30300
-            },
-            {
-              "name": "ManaCode_RaidHelper_TOC",
-              "title": "[MANACODE] Raid Helper: 3D ToC",
-              "version": "1.7.0",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "ManaPerc",
       "description": "Shows mana usage as a percentage in a spells tooltip.",
       "image": "https://media.forgecdn.net/attachments/111/358/mp3.png",
@@ -24466,9 +24583,25 @@
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Mapster.png",
       "downloads": [
         {
+          "source": "github-trimitor-wdm-addons",
+          "name": "Mapster",
+          "url": "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/Mapster.zip",
+          "updated": "2026-06-11",
+          "page": "https://github.com/Trimitor/WDM-addons",
+          "changes": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+          "folders": [
+            {
+              "name": "Mapster",
+              "title": "Mapster",
+              "version": "1.3.9",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "github-sattva-108",
           "name": "Mapster",
-          "url": "https://github.com/Sattva-108/Mapster/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/Mapster/archive/175db795f6ad03c1aeebd9701c88532ce95cef26.zip",
           "updated": "2024-03-07",
           "page": "https://github.com/Sattva-108/Mapster",
           "changes": "https://github.com/Sattva-108/Mapster/commits/master",
@@ -24484,7 +24617,7 @@
         {
           "source": "nom0re",
           "name": "Mapster",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Mapster.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Mapster.zip",
           "updated": "2024-01-21",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Mapster.zip",
           "links": [
@@ -24570,7 +24703,7 @@
         {
           "source": "github-bkader",
           "name": "Masque-WoTLK",
-          "url": "https://github.com/bkader/Masque-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Masque-WoTLK/archive/7662d4d98a1e088c420b26bcb2044118b0b313cd.zip",
           "updated": "2024-04-02",
           "page": "https://github.com/bkader/Masque-WoTLK",
           "changes": "https://github.com/bkader/Masque-WoTLK/commits/main",
@@ -24901,7 +25034,7 @@
         {
           "source": "nom0re",
           "name": "Method Raid Tools (MRT)",
-          "url": "https://github.com/ExoJdi/Method-Raid-Tools-3.3.5a/archive/refs/heads/main.zip",
+          "url": "https://github.com/ExoJdi/Method-Raid-Tools-3.3.5a/archive/55ee4a9d7425911842028b1beafabc23a090d235.zip",
           "updated": "2026-06-10",
           "changes": "https://github.com/ExoJdi/Method-Raid-Tools-3.3.5a/commits/main",
           "links": [
@@ -25016,7 +25149,7 @@
         {
           "source": "nom0re",
           "name": "MikScrollingBattleText(MSBT)",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/MikScrollingBattleText.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/MikScrollingBattleText.zip",
           "updated": "2010-04-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/MikScrollingBattleText.zip",
           "folders": [
@@ -25056,7 +25189,7 @@
         {
           "source": "github-wrath-addons",
           "name": "MiksScrollingBattleText-WotLK",
-          "url": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK/archive/863efdb0865e55af4b692980ba74824535efb0eb.zip",
           "updated": "2021-03-17",
           "page": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK",
           "changes": "https://github.com/Wrath-AddOns/MiksScrollingBattleText-WotLK/commits/master",
@@ -25221,7 +25354,7 @@
         {
           "source": "github-xurkon",
           "name": "MinimapButtonFrame",
-          "url": "https://github.com/Xurkon/MinimapButtonFrame/archive/refs/heads/master.zip",
+          "url": "https://github.com/Xurkon/MinimapButtonFrame/archive/63bbd858778d68c67506920d8569aaae806732a2.zip",
           "updated": "2026-05-09",
           "page": "https://github.com/Xurkon/MinimapButtonFrame",
           "changes": "https://github.com/Xurkon/MinimapButtonFrame/commits/master",
@@ -25581,7 +25714,7 @@
         {
           "source": "nom0re",
           "name": "MogIt",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/MogIt.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/MogIt.zip",
           "updated": "2022-01-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/MogIt.zip",
           "links": [
@@ -25751,7 +25884,7 @@
         {
           "source": "nom0re",
           "name": "Molinari",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Molinari.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/8d74404e3819988c9032b0e349c63b6242d21866/src/Addons/Molinari.zip",
           "updated": "2011-07-13",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Molinari.zip",
           "links": [
@@ -25878,7 +26011,7 @@
         {
           "source": "nom0re",
           "name": "MoP Item Tooltips",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/MoPItemTooltips.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/8dda7492b902b67ba051fd6ed22a04780fdce377/src/Addons/MoPItemTooltips.zip",
           "updated": "2022-08-21",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/MoPItemTooltips.zip",
           "links": [
@@ -26039,7 +26172,7 @@
         {
           "source": "nom0re",
           "name": "MoveAnything",
-          "url": "https://github.com/sirus-addons/MoveAnything/archive/refs/heads/master.zip",
+          "url": "https://github.com/sirus-addons/MoveAnything/archive/d82cf926086f7cf53a1c9fcf29502ae49651ebb7.zip",
           "updated": "2025-07-18",
           "changes": "https://github.com/sirus-addons/MoveAnything/commits/master",
           "links": [
@@ -26279,7 +26412,7 @@
         {
           "source": "github-bkader",
           "name": "NameplateSCT_WoTLK",
-          "url": "https://github.com/bkader/NameplateSCT_WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/NameplateSCT_WoTLK/archive/69d19195aae8a13f159a334482a040bf60f437a9.zip",
           "updated": "2023-10-13",
           "page": "https://github.com/bkader/NameplateSCT_WoTLK",
           "changes": "https://github.com/bkader/NameplateSCT_WoTLK/commits/main",
@@ -26519,7 +26652,7 @@
         {
           "source": "curseforge",
           "name": "Necromancer's Pet Frames Optimized (ConquestReborn)",
-          "url": "https://edge.forgecdn.net/files/9359/554/NecroMinions.zip",
+          "url": "https://edge.forgecdn.net/files/9362/382/NecroMinions-v0.7.zip",
           "updated": "2026-10-29",
           "page": "https://www.curseforge.com/wow/addons/necromancers-pet-frames-optimized-conquestreborn",
           "changes": "https://www.curseforge.com/wow/addons/necromancers-pet-frames-optimized-conquestreborn/files",
@@ -26527,7 +26660,7 @@
             {
               "name": "NecroMinions",
               "title": "NecroMinions",
-              "version": "0.5 Individual Minion Targeting",
+              "version": "0.7 Necromancer Summon Filter",
               "interface": 30300
             }
           ]
@@ -26633,7 +26766,7 @@
         {
           "source": "nom0re",
           "name": "NeedToKnow",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/NeedToKnow.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/NeedToKnow.zip",
           "updated": "2010-09-09",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/NeedToKnow.zip",
           "links": [
@@ -26883,7 +27016,7 @@
         {
           "source": "nom0re",
           "name": "NotPlater",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/NotPlater-3.3.5.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/1835b29eca764f2669f65195fc00f45677e33853/src/Addons/NotPlater-3.3.5.zip",
           "updated": "2025-07-09",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/NotPlater-3.3.5.zip",
           "links": [
@@ -27014,7 +27147,7 @@
         {
           "source": "github-s0h2x",
           "name": "NugKeyFeedback",
-          "url": "https://github.com/s0h2x/NugKeyFeedback/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/NugKeyFeedback/archive/5fe70f699dc9d6683d901abe9ad18f662e21109e.zip",
           "updated": "2024-01-24",
           "page": "https://github.com/s0h2x/NugKeyFeedback",
           "changes": "https://github.com/s0h2x/NugKeyFeedback/commits/master",
@@ -27186,7 +27319,7 @@
         {
           "source": "nom0re",
           "name": "Omen Threat Meter",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Omen.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Omen.zip",
           "updated": "2009-12-23",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Omen.zip",
           "folders": [
@@ -27267,7 +27400,7 @@
         {
           "source": "github-xurkon",
           "name": "Omnibar",
-          "url": "https://github.com/Xurkon/Omnibar/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Omnibar/archive/84984fb9c23435456ce346431da9d95bde46ec0d.zip",
           "updated": "2026-02-23",
           "page": "https://github.com/Xurkon/Omnibar",
           "changes": "https://github.com/Xurkon/Omnibar/commits/main",
@@ -27283,7 +27416,7 @@
         {
           "source": "nom0re",
           "name": "OmniBar",
-          "url": "https://gitlab.com/tsoukie-3.3.5/omnibar/-/archive/main/omnibar-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/omnibar/-/archive/1f4542f47112736d56ffb55d77426a9c6fed4026/omnibar-1f4542f47112736d56ffb55d77426a9c6fed4026.zip",
           "updated": "2026-09-18",
           "links": [
             {
@@ -27310,7 +27443,7 @@
         {
           "source": "nom0re",
           "name": "OmniCC",
-          "url": "https://github.com/NoM0Re/OmniCC-WotLK/releases/latest/download/OmniCC.zip",
+          "url": "https://github.com/NoM0Re/OmniCC-WotLK/releases/download/11.2.8-Backport/OmniCC.zip",
           "updated": "2026-07-08",
           "changes": "https://github.com/NoM0Re/OmniCC-WotLK/releases",
           "links": [
@@ -27384,7 +27517,7 @@
         {
           "source": "nom0re",
           "name": "OmniCD",
-          "url": "https://gitlab.com/tsoukie-3.3.5/omnicd/-/archive/main/omnicd-main.zip",
+          "url": "https://gitlab.com/tsoukie-3.3.5/omnicd/-/archive/7fa158185445f4989dc91b28e6f4aa30190c6821/omnicd-7fa158185445f4989dc91b28e6f4aa30190c6821.zip",
           "updated": "2026-09-18",
           "links": [
             {
@@ -27411,7 +27544,7 @@
         {
           "source": "nom0re",
           "name": "OmniInventory",
-          "url": "https://github.com/Zendevve/OmniInventory/archive/HEAD.zip",
+          "url": "https://github.com/Zendevve/OmniInventory/archive/6ada95f6cc227cd85850fc7d67ee339d4454631f.zip",
           "updated": "2026-08-05",
           "changes": "https://github.com/Zendevve/OmniInventory/commits",
           "links": [
@@ -27713,7 +27846,7 @@
         {
           "source": "nom0re",
           "name": "OPie",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/OPie.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/OPie.zip",
           "updated": "2010-09-07",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/OPie.zip",
           "folders": [
@@ -28678,7 +28811,7 @@
         {
           "source": "nom0re",
           "name": "Outfitter",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Outfitter.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Outfitter.zip",
           "updated": "2011-01-12",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Outfitter.zip",
           "folders": [
@@ -28738,7 +28871,7 @@
         {
           "source": "nom0re",
           "name": "Overachiever",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Overachiever.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Overachiever.zip",
           "updated": "2023-12-20",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Overachiever.zip",
           "links": [
@@ -28771,7 +28904,7 @@
         {
           "source": "github-wrath-addons",
           "name": "Overachiever",
-          "url": "https://github.com/Wrath-AddOns/Overachiever/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/Overachiever/archive/13a95e7b40720e91f4dee7896dbbd2a0dd7ef852.zip",
           "updated": "2010-08-06",
           "page": "https://github.com/Wrath-AddOns/Overachiever",
           "changes": "https://github.com/Wrath-AddOns/Overachiever/commits/master",
@@ -28899,39 +29032,22 @@
       ]
     },
     {
-      "name": "PallyPower Skinner",
-      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
-      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
-      "downloads": [
-        {
-          "source": "wowinterface",
-          "name": "PallyPower Skinner",
-          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
-          "updated": "2010-05-17",
-          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
-          "folders": [
-            {
-              "name": "!PPSkinner",
-              "title": "PP Skinner",
-              "version": "1.0.1.r",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "PallyPower-Improved-3.3.5",
-      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
+      "name": "PallyPower Improved",
+      "description": "PallyPower Improved helps paladins manage blessings, auras, seals and Righteous Fury through an interactive interface with indicators for missing buffs.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "PallyPower-Improved-3.3.5",
-          "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/refs/heads/main.zip",
+          "name": "PallyPower Improved",
+          "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/8a87a53bb16ff680e5a2bff0977385235e7553a2.zip",
           "updated": "2026-10-07",
-          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
           "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
+            }
+          ],
           "folders": [
             {
               "name": "PallyPower",
@@ -28944,7 +29060,7 @@
         {
           "source": "github-wrath-addons",
           "name": "PallyPower",
-          "url": "https://github.com/Wrath-AddOns/PallyPower/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/PallyPower/archive/1d8ff8ca66f83976c91a265488905bbd4916db84.zip",
           "updated": "2021-04-10",
           "page": "https://github.com/Wrath-AddOns/PallyPower",
           "changes": "https://github.com/Wrath-AddOns/PallyPower/commits/master",
@@ -28968,6 +29084,28 @@
               "name": "PallyPower",
               "title": "PallyPower",
               "version": "v3.2.20",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PallyPower Skinner",
+      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "PallyPower Skinner",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
+          "updated": "2010-05-17",
+          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
+          "folders": [
+            {
+              "name": "!PPSkinner",
+              "title": "PP Skinner",
+              "version": "1.0.1.r",
               "interface": 30300
             }
           ]
@@ -29152,7 +29290,7 @@
         {
           "source": "github-wrath-addons",
           "name": "Pawn-WOTLK",
-          "url": "https://github.com/Wrath-AddOns/Pawn-WOTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/Wrath-AddOns/Pawn-WOTLK/archive/9de79ffdffa243be0fdbef527d7d64902224f761.zip",
           "updated": "2023-11-19",
           "page": "https://github.com/Wrath-AddOns/Pawn-WOTLK",
           "changes": "https://github.com/Wrath-AddOns/Pawn-WOTLK/commits/main",
@@ -29174,7 +29312,7 @@
         {
           "source": "github-xurkon",
           "name": "PE-EHTweaks",
-          "url": "https://github.com/Xurkon/PE-EHTweaks/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/PE-EHTweaks/archive/dbabcca0f59624808090fb0a8b27a3d9121234e5.zip",
           "updated": "2026-01-30",
           "page": "https://github.com/Xurkon/PE-EHTweaks",
           "changes": "https://github.com/Xurkon/PE-EHTweaks/commits/main",
@@ -29196,7 +29334,7 @@
         {
           "source": "github-xurkon",
           "name": "PE-ElvUI",
-          "url": "https://github.com/Xurkon/PE-ElvUI/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/PE-ElvUI/archive/1c9ecb165f1fd59eb5176bc786e78d8b71ee23a4.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/PE-ElvUI",
           "changes": "https://github.com/Xurkon/PE-ElvUI/commits/main",
@@ -29614,7 +29752,7 @@
         {
           "source": "github-sattva-108",
           "name": "pfQuest-wotlk",
-          "url": "https://github.com/Sattva-108/pfQuest-wotlk/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/pfQuest-wotlk/archive/aeaae6cfac537c7fa44ac2d95089d7240c21f77a.zip",
           "updated": "2026-05-28",
           "page": "https://github.com/Sattva-108/pfQuest-wotlk",
           "changes": "https://github.com/Sattva-108/pfQuest-wotlk/commits/master",
@@ -29659,7 +29797,7 @@
         {
           "source": "nom0re",
           "name": "PhoenixStyle",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/PhoenixStyle.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/PhoenixStyle.zip",
           "updated": "2010-09-05",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/PhoenixStyle.zip",
           "links": [
@@ -30333,7 +30471,7 @@
         {
           "source": "nom0re",
           "name": "PlateBuffs",
-          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/6584ceb51a1e906be373ac1be61178658a968e50.zip",
           "updated": "2026-09-29",
           "changes": "https://github.com/KhalGH/PlateBuffs-WoTLK/commits/main",
           "links": [
@@ -30354,7 +30492,7 @@
         {
           "source": "github-bkader",
           "name": "PlateBuffs_WoTLK",
-          "url": "https://github.com/bkader/PlateBuffs_WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/PlateBuffs_WoTLK/archive/ee5afa1992f3e697606b2eccb371102fad18fe91.zip",
           "updated": "2024-03-14",
           "page": "https://github.com/bkader/PlateBuffs_WoTLK",
           "changes": "https://github.com/bkader/PlateBuffs_WoTLK/commits/main",
@@ -30459,7 +30597,7 @@
         {
           "source": "nom0re",
           "name": "pMinimap",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/pMinimap.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/pMinimap.zip",
           "updated": "2009-12-08",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/pMinimap.zip",
           "folders": [
@@ -30643,7 +30781,7 @@
         {
           "source": "nom0re",
           "name": "Postal+",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Postal.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Postal.zip",
           "updated": "2020-06-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Postal.zip",
           "links": [
@@ -30825,7 +30963,7 @@
         {
           "source": "github-s0h2x",
           "name": "pretty_actionbar",
-          "url": "https://github.com/s0h2x/pretty_actionbar/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/pretty_actionbar/archive/f60a50a040e77751011c5afe7a51cd9df888e127.zip",
           "updated": "2022-10-30",
           "page": "https://github.com/s0h2x/pretty_actionbar",
           "changes": "https://github.com/s0h2x/pretty_actionbar/commits/master",
@@ -30848,7 +30986,7 @@
         {
           "source": "github-s0h2x",
           "name": "pretty_lootalert",
-          "url": "https://github.com/s0h2x/pretty_lootalert/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/pretty_lootalert/archive/336d9aae0e1ee591b4aa468c475f56871cba73e7.zip",
           "updated": "2022-12-22",
           "page": "https://github.com/s0h2x/pretty_lootalert",
           "changes": "https://github.com/s0h2x/pretty_lootalert/commits/master",
@@ -30886,7 +31024,7 @@
         {
           "source": "nom0re",
           "name": "pretty_minimap",
-          "url": "https://github.com/s0h2x/pretty_minimap/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/pretty_minimap/archive/fed230049292ec5c19fe27495b4c76832761d301.zip",
           "updated": "2023-04-18",
           "changes": "https://github.com/s0h2x/pretty_minimap/commits/master",
           "links": [
@@ -31075,13 +31213,13 @@
     {
       "name": "PulseFlash v2.4",
       "description": "Lightweight WoW 3.3.5a (WotLK) combat HUD & rotation assistant. Features customizable proc sound alerts, minimap icon, GUI config, and per-spec profiles.",
-      "image": "https://media.forgecdn.net/attachments/2097/253/1000007414-jpg.jpg",
+      "image": "https://media.forgecdn.net/attachments/2097/252/1000007415-jpg.jpg",
       "downloads": [
         {
           "source": "curseforge",
           "name": "PulseFlash v2.4",
-          "url": "https://edge.forgecdn.net/files/9273/256/PulseFlash_v2_5.zip",
-          "updated": "2026-10-21",
+          "url": "https://edge.forgecdn.net/files/9367/143/PulseFlash_v2_6.zip",
+          "updated": "2026-10-29",
           "page": "https://www.curseforge.com/wow/addons/pulseflash-v2-4",
           "changes": "https://www.curseforge.com/wow/addons/pulseflash-v2-4/files",
           "folders": [
@@ -31128,7 +31266,7 @@
         {
           "source": "github-s0h2x",
           "name": "pw_unitframes",
-          "url": "https://github.com/s0h2x/pw_unitframes/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/pw_unitframes/archive/9add77e9169427fe78d442f0e72040b6b182152b.zip",
           "updated": "2023-04-26",
           "page": "https://github.com/s0h2x/pw_unitframes",
           "changes": "https://github.com/s0h2x/pw_unitframes/commits/master",
@@ -31196,7 +31334,7 @@
         {
           "source": "nom0re",
           "name": "QLaser",
-          "url": "https://github.com/NoM0Re/QLaser/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/QLaser/archive/1b0af2baa0f4e0d3de209fca5c0921c77fa5f1a0.zip",
           "updated": "2026-01-08",
           "page": "https://github.com/NoM0Re/QLaser",
           "changes": "https://github.com/NoM0Re/QLaser/commits/main",
@@ -31219,7 +31357,7 @@
         {
           "source": "nom0re",
           "name": "Quartz",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Quartz.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Quartz.zip",
           "updated": "2014-11-17",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Quartz.zip",
           "links": [
@@ -31394,7 +31532,7 @@
         {
           "source": "github-xurkon",
           "name": "QuestDataExporter",
-          "url": "https://github.com/Xurkon/QuestDataExporter/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/QuestDataExporter/archive/7b20352445375551939dd4a7e7a4087e1fcb5682.zip",
           "updated": "2026-01-07",
           "page": "https://github.com/Xurkon/QuestDataExporter",
           "changes": "https://github.com/Xurkon/QuestDataExporter/commits/main",
@@ -31415,6 +31553,22 @@
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/QuestHelper.jpg",
       "downloads": [
         {
+          "source": "github-trimitor-wdm-addons",
+          "name": "QuestHelper",
+          "url": "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/QuestHelper.zip",
+          "updated": "2026-06-11",
+          "page": "https://github.com/Trimitor/WDM-addons",
+          "changes": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+          "folders": [
+            {
+              "name": "QuestHelper",
+              "title": "QuestHelper",
+              "version": "1.4.1",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "locus313",
           "name": "QuestHelper",
           "url": "https://github.com/locus313/WoW-3.3.5a-Addons/releases/download/addons-2026-09-27-2a7eed8/QuestHelper-1.4.1.zip",
@@ -31433,7 +31587,7 @@
         {
           "source": "nom0re",
           "name": "Questhelper",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/QuestHelper.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/QuestHelper.zip",
           "updated": "2010-10-07",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/QuestHelper.zip",
           "links": [
@@ -31476,7 +31630,7 @@
         {
           "source": "nom0re",
           "name": "Questie",
-          "url": "https://github.com/Aldori15/Questie/archive/refs/heads/335.zip",
+          "url": "https://github.com/Aldori15/Questie/archive/908a40b38bd6938b34eca4ce5e776dca2c70de8a.zip",
           "updated": "2026-10-28",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
@@ -31487,10 +31641,9 @@
           ],
           "folders": [
             {
-              "name": "Questie-335",
-              "title": "Questie-335 v10.0.3-335",
-              "version": "10.0.3-335",
-              "interface": 30300
+              "name": "Questie",
+              "title": "Questie install folder problem",
+              "interface": 0
             }
           ]
         }
@@ -31503,7 +31656,7 @@
         {
           "source": "github-xurkon",
           "name": "Questie-X-AscensionDB",
-          "url": "https://github.com/Xurkon/Questie-X-AscensionDB/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Questie-X-AscensionDB/archive/cf6710ef94c264d842cf2ea94c4b50e9ece6dd61.zip",
           "updated": "2026-06-12",
           "page": "https://github.com/Xurkon/Questie-X-AscensionDB",
           "changes": "https://github.com/Xurkon/Questie-X-AscensionDB/commits/main",
@@ -31525,7 +31678,7 @@
         {
           "source": "github-xurkon",
           "name": "Questie-X-EbonholdDB",
-          "url": "https://github.com/Xurkon/Questie-X-EbonholdDB/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Questie-X-EbonholdDB/archive/3d28171cfdb202e5d51596583b62c168268b602f.zip",
           "updated": "2026-03-16",
           "page": "https://github.com/Xurkon/Questie-X-EbonholdDB",
           "changes": "https://github.com/Xurkon/Questie-X-EbonholdDB/commits/main",
@@ -31547,7 +31700,7 @@
         {
           "source": "github-xurkon",
           "name": "Questie-X-WotLKDB",
-          "url": "https://github.com/Xurkon/Questie-X-WotLKDB/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Questie-X-WotLKDB/archive/f3e91aab289dc8661fe015d5a0da1b3dda081410.zip",
           "updated": "2026-05-23",
           "page": "https://github.com/Xurkon/Questie-X-WotLKDB",
           "changes": "https://github.com/Xurkon/Questie-X-WotLKDB/commits/main",
@@ -31931,7 +32084,7 @@
         {
           "source": "nom0re",
           "name": "Raeli's Unit Frames",
-          "url": "https://github.com/bkader/RUF-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/RUF-WoTLK/archive/9ffc395f356e82943546c5cc281308e41d7db83f.zip",
           "updated": "2022-08-07",
           "changes": "https://github.com/bkader/RUF-WoTLK/commits/main",
           "links": [
@@ -32025,7 +32178,7 @@
         {
           "source": "nom0re",
           "name": "Raid Roll",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidRoll.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/RaidRoll.zip",
           "updated": "2010-09-06",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RaidRoll.zip",
           "links": [
@@ -32147,29 +32300,6 @@
       ]
     },
     {
-      "name": "Raid Waiting Arcade",
-      "description": "Twenty mini-games inside the game window — for the 5 to 20 minutes while the raid gathers. Pauses on combat and ready check, never takes your chat. Chess, Checkers, Pairs and Chests can be played with a friend.",
-      "image": "https://media.forgecdn.net/attachments/1965/191/sudoku-jpg.jpg",
-      "downloads": [
-        {
-          "source": "curseforge",
-          "name": "Raid Waiting Arcade",
-          "url": "https://edge.forgecdn.net/files/8940/327/MANACODE_RaidWaitingArcade-0.9.0.zip",
-          "updated": "2026-09-21",
-          "page": "https://www.curseforge.com/wow/addons/raid-waiting-arcade",
-          "changes": "https://www.curseforge.com/wow/addons/raid-waiting-arcade/files",
-          "folders": [
-            {
-              "name": "MANACODE_RaidWaitingArcade",
-              "title": "[MANACODE] Arcade - while the raid gathers",
-              "version": "0.9.0",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "RaidAchievement",
       "description": "RaidAchievement shows when achievement, that you can't track is failed or when all criterias are done and you need to kill boss.",
       "image": "https://media.forgecdn.net/attachments/77/264/WoWScrnShot_101509_145424.jpg",
@@ -32255,7 +32385,7 @@
         {
           "source": "nom0re",
           "name": "RaidBrowser for Warmane",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidBrowser.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/RaidBrowser.zip",
           "updated": "2023-01-26",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RaidBrowser.zip",
           "links": [
@@ -32283,7 +32413,7 @@
         {
           "source": "nom0re",
           "name": "RaidBuffStatus",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidBuffStatus.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/RaidBuffStatus.zip",
           "updated": "2010-10-09",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RaidBuffStatus.zip",
           "links": [
@@ -32326,7 +32456,7 @@
         {
           "source": "nom0re",
           "name": "RaidCluster",
-          "url": "https://github.com/NoM0Re/RaidCluster/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/RaidCluster/archive/b20bbda8422567298455abc83843fc51542f46b4.zip",
           "updated": "2026-06-21",
           "page": "https://github.com/NoM0Re/RaidCluster",
           "changes": "https://github.com/NoM0Re/RaidCluster/commits/main",
@@ -32349,7 +32479,7 @@
         {
           "source": "nom0re",
           "name": "RaidComp",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidComp.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/RaidComp.zip",
           "updated": "2021-01-05",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RaidComp.zip",
           "links": [
@@ -32460,7 +32590,7 @@
         {
           "source": "nom0re",
           "name": "RaidSlackCheck",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RaidSlackCheck.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/235b9e4cd5b429b94f4cb33ba9308d3c78f6bcad/src/Addons/RaidSlackCheck.zip",
           "updated": "2010-07-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RaidSlackCheck.zip",
           "links": [
@@ -32918,7 +33048,7 @@
         {
           "source": "nom0re",
           "name": "RatingBuster",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/RatingBuster.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/235b9e4cd5b429b94f4cb33ba9308d3c78f6bcad/src/Addons/RatingBuster.zip",
           "updated": "2026-09-28",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/RatingBuster.zip",
           "links": [
@@ -32973,7 +33103,7 @@
         {
           "source": "github-bkader",
           "name": "Raven-WotLK",
-          "url": "https://github.com/bkader/Raven-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Raven-WotLK/archive/40c2ada631e1ffd8b021a4769a88567e98e5a640.zip",
           "updated": "2022-06-07",
           "page": "https://github.com/bkader/Raven-WotLK",
           "changes": "https://github.com/bkader/Raven-WotLK/commits/main",
@@ -33224,7 +33354,7 @@
         {
           "source": "nom0re",
           "name": "RecipeColor",
-          "url": "https://api.github.com/repos/Drakensangs/RecipeColor-WotLK/zipball/3.3",
+          "url": "https://github.com/Drakensangs/RecipeColor-WotLK/archive/d749c21117a622353a369e407c443c72b5f0fcd1.zip",
           "updated": "2026-09-05",
           "changes": "https://github.com/Drakensangs/RecipeColor-WotLK/releases",
           "links": [
@@ -33352,7 +33482,7 @@
         {
           "source": "nom0re",
           "name": "Redeemer",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Redeemer.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Redeemer.zip",
           "updated": "2019-08-29",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Redeemer.zip",
           "links": [
@@ -33379,7 +33509,7 @@
         {
           "source": "github-khalgh",
           "name": "RefinedBlizzPlates-WotLK",
-          "url": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/archive/d9026d9aa8c0c97aa007744a701e43721f22b8dc.zip",
           "updated": "2026-10-28",
           "page": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK",
           "changes": "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/commits/main",
@@ -33828,7 +33958,7 @@
         {
           "source": "github-xurkon",
           "name": "Routes",
-          "url": "https://github.com/Xurkon/Routes/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/Routes/archive/089d8a88494faa6727eb2e9071064fec03d9ecbe.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/Routes",
           "changes": "https://github.com/Xurkon/Routes/commits/main",
@@ -33844,7 +33974,7 @@
         {
           "source": "github-sattva-108",
           "name": "Routes",
-          "url": "https://github.com/Sattva-108/Routes/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/Routes/archive/11e0b39eeef8b855d4d8e5a6d2fc7a8900ca38ef.zip",
           "updated": "2026-07-19",
           "page": "https://github.com/Sattva-108/Routes",
           "changes": "https://github.com/Sattva-108/Routes/commits/master",
@@ -34169,7 +34299,7 @@
         {
           "source": "nom0re",
           "name": "SavedInstances",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SavedInstances.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/235b9e4cd5b429b94f4cb33ba9308d3c78f6bcad/src/Addons/SavedInstances.zip",
           "updated": "2010-01-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SavedInstances.zip",
           "links": [
@@ -34499,7 +34629,7 @@
         {
           "source": "nom0re",
           "name": "SexyCooldown",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SexyCooldown.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SexyCooldown.zip",
           "updated": "2010-04-14",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SexyCooldown.zip",
           "links": [
@@ -34542,7 +34672,7 @@
         {
           "source": "github-xurkon",
           "name": "SexyMap",
-          "url": "https://github.com/Xurkon/SexyMap/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/SexyMap/archive/833d2f1dd5e8ea5f8eae5e976b352c051a06bf0f.zip",
           "updated": "2026-05-03",
           "page": "https://github.com/Xurkon/SexyMap",
           "changes": "https://github.com/Xurkon/SexyMap/commits/main",
@@ -34557,7 +34687,7 @@
         {
           "source": "nom0re",
           "name": "SexyMap",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SexyMap.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SexyMap.zip",
           "updated": "2021-10-11",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SexyMap.zip",
           "links": [
@@ -34661,7 +34791,7 @@
         {
           "source": "nom0re",
           "name": "Shadowed Unit Frames",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/ShadowedUnitFrames.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/ShadowedUnitFrames.zip",
           "updated": "2010-06-27",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/ShadowedUnitFrames.zip",
           "links": [
@@ -34714,7 +34844,7 @@
         {
           "source": "github-xurkon",
           "name": "ShadowedUnitFrames",
-          "url": "https://github.com/Xurkon/ShadowedUnitFrames/archive/refs/heads/master.zip",
+          "url": "https://github.com/Xurkon/ShadowedUnitFrames/archive/101b1ebc2aee282978afab829760737738a2bc7a.zip",
           "updated": "2026-05-10",
           "page": "https://github.com/Xurkon/ShadowedUnitFrames",
           "changes": "https://github.com/Xurkon/ShadowedUnitFrames/commits/master",
@@ -34825,7 +34955,7 @@
         {
           "source": "nom0re",
           "name": "SharedMedia",
-          "url": "https://github.com/NoM0Re/SharedMedia/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/SharedMedia/archive/fead496d700a17ca344e00b1b285fc043b84a416.zip",
           "updated": "2025-04-22",
           "page": "https://github.com/NoM0Re/SharedMedia",
           "changes": "https://github.com/NoM0Re/SharedMedia/commits/main",
@@ -34848,7 +34978,7 @@
         {
           "source": "nom0re",
           "name": "SharedMedia AddOns",
-          "url": "https://github.com/bkader/SharedMedia/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/SharedMedia/archive/a690a74b5a377266d02aee2a014aeaae34ec1d93.zip",
           "updated": "2023-01-09",
           "changes": "https://github.com/bkader/SharedMedia/commits/main",
           "links": [
@@ -34898,7 +35028,7 @@
         {
           "source": "nom0re",
           "name": "SharedMediaAdditionalFonts",
-          "url": "https://github.com/NoM0Re/SharedMediaAdditionalFonts/archive/refs/heads/main.zip",
+          "url": "https://github.com/NoM0Re/SharedMediaAdditionalFonts/archive/f8fe7b8f316eae9067360761aa79b54c7b666f4d.zip",
           "updated": "2025-11-11",
           "page": "https://github.com/NoM0Re/SharedMediaAdditionalFonts",
           "changes": "https://github.com/NoM0Re/SharedMediaAdditionalFonts/commits/main",
@@ -35831,7 +35961,7 @@
         {
           "source": "nom0re",
           "name": "Skada vs. Details!",
-          "url": "https://github.com/bkader/Skada-WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Skada-WoTLK/archive/5653a241a7a97a5988280d916ff3a9e31ec55948.zip",
           "updated": "2024-03-23",
           "changes": "https://github.com/bkader/Skada-WoTLK/commits/main",
           "links": [
@@ -36234,7 +36364,7 @@
         {
           "source": "nom0re",
           "name": "SmartTrack",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SmartTrack.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SmartTrack.zip",
           "updated": "2009-05-07",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SmartTrack.zip",
           "links": [
@@ -36303,7 +36433,7 @@
         {
           "source": "github-s0h2x",
           "name": "Snowfall",
-          "url": "https://github.com/s0h2x/Snowfall/archive/refs/heads/master.zip",
+          "url": "https://github.com/s0h2x/Snowfall/archive/8b506451c6341990b03d19d6b32b6ebd5f8fe063.zip",
           "updated": "2023-01-09",
           "page": "https://github.com/s0h2x/Snowfall",
           "changes": "https://github.com/s0h2x/Snowfall/commits/master",
@@ -36346,7 +36476,7 @@
         {
           "source": "nom0re",
           "name": "SnowfallKeyPress",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SnowfallKeyPress.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SnowfallKeyPress.zip",
           "updated": "2021-10-11",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SnowfallKeyPress.zip",
           "links": [
@@ -36506,7 +36636,7 @@
         {
           "source": "nom0re",
           "name": "Soulstone",
-          "url": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases/latest/download/Soulstone.zip",
+          "url": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases/download/v1.1.0/Soulstone.zip",
           "updated": "2026-10-21",
           "changes": "https://github.com/pabhoz/Soulstone-WoW-Addon/releases",
           "links": [
@@ -36556,7 +36686,7 @@
         {
           "source": "nom0re",
           "name": "SoundAlerter",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SoundAlerter.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SoundAlerter.zip",
           "updated": "2022-01-03",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SoundAlerter.zip",
           "links": [
@@ -36828,7 +36958,7 @@
         {
           "source": "nom0re",
           "name": "SpellID",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SpellID.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SpellID.zip",
           "updated": "2010-07-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SpellID.zip",
           "links": [
@@ -36922,7 +37052,7 @@
         {
           "source": "nom0re",
           "name": "SpellReplay",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/SpellReplay.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/SpellReplay.zip",
           "updated": "2019-10-11",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/SpellReplay.zip",
           "links": [
@@ -37016,7 +37146,7 @@
         {
           "source": "nom0re",
           "name": "Spy",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/spy.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/spy.zip",
           "updated": "2010-08-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/spy.zip",
           "links": [
@@ -37130,7 +37260,7 @@
         {
           "source": "nom0re",
           "name": "STFU: Shut the fuck up, thanks.",
-          "url": "https://github.com/Arcitec/STFU_Chat_Filter/archive/refs/heads/main.zip",
+          "url": "https://github.com/Arcitec/STFU_Chat_Filter/archive/df3fb1e70789e746eb8e495f13ddf862351c8cb2.zip",
           "updated": "2024-06-04",
           "changes": "https://github.com/Arcitec/STFU_Chat_Filter/commits/main",
           "links": [
@@ -37201,7 +37331,7 @@
         {
           "source": "nom0re",
           "name": "Storyline",
-          "url": "https://api.github.com/repos/shadovvs/WotLK-Storyline/zipball/v1.0.1",
+          "url": "https://github.com/shadovvs/WotLK-Storyline/archive/dafae45493de81511c1c87742d207315d9c1a8ad.zip",
           "updated": "2018-01-08",
           "changes": "https://github.com/shadovvs/WotLK-Storyline/releases",
           "links": [
@@ -37385,7 +37515,7 @@
         {
           "source": "github-wrath-addons",
           "name": "SummonRandomCritter",
-          "url": "https://github.com/Wrath-AddOns/SummonRandomCritter/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/SummonRandomCritter/archive/cb5a09d1cf25d4146c5d24f1010f0a2c49e6489b.zip",
           "updated": "2026-01-07",
           "page": "https://github.com/Wrath-AddOns/SummonRandomCritter",
           "changes": "https://github.com/Wrath-AddOns/SummonRandomCritter/commits/master",
@@ -37603,7 +37733,7 @@
         {
           "source": "github-wrath-addons",
           "name": "Tale-WotLK",
-          "url": "https://github.com/Wrath-AddOns/Tale-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/Tale-WotLK/archive/870631235f3c278160cca0eb3772d7a26130f974.zip",
           "updated": "2021-03-20",
           "page": "https://github.com/Wrath-AddOns/Tale-WotLK",
           "changes": "https://github.com/Wrath-AddOns/Tale-WotLK/commits/master",
@@ -37647,7 +37777,7 @@
         {
           "source": "nom0re",
           "name": "Talented",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/Talented.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Talented.zip",
           "updated": "2022-07-08",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/Talented.zip",
           "links": [
@@ -37668,7 +37798,7 @@
         {
           "source": "github-bkader",
           "name": "Talented_WoTLK",
-          "url": "https://github.com/bkader/Talented_WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/Talented_WoTLK/archive/648a0ead7d664f3b220088738bc1c7e6041be090.zip",
           "updated": "2022-07-08",
           "page": "https://github.com/bkader/Talented_WoTLK",
           "changes": "https://github.com/bkader/Talented_WoTLK/commits/main",
@@ -37963,7 +38093,7 @@
         {
           "source": "nom0re",
           "name": "TellMeWhen",
-          "url": "https://github.com/bkader/TellMeWhen_3.3.5/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/TellMeWhen_3.3.5/archive/f02014b9b325bc25ea434c3da88783c8dd3d800c.zip",
           "updated": "2022-08-07",
           "changes": "https://github.com/bkader/TellMeWhen_3.3.5/commits/main",
           "links": [
@@ -38005,7 +38135,7 @@
         {
           "source": "github-bkader",
           "name": "TheClassicRace-WotLK",
-          "url": "https://github.com/bkader/TheClassicRace-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/TheClassicRace-WotLK/archive/9497309b2d8f96b521b24b393511c0f1fc640b66.zip",
           "updated": "2022-05-25",
           "page": "https://github.com/bkader/TheClassicRace-WotLK",
           "changes": "https://github.com/bkader/TheClassicRace-WotLK/commits/main",
@@ -38070,7 +38200,7 @@
         {
           "source": "nom0re",
           "name": "Tidy Plates",
-          "url": "https://github.com/bkader/TidyPlates_WoTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/bkader/TidyPlates_WoTLK/archive/a668fc23d329356ad6e808fc084fd0f4094b43e3.zip",
           "updated": "2022-08-07",
           "changes": "https://github.com/bkader/TidyPlates_WoTLK/commits/main",
           "links": [
@@ -38509,7 +38639,7 @@
         {
           "source": "nom0re",
           "name": "TipTac",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/TipTac.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/TipTac.zip",
           "updated": "2010-05-01",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/TipTac.zip",
           "links": [
@@ -39680,7 +39810,7 @@
         {
           "source": "github-xurkon",
           "name": "TradeSkillMaster",
-          "url": "https://github.com/Xurkon/TradeSkillMaster/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/TradeSkillMaster/archive/e8232367e98c1a856cb2f7e2549cb6f27b4ef946.zip",
           "updated": "2026-01-01",
           "page": "https://github.com/Xurkon/TradeSkillMaster",
           "changes": "https://github.com/Xurkon/TradeSkillMaster/commits/main",
@@ -39774,7 +39904,7 @@
         {
           "source": "github-wrath-addons",
           "name": "TradeSkillMaster",
-          "url": "https://github.com/Wrath-AddOns/TradeSkillMaster/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/TradeSkillMaster/archive/7ada4c8a76e91a11245a19ef52346b34ad84ac10.zip",
           "updated": "2023-03-28",
           "page": "https://github.com/Wrath-AddOns/TradeSkillMaster",
           "changes": "https://github.com/Wrath-AddOns/TradeSkillMaster/commits/master",
@@ -39850,7 +39980,7 @@
         {
           "source": "github-zidras",
           "name": "Transcriptor-WOTLK",
-          "url": "https://github.com/Zidras/Transcriptor-WOTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/Zidras/Transcriptor-WOTLK/archive/bb4bf5b1fede2a4fd696fa27b758bf6709cbc317.zip",
           "updated": "2025-10-22",
           "page": "https://github.com/Zidras/Transcriptor-WOTLK",
           "changes": "https://github.com/Zidras/Transcriptor-WOTLK/commits/main",
@@ -40020,7 +40150,7 @@
         {
           "source": "github-khalgh",
           "name": "TrinketWatcher-WotLK",
-          "url": "https://github.com/KhalGH/TrinketWatcher-WotLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/KhalGH/TrinketWatcher-WotLK/archive/09723a5a8da06d6504cfa934c944dc508f03cd32.zip",
           "updated": "2025-12-15",
           "page": "https://github.com/KhalGH/TrinketWatcher-WotLK",
           "changes": "https://github.com/KhalGH/TrinketWatcher-WotLK/commits/main",
@@ -40065,7 +40195,7 @@
         {
           "source": "nom0re",
           "name": "TrufiGCD",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/TrufiGCD.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/e706f48c4354c6ddc0ff3bdff3fa7a111544f63b/src/Addons/TrufiGCD.zip",
           "updated": "2020-02-21",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/TrufiGCD.zip",
           "links": [
@@ -40174,7 +40304,7 @@
         {
           "source": "nom0re",
           "name": "TurnIn",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/TurnIn-2.1.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/TurnIn-2.1.zip",
           "updated": "2010-09-09",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/TurnIn-2.1.zip",
           "links": [
@@ -40356,7 +40486,7 @@
         {
           "source": "nom0re",
           "name": "Unified Profile Manager",
-          "url": "https://github.com/NoM0Re/UnifiedProfileManager-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/NoM0Re/UnifiedProfileManager-WotLK/archive/5daf19988c996b9fa48e0cc98149adb42e003714.zip",
           "updated": "2026-04-01",
           "changes": "https://github.com/NoM0Re/UnifiedProfileManager-WotLK/commits/master",
           "links": [
@@ -40406,7 +40536,7 @@
         {
           "source": "github-sattva-108",
           "name": "unitscan",
-          "url": "https://github.com/Sattva-108/unitscan/archive/refs/heads/main.zip",
+          "url": "https://github.com/Sattva-108/unitscan/archive/62cee19fcec87a09e7d197d0174f0a384722bc42.zip",
           "updated": "2024-03-26",
           "page": "https://github.com/Sattva-108/unitscan",
           "changes": "https://github.com/Sattva-108/unitscan/commits/main",
@@ -40517,7 +40647,7 @@
         {
           "source": "nom0re",
           "name": "Vd-skip",
-          "url": "https://github.com/Stradios/Vd-skip/archive/refs/heads/main.zip",
+          "url": "https://github.com/Stradios/Vd-skip/archive/67ea13234724c63b11a64611b236c8f6964d3a1a.zip",
           "updated": "2026-10-25",
           "changes": "https://github.com/Stradios/Vd-skip/commits/main",
           "links": [
@@ -40678,7 +40808,7 @@
         {
           "source": "nom0re",
           "name": "VuhDo",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/VuhDo.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/VuhDo.zip",
           "updated": "2010-10-02",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/VuhDo.zip",
           "links": [
@@ -40817,6 +40947,28 @@
       ]
     },
     {
+      "name": "WDM",
+      "description": "It is a great addition to the classic dungeon map patch. Expands the features, adds new elements related to the World Map.",
+      "downloads": [
+        {
+          "source": "github-trimitor-wdm-addons",
+          "name": "WDM",
+          "url": "https://github.com/Trimitor/WDM-addons/releases/download/1.0.9-stable/WDM.zip",
+          "updated": "2026-06-11",
+          "page": "https://github.com/Trimitor/WDM-addons",
+          "changes": "https://github.com/Trimitor/WDM-addons/releases/tag/1.0.9-stable",
+          "folders": [
+            {
+              "name": "WDM",
+              "title": "WoW Dungeon Maps",
+              "version": "1.0.9",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "WeakAuras",
       "description": "Displays configurable graphics and text based on buffs, debuffs, cooldowns, and other triggers",
       "downloads": [
@@ -40856,7 +41008,7 @@
         {
           "source": "github-bunny67",
           "name": "WeakAuras-WotLK",
-          "url": "https://github.com/Bunny67/WeakAuras-WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/Bunny67/WeakAuras-WotLK/archive/58c99532640eea021c0b07478469a9e7e612a54e.zip",
           "updated": "2024-04-25",
           "page": "https://github.com/Bunny67/WeakAuras-WotLK",
           "changes": "https://github.com/Bunny67/WeakAuras-WotLK/commits/master",
@@ -40945,7 +41097,7 @@
         {
           "source": "github-sattva-108",
           "name": "WeakAuras-Endless-TBC-3.3.5",
-          "url": "https://github.com/Sattva-108/WeakAuras-Endless-TBC-3.3.5/archive/refs/heads/master.zip",
+          "url": "https://github.com/Sattva-108/WeakAuras-Endless-TBC-3.3.5/archive/3d45eb0d1da667d65a38c94b35df111f68b67628.zip",
           "updated": "2023-08-02",
           "page": "https://github.com/Sattva-108/WeakAuras-Endless-TBC-3.3.5",
           "changes": "https://github.com/Sattva-108/WeakAuras-Endless-TBC-3.3.5/commits/master",
@@ -40967,8 +41119,8 @@
         {
           "source": "nom0re",
           "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/refs/heads/master.zip",
-          "updated": "2026-10-18",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/9386a0cb3dd96c19bedb563197ba0fe03ff7f2d9.zip",
+          "updated": "2026-10-29",
           "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
           "folders": [
@@ -41018,8 +41170,8 @@
         {
           "source": "nom0re",
           "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/latest/download/WeakAuras2.zip",
-          "updated": "2026-10-18",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/download/5.22.1-9386a0cb/WeakAuras2.zip",
+          "updated": "2026-10-29",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
           "links": [
             {
@@ -41149,7 +41301,7 @@
         {
           "source": "nom0re",
           "name": "What's Training?",
-          "url": "https://github.com/anhility/WhatsTraining_WotLK/archive/refs/heads/master.zip",
+          "url": "https://github.com/anhility/WhatsTraining_WotLK/archive/ce406da3ffe579b465db07ec0071b0c3355062f5.zip",
           "updated": "2023-01-28",
           "changes": "https://github.com/anhility/WhatsTraining_WotLK/commits/master",
           "links": [
@@ -41393,7 +41545,7 @@
         {
           "source": "nom0re",
           "name": "WIM (WoW Instant Messenger)",
-          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/main/src/Addons/WIM.zip",
+          "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/WIM.zip",
           "updated": "2010-07-13",
           "changes": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/commits/main/src/Addons/WIM.zip",
           "links": [
@@ -42172,7 +42324,7 @@
         {
           "source": "nom0re",
           "name": "xCT+",
-          "url": "https://github.com/hypopheria2k/xCT_Plus_wotlk/archive/refs/heads/master.zip",
+          "url": "https://github.com/hypopheria2k/xCT_Plus_wotlk/archive/8c9969e0893f67edb373e292b5e04d83dc4e4c96.zip",
           "updated": "2026-05-01",
           "changes": "https://github.com/hypopheria2k/xCT_Plus_wotlk/commits/master",
           "links": [
@@ -42193,7 +42345,7 @@
         {
           "source": "github-wrath-addons",
           "name": "xCT_Plus_wotlk",
-          "url": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk/archive/refs/heads/master.zip",
+          "url": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk/archive/5f7ea24cab2146069ddd7053daf0054e00b9c1b6.zip",
           "updated": "2021-07-05",
           "page": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk",
           "changes": "https://github.com/Wrath-AddOns/xCT_Plus_wotlk/commits/master",
@@ -42291,7 +42443,7 @@
         {
           "source": "github-xurkon",
           "name": "XtoLevel",
-          "url": "https://github.com/Xurkon/XtoLevel/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/XtoLevel/archive/6e15bc7e41853338ca961de6449ec164fcc66af5.zip",
           "updated": "2025-12-30",
           "page": "https://github.com/Xurkon/XtoLevel",
           "changes": "https://github.com/Xurkon/XtoLevel/commits/main",
@@ -42575,7 +42727,7 @@
         {
           "source": "github-wrath-addons",
           "name": "ZOMGBuffs",
-          "url": "https://github.com/Wrath-AddOns/ZOMGBuffs/archive/refs/heads/WotLK.zip",
+          "url": "https://github.com/Wrath-AddOns/ZOMGBuffs/archive/b027b646e846e47b86aa1cd98b5eb33a54f1c073.zip",
           "updated": "2021-05-19",
           "page": "https://github.com/Wrath-AddOns/ZOMGBuffs",
           "changes": "https://github.com/Wrath-AddOns/ZOMGBuffs/commits/WotLK",
@@ -42728,7 +42880,7 @@
         {
           "source": "nom0re",
           "name": "Zygor Guides",
-          "url": "https://github.com/ErebusAres/ZygorGuidesRemaster-3.3.5a_WOTLK/archive/refs/heads/main.zip",
+          "url": "https://github.com/ErebusAres/ZygorGuidesRemaster-3.3.5a_WOTLK/archive/d2aae8d0f1f3782d964e4179907b215aab484787.zip",
           "updated": "2026-10-27",
           "changes": "https://github.com/ErebusAres/ZygorGuidesRemaster-3.3.5a_WOTLK/commits/main",
           "links": [
@@ -42755,7 +42907,7 @@
         {
           "source": "github-xurkon",
           "name": "ZygorGuidesViewer",
-          "url": "https://github.com/Xurkon/ZygorGuidesViewer/archive/refs/heads/main.zip",
+          "url": "https://github.com/Xurkon/ZygorGuidesViewer/archive/068fad28c28e0e657d3cb7721f128b4cb470d719.zip",
           "updated": "2026-05-04",
           "page": "https://github.com/Xurkon/ZygorGuidesViewer",
           "changes": "https://github.com/Xurkon/ZygorGuidesViewer/commits/main",
