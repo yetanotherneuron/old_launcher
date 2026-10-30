@@ -19,6 +19,7 @@ mod errors;
 mod game;
 mod github;
 mod gitlab;
+mod patches;
 mod recognize;
 mod recovery;
 #[cfg(test)]
@@ -118,6 +119,8 @@ pub struct App {
     download: download::State,
     /// The games started, and the selected client's when found running.
     game: game::State,
+    /// What the selected client's archives say, looked at in the background.
+    patches: patches::State,
     /// A newer launcher version than this one, when published.
     latest: Option<String>,
     /// Whether quitting was asked for while something it would cut short
@@ -182,6 +185,8 @@ pub enum Message {
     Recognize(recognize::Message),
     /// Something happened to a game.
     Game(game::Message),
+    /// The look at a client's patches got somewhere, or ended.
+    Patches(patches::Message),
     /// An interaction with the settings dialog.
     Settings(settings::Message),
     /// Open the settings dialog.
@@ -340,6 +345,7 @@ impl App {
             clients: clients::State::default(),
             download: download::State::new(download::store()),
             game: game::State::default(),
+            patches: patches::State::new(patches::cache()),
             latest: None,
             quitting: false,
             focused: true,
@@ -593,6 +599,8 @@ impl App {
                         self.config.remove(&removed);
                         self.selected = Selected::Nothing;
                         self.recognize.clear();
+                        self.patches.forget(&removed);
+                        self.sync_patches();
 
                         let open = match self.config.selected.clone() {
                             Some(path) => {
@@ -619,6 +627,8 @@ impl App {
                                 switched.locale().map_or("no language", Locale::code)
                             );
                             *installation = switched;
+                            // The language decides which archives load.
+                            return Task::batch([task, self.look_at_patches()]);
                         }
                         task
                     }
@@ -770,6 +780,7 @@ impl App {
                 };
                 if self.clients.holds_back(installation.root())
                     || self.download.holds_back(installation.root())
+                    || self.patches.holds_back(installation.root())
                 {
                     return Task::none();
                 }
@@ -790,6 +801,15 @@ impl App {
                 .game
                 .update(message, &mut self.errors)
                 .map(Message::Game),
+            Message::Patches(message) => {
+                let task = self
+                    .patches
+                    .update(message, &mut self.errors)
+                    .map(Message::Patches);
+                self.sync_patches();
+
+                task
+            }
             // Back from somewhere else, where a game may have started. The
             // window reports the focus more than once per return, so only
             // the change from lost to gained counts.
@@ -802,8 +822,17 @@ impl App {
                 log::trace!("The window got the focus back");
                 let (installation, _) = self.selected.open();
                 let selected = installation.map(Installation::root);
+                // Archives may have come or gone meanwhile.
+                let patches = installation.map_or_else(Task::none, |installation| {
+                    self.patches
+                        .regained(
+                            installation.root(),
+                            installation.locale().unwrap_or(Locale::EnUs),
+                        )
+                        .map(Message::Patches)
+                });
 
-                self.game.watch(selected).map(Message::Game)
+                Task::batch([self.game.watch(selected).map(Message::Game), patches])
             }
             Message::Opened(path, result) => {
                 if !matches!(&self.selected, Selected::Opening(opening) if *opening == path) {
@@ -830,7 +859,7 @@ impl App {
                             installation,
                             snapshot: None,
                         };
-                        Task::batch([self.rescan(), watch])
+                        Task::batch([self.rescan(), self.look_at_patches(), watch])
                     }
                     Err(error) => {
                         self.errors
@@ -954,7 +983,11 @@ impl App {
             }
             Message::Refresh => {
                 log::info!("Refreshing on request");
-                Task::batch([self.rescan(), self.refresh_catalog()])
+                Task::batch([
+                    self.rescan(),
+                    self.look_at_patches(),
+                    self.refresh_catalog(),
+                ])
             }
             Message::OpenRepository => {
                 log::info!("Opening {REPOSITORY} in the browser");
@@ -1199,7 +1232,9 @@ impl App {
                 (matches!(self.selected, Selected::Open { .. })
                     && game.is_none()
                     && !self.selected.path().is_some_and(|root| {
-                        self.clients.holds_back(root) || self.download.holds_back(root)
+                        self.clients.holds_back(root)
+                            || self.download.holds_back(root)
+                            || self.patches.holds_back(root)
                     }))
                 .then_some(Message::Play),
             ),
@@ -1299,6 +1334,12 @@ impl App {
             .banner(&self.config)
             .map(|banner| banner.map(Message::Download));
 
+        let looking = self
+            .selected
+            .path()
+            .and_then(|root| self.patches.banner(root))
+            .map(|banner| banner.map(Message::Patches));
+
         let graphics = self
             .clients
             .banner(self.selected.path(), game.is_some())
@@ -1334,6 +1375,7 @@ impl App {
                 error,
                 notice,
                 downloading,
+                looking,
                 graphics,
                 proposal
             ]
@@ -1517,7 +1559,7 @@ impl App {
         self.setup = None;
         self.recognize.clear();
 
-        Task::batch([read, self.rescan(), self.save()])
+        Task::batch([read, self.rescan(), self.look_at_patches(), self.save()])
     }
 
     /// Starts checking the client at `path`.
@@ -1543,13 +1585,31 @@ impl App {
             .clients
             .changed(root, current.as_deref())
             .map(Message::Clients);
-        let rescan = if current.as_deref() == Some(root) {
-            self.rescan()
+        let (rescan, patches) = if current.as_deref() == Some(root) {
+            (self.rescan(), self.look_at_patches())
         } else {
-            Task::none()
+            (Task::none(), Task::none())
         };
 
-        Task::batch([changed, rescan])
+        Task::batch([changed, rescan, patches])
+    }
+
+    /// Looks at the selected client's patches again, in the background.
+    fn look_at_patches(&mut self) -> Task<Message> {
+        let Selected::Open { installation, .. } = &self.selected else {
+            return Task::none();
+        };
+        let root = installation.root().to_path_buf();
+        let locale = installation.locale().unwrap_or(Locale::EnUs);
+        let task = self.patches.look(&root, locale).map(Message::Patches);
+        self.sync_patches();
+
+        task
+    }
+
+    /// Tells the mods which clients' patches are being looked at.
+    fn sync_patches(&mut self) {
+        self.clients.waiting_for_patches(self.patches.waiting());
     }
 
     /// Reads the selected client's addons and data again.
@@ -1810,6 +1870,7 @@ mod tests {
             clients: clients::State::default(),
             download: download::State::new(PathBuf::from("torrents")),
             game: game::State::default(),
+            patches: patches::State::new(core::patches::Cache::at("mpq")),
             latest: None,
             quitting: false,
             focused: true,
@@ -2633,6 +2694,242 @@ mod tests {
         ));
         assert!(play_button(&app, "Play"));
         assert_eq!(app.clients.natives(&root), ["CoAVolFog"]);
+    }
+
+    /// A launcher that opens `installation` as it does at start (its patches
+    /// are looked at, but the task doing it isn't run), keeping what it reads
+    /// of the archives in `cache`, with the list of mods.
+    fn opening(installation: Installation, cache: &Path) -> App {
+        let root = installation.root().to_path_buf();
+        let mut app = app(&[&root.display().to_string()]);
+        app.patches = patches::State::new(core::patches::Cache::at(cache));
+        app.selected = Selected::Opening(root.clone());
+        let json = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/index/mods.json")).unwrap();
+        let _ = app.update(Message::ModsLoaded(Ok(catalog::Fetched::Changed {
+            catalog: Mods::parse(&json).unwrap(),
+            tag: None,
+        })));
+        let _ = app.update(Message::Opened(root, Ok(installation)));
+
+        app
+    }
+
+    /// The look at `root`'s patches ended, finding what is there and keeping
+    /// what it read in `cache`.
+    fn looked_at_patches(app: &mut App, root: &Path, cache: &Path) {
+        let scan = patches::look(
+            root,
+            Locale::EnUs,
+            &core::patches::Cache::at(cache),
+            &|_| {},
+        );
+        let _ = app.update(Message::Patches(patches::Message::Looked(
+            root.to_path_buf(),
+            scan.map(std::sync::Arc::new),
+        )));
+    }
+
+    #[test]
+    fn play_and_the_mods_buttons_wait_for_the_patches_to_be_looked_at() {
+        let (_root, installation) = crate::testing::client(&["Data/patch-a.mpq"]);
+        let root = installation.root().to_path_buf();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        mods_looked_at(&mut app, &root);
+        let _ = app.config.torrents.insert(
+            root.clone(),
+            core::config::ClientTorrent {
+                name: "WotLK".into(),
+                info_hash: "c0ffee".into(),
+                source: "magnet:?xt=urn:btih:c0ffee".into(),
+                folder: root.clone(),
+                languages: Vec::new(),
+                made: false,
+            },
+        );
+        let pressed = |app: &App, label: &str| {
+            let mut ui = simulator(app.view());
+            let _ = ui.click(label).unwrap();
+            ui.into_messages().count() > 0
+        };
+
+        // From the moment it opens, nothing the patches could change goes on.
+        assert!(app.patches.holds_back(&root));
+        let _ = app.update(Message::Play);
+        assert!(app.game.phase(&root).is_none(), "nothing was started");
+        assert!(!play_button(&app, "Play"));
+        let _ = app.update(Message::ManageClients);
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Looking…").is_ok(), "the mods' rows");
+        drop(ui);
+        assert!(!pressed(&app, "Check"));
+
+        // The look ends: they are free.
+        looked_at_patches(&mut app, &root, folder.path());
+        assert!(!app.patches.holds_back(&root));
+        assert!(app.patches.graph(&root).is_some());
+        let mut ui = simulator(app.view());
+        assert!(ui.find("Looking…").is_err());
+        assert!(ui.find("Not installed.").is_ok());
+        drop(ui);
+        assert!(pressed(&app, "Check"));
+        let _ = app.update(Message::Escape);
+        assert!(play_button(&app, "Play"));
+    }
+
+    #[test]
+    fn a_scan_that_fails_releases_play_and_reports() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        std::fs::write(root.join("Data"), b"a file, not a folder").unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        mods_looked_at(&mut app, &root);
+        assert!(!play_button(&app, "Play"));
+
+        let scan = patches::look(
+            &root,
+            Locale::EnUs,
+            &core::patches::Cache::at(folder.path()),
+            &|_| {},
+        );
+        assert!(scan.is_err());
+        let _ = app.update(Message::Patches(patches::Message::Looked(
+            root.clone(),
+            scan.map(std::sync::Arc::new),
+        )));
+
+        assert!(!app.patches.holds_back(&root));
+        assert!(app.patches.graph(&root).is_none());
+        assert!(play_button(&app, "Play"), "never locked out");
+        let [error] = app.errors.messages() else {
+            panic!("{:?}", app.errors.messages());
+        };
+        assert!(
+            error.starts_with("Could not look at the patches of "),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_banner_appears_with_the_first_progress_after_two_seconds_and_not_before() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        let progress = |seconds: f32, index| {
+            Message::Patches(patches::Message::Progressed(
+                root.clone(),
+                patches::Progress {
+                    elapsed: Duration::from_secs_f32(seconds),
+                    archive: "Data/patch-H.mpq".to_owned(),
+                    index,
+                    total: 35,
+                    step: patches::Step::Files(200),
+                },
+            ))
+        };
+        let banner = "Looking at this client's patches: Data/patch-H.mpq, 12 of 35…";
+
+        let _ = app.update(progress(1.5, 11));
+        assert!(simulator(app.view()).find(banner).is_err());
+        let _ = app.update(progress(2.5, 12));
+        let mut ui = simulator(app.view());
+        assert!(ui.find(banner).is_ok());
+        assert!(ui.find("Play").is_ok(), "and Play waits all along");
+        drop(ui);
+        assert!(!play_button(&app, "Play"));
+
+        looked_at_patches(&mut app, &root, folder.path());
+        assert!(simulator(app.view()).find(banner).is_err());
+
+        // A look that ends sooner shows nothing.
+        let _ = app.update(Message::Refresh);
+        let _ = app.update(progress(0.5, 1));
+        assert!(simulator(app.view()).find(banner).is_err());
+        assert!(app.patches.holds_back(&root));
+    }
+
+    #[test]
+    fn regaining_the_focus_looks_again_only_when_data_changed() {
+        let (_root, installation) = crate::testing::client(&["Data/patch-a.mpq"]);
+        let root = installation.root().to_path_buf();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        mods_looked_at(&mut app, &root);
+        let listed = || {
+            Message::Patches(patches::Message::Listed(
+                root.clone(),
+                patches::listing(&root, Locale::EnUs).map_err(|error| describe(&error)),
+            ))
+        };
+
+        // While the first look goes on, the focus changes nothing: it will
+        // see what is there.
+        let _ = app.update(Message::Focused(false));
+        assert_eq!(
+            app.update(Message::Focused(true)).units(),
+            1,
+            "only the games are watched"
+        );
+        looked_at_patches(&mut app, &root, folder.path());
+
+        let _ = app.update(Message::Focused(false));
+        assert_eq!(
+            app.update(Message::Focused(true)).units(),
+            2,
+            "the games, and the Data folders listed"
+        );
+        assert_eq!(app.update(listed()).units(), 0, "nothing changed");
+        assert!(!app.patches.holds_back(&root));
+
+        // An archive came.
+        std::fs::write(root.join("Data/patch-b.mpq"), b"x").unwrap();
+        assert!(app.update(listed()).units() > 0, "it looks again");
+        assert!(app.patches.holds_back(&root));
+
+        // Something else in Data changed: no.
+        looked_at_patches(&mut app, &root, folder.path());
+        std::fs::write(root.join("Data/notes.txt"), b"x").unwrap();
+        assert_eq!(app.update(listed()).units(), 0);
+        assert!(!app.patches.holds_back(&root));
+    }
+
+    #[test]
+    fn removing_a_client_forgets_its_cache() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let folder = tempfile::tempdir().unwrap();
+        let mut app = opening(installation, folder.path());
+        mods_looked_at(&mut app, &root);
+        std::fs::create_dir_all(root.join("Data")).unwrap();
+        crate::core::mpq::writer::Writer::new()
+            .file("a.txt", b"a")
+            .write(&root.join("Data/patch-a.mpq"));
+
+        // What the look found is kept.
+        let cache = core::patches::Cache::at(folder.path());
+        assert!(patches::look(&root, Locale::EnUs, &cache, &|_| {}).is_ok());
+        let kept = || std::fs::read_dir(folder.path()).unwrap().count();
+        assert_eq!(kept(), 1, "a folder for the client");
+        let _ = app.update(Message::ManageClients);
+        looked_at_patches(&mut app, &root, folder.path());
+
+        let _ = app.update(Message::Clients(clients::Message::Remove));
+        let _ = app.update(Message::Clients(clients::Message::ConfirmRemove));
+
+        assert!(app.config.installations.is_empty());
+        assert_eq!(kept(), 0, "and gone with the client");
+        assert!(app.patches.graph(&root).is_none());
+
+        // A look that ends after it was removed drops what it wrote.
+        assert!(patches::look(&root, Locale::EnUs, &cache, &|_| {}).is_ok());
+        assert_eq!(kept(), 1);
+        let _ = app.update(Message::Patches(patches::Message::Looked(
+            root.clone(),
+            Err("too late".to_owned()),
+        )));
+        assert_eq!(kept(), 0);
     }
 
     #[cfg(not(windows))]

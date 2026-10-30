@@ -15,6 +15,7 @@
 //! the archive is read on.
 
 use std::cell::RefCell;
+use std::collections::btree_map::Entry as Slot;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File as DiskFile;
 use std::io::{self, Read, Seek};
@@ -287,10 +288,10 @@ impl Facts {
             .collect();
         let there = |name: &str| entries.get(&key(name)).is_some_and(|entry| !entry.deleted);
 
-        let mut candidates: BTreeSet<String> = known.iter().cloned().collect();
+        let mut listed = Vec::new();
         if there(LISTFILE) {
             match source.read(LISTFILE) {
-                Ok(bytes) => candidates.extend(listfile_names(&bytes)),
+                Ok(bytes) => listed.extend(listfile_names(&bytes)),
                 Err(error) => facts
                     .problems
                     .push(format!("{LISTFILE}: can't be read: {error}")),
@@ -299,19 +300,29 @@ impl Facts {
 
         facts.tables = Tables::read(source, &there, &mut facts.problems);
         let tables = &facts.tables;
-        candidates.extend(
-            tables
-                .creature_model_data
-                .values()
-                .chain(tables.game_object_display_info.values())
-                .chain(tables.spell_visual_effect_name.values())
-                .map(|path| model_name(path)),
-        );
+        let models: Vec<String> = tables
+            .creature_model_data
+            .values()
+            .chain(tables.game_object_display_info.values())
+            .chain(tables.spell_visual_effect_name.values())
+            .map(|path| model_name(path))
+            .collect();
 
-        for name in candidates {
-            let key = key(&name);
-            if entries.contains_key(&key) {
-                facts.names.entry(key).or_insert(name);
+        // `known` is borrowed, not copied: it is every other archive's names.
+        // Of the names a key has, the first in byte order is the one kept.
+        for name in known.iter().chain(&listed).chain(&models) {
+            let key = key(name);
+            if !entries.contains_key(&key) {
+                continue;
+            }
+            match facts.names.entry(key) {
+                Slot::Vacant(vacant) => {
+                    vacant.insert(name.clone());
+                }
+                Slot::Occupied(mut occupied) if name < occupied.get() => {
+                    occupied.insert(name.clone());
+                }
+                Slot::Occupied(_) => {}
             }
         }
         for (key, entry) in &entries {

@@ -23,7 +23,7 @@ pub mod order;
 pub use cache::Cache;
 pub use change::Change;
 pub use facts::{Facts, Kind, Opened};
-pub use graph::{Gate, Graph, Layer};
+pub use graph::{Gate, Graph, Layer, strip};
 pub use order::{Order, is_blizzard, order};
 
 /// The names of the archives Blizzard ships with the 3.3.5a client, without

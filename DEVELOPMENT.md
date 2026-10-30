@@ -48,7 +48,8 @@ launcher gets again from the peers when a copy is missing.
 - `src/`: the [iced](https://github.com/iced-rs/iced) app. `lib.rs` is the
   shell; each screen is a module with its own `State`, `Message`, `update`
   and `view` (`setup`, `clients`, `settings`, `download`, `addons` with its
-  cards and dialogs). `torrent.rs` wraps librqbit, `github.rs` signs
+  cards and dialogs, `patches` for the background look at a client's
+  archives). `torrent.rs` wraps librqbit, `github.rs` signs
   downloads in, `discord.rs` is the wrapper that shows the game on Discord,
   `style.rs` the look. Screens are tested with `iced_test::simulator`,
   downloads between two librqbit sessions on localhost.
@@ -248,6 +249,12 @@ OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
 # it should load:
 OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
     cargo test --release -p old_launcher_core patches::graph::tests::a_real_client \
+    -- --ignored --nocapture
+# Looks at a client's patches the way the launcher does, twice, with a cache
+# in a temporary folder (OLD_LAUNCHER_TEST_CACHE keeps it, to time a start
+# on its own), and prints the times and the memory, only reading:
+OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release --lib patches::tests::a_real_client \
     -- --ignored --nocapture
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \

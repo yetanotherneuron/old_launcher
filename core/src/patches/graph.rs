@@ -114,16 +114,8 @@ impl Layer {
     /// what the graph never reads of them: their needs are left out, so only
     /// the `CreatureModelData` that custom tables are resolved against is
     /// kept, and they are most of the tables' weight.
-    pub fn new(priority: u32, path: String, mut facts: Facts, locale: Locale) -> Layer {
-        if is_blizzard(&path, locale) {
-            let models = std::mem::take(&mut facts.tables.creature_model_data);
-
-            facts.models = BTreeMap::new();
-            facts.tables = super::facts::Tables {
-                creature_model_data: models,
-                ..Default::default()
-            };
-        }
+    pub fn new(priority: u32, path: String, facts: Facts, locale: Locale) -> Layer {
+        let facts = strip(&path, facts, locale);
 
         Layer {
             priority,
@@ -131,6 +123,26 @@ impl Layer {
             facts: Arc::new(facts),
         }
     }
+}
+
+/// `facts` of the archive at `path`, in a client that plays in `locale`,
+/// without what the graph never reads of it (see [`Layer::new`]): Blizzard's
+/// archives lose their needs but the `CreatureModelData` that custom tables
+/// are resolved against, and they are most of the tables' weight. The
+/// launcher keeps the facts stripped, so the next start reads small files.
+/// Stripping again changes nothing.
+pub fn strip(path: &str, mut facts: Facts, locale: Locale) -> Facts {
+    if is_blizzard(path, locale) {
+        let models = std::mem::take(&mut facts.tables.creature_model_data);
+
+        facts.models = BTreeMap::new();
+        facts.tables = super::facts::Tables {
+            creature_model_data: models,
+            ..Default::default()
+        };
+    }
+
+    facts
 }
 
 /// A file, as a message names it.
@@ -1132,6 +1144,38 @@ mod tests {
         assert_eq!(unmet[0].file.kind, Kind::Models);
         assert_eq!(unmet[0].file.name.as_deref(), Some("Creature\\Bar\\Bar.m2"));
         assert_eq!(unmet[0].needs.key, key("Creature\\Bar\\Bar00.skin"));
+    }
+
+    #[test]
+    fn stripping_leaves_blizzards_facts_their_model_data_and_nothing_else_changes() {
+        let facts = facts_of(&archive(&[
+            ("Creature\\Foo\\Foo.m2", m2(1)),
+            (
+                "DBFilesClient\\CreatureModelData.dbc",
+                model_data(&[(1, "Creature\\Foo\\Foo.mdx")]),
+            ),
+            (
+                "DBFilesClient\\GameObjectDisplayInfo.dbc",
+                object_displays(&[(1, "World\\Foo.mdx")]),
+            ),
+        ]));
+        assert!(!facts.models.is_empty() && !facts.tables.game_object_display_info.is_empty());
+
+        let stripped = strip("Data/patch-2.MPQ", facts.clone(), PLAYER);
+        assert!(stripped.models.is_empty());
+        assert!(stripped.tables.game_object_display_info.is_empty());
+        assert_eq!(
+            stripped.tables.creature_model_data,
+            facts.tables.creature_model_data
+        );
+        assert_eq!(stripped.files, facts.files);
+        assert_eq!(stripped.names, facts.names);
+        assert_eq!(
+            strip("Data/patch-2.MPQ", stripped.clone(), PLAYER),
+            stripped,
+            "again, nothing changes"
+        );
+        assert_eq!(strip("Data/patch-G.MPQ", facts.clone(), PLAYER), facts);
     }
 
     #[test]

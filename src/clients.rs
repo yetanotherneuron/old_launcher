@@ -207,6 +207,12 @@ impl State {
         self.mods.keep_downloads_in(folder);
     }
 
+    /// The patches of the client folders at `roots` are being looked at, and
+    /// no others: the mods and the file check there wait for it.
+    pub fn waiting_for_patches(&mut self, roots: BTreeSet<PathBuf>) {
+        self.mods.waiting_for_patches(roots);
+    }
+
     /// Takes `list` as the list of mods, and looks at the `current` client
     /// again with it.
     pub fn list_mods(&mut self, list: Mods, current: Option<&Path>) -> Task<Message> {
@@ -739,7 +745,12 @@ impl State {
                     installation
                         .map(|installation| fact("Version", installation.version().to_string())),
                     self.torrent(torrent, downloading),
-                    integrity_of(torrent.is_some(), downloading, integrity),
+                    integrity_of(
+                        torrent.is_some(),
+                        downloading,
+                        self.mods.is_waiting_for_patches(root),
+                        integrity,
+                    ),
                     details,
                 ]
                 .spacing(6),
@@ -977,16 +988,20 @@ fn languages(
 /// What is known of the files of the client shown, `integrity`, beside the
 /// button checking them against its torrent: without one (`torrent`), it
 /// says it takes one; while a client is being downloaded, checked, or given
-/// languages (`downloading`), it waits.
+/// languages (`downloading`), or the client's patches are being looked at
+/// (`looking`), it waits.
 fn integrity_of<'a>(
     torrent: bool,
     downloading: bool,
+    looking: bool,
     integrity: Option<String>,
 ) -> Row<Element<'a, Message>> {
     let check = button(text("Check").size(13))
         .style(style::secondary)
         .padding([2, 10]);
-    let check: Element<'a, Message> = if torrent {
+    let check: Element<'a, Message> = if looking {
+        style::tip(check, crate::patches::LOOKING).boxed()
+    } else if torrent {
         check
             .on_press_maybe((!downloading).then_some(Message::Check))
             .boxed()

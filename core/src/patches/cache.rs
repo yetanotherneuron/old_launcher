@@ -34,9 +34,10 @@ const RELEASES: &str = "releases";
 /// The extension of a file of the cache.
 const EXTENSION: &str = "json";
 
-/// The facts of an archive of a client, with what they were read from.
+/// The facts of an archive of a client, with what they were read from:
+/// owned when read back, borrowed when written.
 #[derive(Serialize, Deserialize)]
-struct Archive {
+struct Archive<F = Facts> {
     /// The archive, relative to the client folder.
     path: String,
     /// Its size, in bytes.
@@ -45,15 +46,15 @@ struct Archive {
     modified: u64,
     /// The digest the caller gave of what else the facts depend on.
     pool: String,
-    facts: Facts,
+    facts: F,
 }
 
-/// The facts of the archive of a release.
+/// The facts of the archive of a release, owned or borrowed as [`Archive`]'s.
 #[derive(Serialize, Deserialize)]
-struct Release {
+struct Release<F = Facts> {
     /// Its checksum.
     sha256: String,
-    facts: Facts,
+    facts: F,
 }
 
 /// The folder the facts of the archives are kept in.
@@ -88,13 +89,8 @@ impl Cache {
         };
         let file = self.archive_file(root, path);
 
-        if let Some(kept) = read::<Archive>(&file)
-            && kept.path == path
-            && kept.size == size
-            && kept.modified == modified
-            && kept.pool == pool
-        {
-            return Ok(kept.facts);
+        if let Some(facts) = self.archive(root, path, pool) {
+            return Ok(facts);
         }
 
         let facts = compute()?;
@@ -105,11 +101,22 @@ impl Cache {
                 size,
                 modified,
                 pool: pool.to_owned(),
-                facts: facts.clone(),
+                facts: &facts,
             },
         );
 
         Ok(facts)
+    }
+
+    /// The facts kept of the archive at `path` of the client at `root`, if
+    /// they are there and its stamp and `pool` still match, without
+    /// computing any: whether the archive needs reading.
+    pub fn archive(&self, root: &Path, path: &str, pool: &str) -> Option<Facts> {
+        let (size, modified) = stamp(&root.join(path))?;
+        let kept: Archive = read(&self.archive_file(root, path))?;
+
+        (kept.path == path && kept.size == size && kept.modified == modified && kept.pool == pool)
+            .then_some(kept.facts)
     }
 
     /// The facts of the archive of a release whose checksum is `sha256`,
@@ -130,7 +137,7 @@ impl Cache {
                 &file,
                 &Release {
                     sha256: sha256.to_ascii_lowercase(),
-                    facts: facts.clone(),
+                    facts: &facts,
                 },
             );
         }
@@ -237,7 +244,10 @@ fn write<T: Serialize>(path: &Path, value: &T) {
         fs::create_dir_all(folder)?;
 
         let mut partial = tempfile::NamedTempFile::new_in(folder)?;
-        partial.write_all(&serde_json::to_vec(value).map_err(std::io::Error::other)?)?;
+        let mut writer = std::io::BufWriter::new(partial.as_file_mut());
+        serde_json::to_writer(&mut writer, value).map_err(std::io::Error::other)?;
+        writer.flush()?;
+        drop(writer);
         let _ = partial.persist(path).map_err(|error| error.error)?;
 
         Ok(())
@@ -487,5 +497,27 @@ mod tests {
         cache.forget(root);
         cache.sweep(root, &[]);
         Cache::at(dir.path().join("none")).sweep(root, &[]);
+    }
+
+    #[test]
+    fn what_is_kept_can_be_asked_for_without_computing_any() {
+        let (root, dir) = client();
+        let (root, cache) = (root.path(), Cache::at(dir.path()));
+
+        assert_eq!(cache.archive(root, "Data/patch-x.mpq", ""), None);
+        let _ = cache
+            .of_archive(root, "Data/patch-x.mpq", "pool", || Ok(facts("kept")))
+            .unwrap();
+
+        assert_eq!(
+            cache.archive(root, "Data/patch-x.mpq", "pool"),
+            Some(facts("kept"))
+        );
+        assert_eq!(
+            cache.archive(root, "Data/patch-x.mpq", ""),
+            None,
+            "the pool"
+        );
+        assert_eq!(cache.archive(root, "Data/none.mpq", "pool"), None);
     }
 }

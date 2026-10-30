@@ -62,6 +62,9 @@ pub struct State {
     /// The client folders being looked at, and whether to look again once
     /// done: asked meanwhile, the folder may have changed since.
     finding: BTreeMap<PathBuf, bool>,
+    /// The client folders whose patches are being looked at: what a mod
+    /// does to them can't be told until that is done.
+    patches: BTreeSet<PathBuf>,
     /// The work under way.
     busy: Option<Work>,
     /// The client folder and the mod whose removal from it waits for a yes,
@@ -287,6 +290,18 @@ impl State {
     /// The mods' downloads are kept in `folder` from now on (see [`cache`]).
     pub fn keep_downloads_in(&mut self, folder: PathBuf) {
         self.cache = Some(folder);
+    }
+
+    /// The patches of the client folders at `roots` are being looked at,
+    /// and no others: nothing is done to the mods there until that ends.
+    pub fn waiting_for_patches(&mut self, roots: BTreeSet<PathBuf>) {
+        self.patches = roots;
+    }
+
+    /// Whether the patches of the client folder at `root` are being looked
+    /// at.
+    pub fn is_waiting_for_patches(&self, root: &Path) -> bool {
+        self.patches.contains(root)
     }
 
     /// Takes `list` as the list of mods, those for this system, and looks at
@@ -600,7 +615,10 @@ impl State {
                 };
                 // As the section says, with no button to press: not before
                 // the client is looked at again.
-                if !self.found.contains_key(root) || self.blocked(root, listed).is_some() {
+                if !self.found.contains_key(root)
+                    || self.patches.contains(root)
+                    || self.blocked(root, listed).is_some()
+                {
                     return Action::none();
                 }
                 let (foreign, excluded) = self.conflicting(root, listed);
@@ -1108,10 +1126,12 @@ impl State {
             .and_then(|_| self.blocked(root, listed));
         // Until the folder is known, after it was worked on or while it is
         // looked at again, nothing is done to it.
-        let looking = found.is_none() || self.finding.contains_key(root);
+        let patches = self.is_waiting_for_patches(root);
+        let looking = found.is_none() || self.finding.contains_key(root) || patches;
 
         let state: Element<'a, Message> = match (found, status) {
             (None, _) => text("Looking…").size(14).style(text::secondary).boxed(),
+            (Some(_), _) if patches => text("Looking…").size(14).style(text::secondary).boxed(),
             (Some(_), None) => text("Not installed.").size(14).boxed(),
             (Some(_), Some(status)) => text(match (by_hand, &status.release, newer) {
                 (Some(Some(version)), ..) if listed.release(version).is_some() => {
@@ -1140,6 +1160,7 @@ impl State {
             match &self.busy {
                 _ if playing => style::tip(button, CLOSE_THE_GAME).boxed(),
                 Some(work) => style::tip(button, wait(work)).boxed(),
+                None if patches => style::tip(button, crate::patches::LOOKING).boxed(),
                 None if looking => style::tip(button, LOOKING).boxed(),
                 None => button.on_press(message).boxed(),
             }
@@ -2476,6 +2497,40 @@ mod tests {
         });
         assert!(state.find(&root).units() == 0);
         assert!(state.finding.is_empty());
+    }
+
+    #[test]
+    fn while_the_patches_are_looked_at_the_row_says_so_and_its_buttons_are_off() {
+        let mut state = found(Some(status(Some("1.0"), Vec::new())));
+        let root = Path::new(ROOT);
+        assert!(shows(&state, false, "Version 1.0 installed; 2.0 is out."));
+
+        state.waiting_for_patches(BTreeSet::from([root.to_path_buf()]));
+        assert!(shows(&state, false, "Looking…"));
+        assert!(!shows(&state, false, "Version 1.0 installed; 2.0 is out."));
+        let mut ui = simulator(state.view(root, false));
+        let _ = ui.click("Update to 2.0").unwrap();
+        let _ = ui.click("Uninstall").unwrap();
+        assert_eq!(ui.into_messages().count(), 0, "off");
+        let _ = update(&mut state, Message::Install("glow".to_owned()), None);
+        assert!(state.confirming.is_none() && state.busy.is_none());
+
+        // The tip says why.
+        let mut ui = simulator(state.view(root, false));
+        let at = ui.find("Update to 2.0").unwrap().bounds().center();
+        ui.point_at(at);
+        let _ = ui.simulate([iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: at,
+        })]);
+        assert!(ui.find(crate::patches::LOOKING).is_ok());
+        drop(ui);
+
+        // Another client's patches are no concern of this one.
+        state.waiting_for_patches(BTreeSet::from(["/games/other".into()]));
+        assert!(shows(&state, false, "Version 1.0 installed; 2.0 is out."));
+        let mut ui = simulator(state.view(root, false));
+        let _ = ui.click("Uninstall").unwrap();
+        assert!(ui.into_messages().count() > 0);
     }
 
     #[test]

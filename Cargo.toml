@@ -16,6 +16,8 @@ reqwest = { workspace = true }
 rustls = { workspace = true }
 rfd = { workspace = true }
 dirs = { workspace = true }
+# Tells apart the names an archive without a list of its files is read with.
+sha2 = { workspace = true }
 open = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
