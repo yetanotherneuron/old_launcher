@@ -437,13 +437,17 @@ Core, no GUI, no network:
     present but not loaded, each with why (`.backup`, `.disabled`, a name
     the game never enumerates).
   - `BLIZZARD`: the retail names; `is_blizzard(path, locale)`.
-  - `Facts::of(&impl Reader) -> Facts`: names, keys with kind and flags, the
-    tables' interesting columns, each M2's references. `Facts` is the
-    cache's content; it reads files through the `Reader` trait in
+  - `Facts::of(&impl Source, known: &[String]) -> Facts`: names, keys with
+    kind and flags, the tables' interesting columns, each M2's references;
+    `known` are the other archives' names, tried on an archive without a
+    listfile since models are read by name. `Facts` is the
+    cache's content; it reads files through the `Source` trait in
     `facts.rs`, which `Archive` implements and which the scan wraps to
     count reads.
-  - `Cache::at(dir)`: `of_archive(path) -> Facts` keyed by path, size and
-    mtime under `<client>/`, `of_release(path, sha256) -> Facts` under
+  - `Cache::at(dir)`: `of_archive(root, path, pool, compute) -> Facts`
+    keyed by path, size, mtime and `pool` (a digest of the name pool for an
+    archive without a listfile, empty otherwise) under `<client>/`,
+    `of_release(sha256, compute) -> Facts` under
     `releases/`, `sweep(client, keep)`, `forget(client)`. Files are
     written beside and renamed over.
   - `Graph::build(&[(priority, path, &Facts)])`: providers, winning files,
@@ -485,7 +489,7 @@ and read `OLD_LAUNCHER_TEST_CLIENT`. Every package runs `cargo fmt --all`,
 clean, and updates the module docs it touches; DEVELOPMENT.md gets one
 line under Layout for the new modules and one under Tests for the new
 ignored test, nothing more. Packages 1 and 2 are under way and share the
-interface fixed above (`Key`, `key`, the `Reader` trait).
+interface fixed above (`Key`, `key`, the `Source` trait).
 
 ### 1. The reader (`core/src/mpq.rs`, `core/src/mpq/writer.rs`)
 
@@ -545,7 +549,7 @@ header (magic `MD20`, version 264 only; others noted as unloadable), skin
 count, sequences with the inline flag 0x20 and alias chains, type-0
 texture names; `.mdx`/`.mdl` → `.m2`; a file's `Kind` from its extension;
 `Facts` with serde (keys as 16 hex digits) and `Facts::of` over the
-`Reader` trait (so this package needs no real reader: tests feed it an
+`Source` trait (so this package needs no real reader: tests feed it an
 in-memory map of name → bytes).
 
 Tests, each building its bytes in the test:
@@ -566,7 +570,7 @@ Depends on nothing. Runs in parallel with 1.
 
 Touches: `core/src/patches.rs`, `core/src/patches/order.rs` (new),
 `core/src/patches/graph.rs` (new), `core/src/patches/facts.rs`
-(`Archive` implements `Reader`).
+(`Archive` implements `Source`).
 
 Implements: `order(root, locale)` following the loader (the recipe in the
 report; base rows 40–49, the two enumerations, the descending
@@ -649,7 +653,7 @@ clients.rs` (passes the state through), `src/style.rs` if a tone is
 missing.
 
 Implements: the scan as a sipper on `spawn_blocking` reading `Facts` per
-archive through the cache, with the counting `Reader` wrapper sending
+archive through the cache, with the counting `Source` wrapper sending
 progress (archive started, every 200 files, archive ended) through a
 `tokio::sync::mpsc` unbounded channel that the sipper forwards, each
 message carrying the time since the scan started; `Graph::build` at the

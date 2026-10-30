@@ -14,12 +14,16 @@
 //! model that doesn't add up is noted in [`Facts::problems`] and the rest of
 //! the archive is read on.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io;
+use std::fs::File as DiskFile;
+use std::io::{self, Read, Seek};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::mpq::{Key, key};
+use crate::Error;
+use crate::mpq::{Archive, Key, key};
 
 /// The file that names an archive's files, when it has one.
 const LISTFILE: &str = "(listfile)";
@@ -60,6 +64,79 @@ pub trait Source {
     fn read(&self, name: &str) -> io::Result<Vec<u8>>;
     /// `len` bytes of the file from `offset`, fewer if it ends first.
     fn read_range(&self, name: &str, offset: u32, len: u32) -> io::Result<Vec<u8>>;
+}
+
+/// A real archive as a [`Source`]. The archive reads with `&mut self`, and
+/// a source with `&self`, so it sits in a `RefCell`: nothing here reads
+/// two files at once, and a nested read is an error, not a panic.
+pub struct Opened<R = DiskFile>(RefCell<Archive<R>>);
+
+impl Opened<DiskFile> {
+    /// Opens the archive at `path`.
+    pub fn open(path: &Path) -> Result<Self, Error> {
+        Archive::open(path).map(Self::new)
+    }
+}
+
+impl<R> Opened<R> {
+    /// `archive` as a source.
+    pub fn new(archive: Archive<R>) -> Self {
+        Self(RefCell::new(archive))
+    }
+
+    /// The archive again.
+    pub fn into_inner(self) -> Archive<R> {
+        self.0.into_inner()
+    }
+}
+
+impl<R: Read + Seek> Opened<R> {
+    /// The names the archive's `(listfile)` gives, if it has one.
+    pub fn listfile(&self) -> Result<Option<Vec<String>>, Error> {
+        match self.0.try_borrow_mut() {
+            Ok(mut archive) => archive.listfile(),
+            Err(error) => Err(Error::Io {
+                path: PathBuf::new(),
+                source: io::Error::other(error),
+            }),
+        }
+    }
+}
+
+impl<R: Read + Seek> Source for Opened<R> {
+    fn entries(&self) -> Vec<Entry> {
+        let Ok(archive) = self.0.try_borrow() else {
+            return Vec::new();
+        };
+
+        archive
+            .entries()
+            .map(|entry| Entry {
+                key: entry.key,
+                size: entry.size,
+                deleted: entry.is_delete_marker(),
+            })
+            .collect()
+    }
+
+    fn read(&self, name: &str) -> io::Result<Vec<u8>> {
+        let mut archive = self.0.try_borrow_mut().map_err(io::Error::other)?;
+
+        archive
+            .read(name)
+            .map_err(io::Error::other)?
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
+    }
+
+    fn read_range(&self, name: &str, offset: u32, len: u32) -> io::Result<Vec<u8>> {
+        let mut archive = self.0.try_borrow_mut().map_err(io::Error::other)?;
+        let from = u64::from(offset);
+
+        archive
+            .read_range(name, from..from + u64::from(len))
+            .map_err(io::Error::other)?
+            .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
+    }
 }
 
 /// What a file is for, by its extension.

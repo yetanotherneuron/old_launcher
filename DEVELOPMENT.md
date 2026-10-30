@@ -242,6 +242,13 @@ OLD_LAUNCHER_TEST_CLIENT_FILES="/path/to/World of Warcraft 3.3.5a" \
 OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
     cargo test --release -p old_launcher_core mpq::tests::every_archive \
     -- --ignored --nocapture
+# Prints the order the game loads a client's archives in, reads their
+# facts and builds the graph, only reading (/usr/bin/time -v shows the
+# memory), with OLD_LAUNCHER_TEST_LOADED optionally the number of archives
+# it should load:
+OLD_LAUNCHER_TEST_CLIENT="/path/to/World of Warcraft 3.3.5a" \
+    cargo test --release -p old_launcher_core patches::graph::tests::a_real_client \
+    -- --ignored --nocapture
 # Renders the README's screenshots from a demo client:
 SCREENSHOT_CLIENT=/tmp/demo SCREENSHOT_OUT=/tmp/shots \
     cargo test --lib screenshots -- --ignored

@@ -29,6 +29,7 @@ use sha2::{Digest, Sha256};
 use crate::error::io_at;
 use crate::installation::{STAGING_PREFIX, child, config_setting};
 use crate::notes::Notes;
+use crate::patches::Change;
 use crate::{Error, Installation, Locale, archive};
 
 /// What stands for a language (`enUS`, `deDE`, …) in the paths of the list
@@ -1337,9 +1338,9 @@ pub fn install_downloaded(
     let alternatives = placed_all(alternatives, root);
     let alternatives: Vec<&Mod> = alternatives.iter().collect();
 
-    let foreign = foreign_of(root, game_mod, release, &alternatives);
-    if !foreign.is_empty() && !over {
-        return Err(Error::Foreign(foreign));
+    let plan = Plan::of(root, game_mod, release, &alternatives, unmade);
+    if !plan.foreign.is_empty() && !over {
+        return Err(Error::Foreign(plan.foreign));
     }
 
     // Beside the files it replaces, so they move in by renaming. Left behind
@@ -1398,14 +1399,10 @@ pub fn install_downloaded(
     // What is something else's is backed up, then what it takes the place
     // of goes, then whatever was there of it, another release's or a broken
     // install's.
-    back_up(installation, &[foreign, unmade].concat())?;
-    for other in alternatives
-        .iter()
-        .filter(|other| present(root, other, &[]))
-    {
-        uninstall_of(installation, other, true)?;
+    back_up(installation, &plan.backups)?;
+    for (other, paths) in &plan.removals {
+        remove_all(installation, other, paths)?;
     }
-    uninstall_of(installation, game_mod, true)?;
 
     // A file of the archive that goes to several places is copied to each
     // but the last, where it moves.
@@ -1487,7 +1484,16 @@ fn uninstall_of(
     game_mod: &Mod,
     keep_settings: bool,
 ) -> Result<(), Error> {
-    let root = installation.root();
+    let paths = removal_of(installation.root(), game_mod, keep_settings);
+
+    remove_all(installation, game_mod, &paths)
+}
+
+/// The paths, as `game_mod` spells them, that [`uninstall_of`] removes from
+/// the client folder at `root` (there or not): its files of the release its
+/// marker names or with the contents of one, and what it and its setups
+/// write, and the player's files too unless `keep_settings`.
+fn removal_of(root: &Path, game_mod: &Mod, keep_settings: bool) -> Vec<String> {
     let marked: BTreeSet<&str> = game_mod
         .marker(root)
         .and_then(|marker| game_mod.release(&marker.version))
@@ -1501,35 +1507,141 @@ fn uninstall_of(
         })
         .unwrap_or_default();
 
-    let mut removed: Vec<&str> = Vec::new();
-
-    for path in game_mod.paths() {
-        let file = at(root, path);
-        let ours = marked.contains(path)
-            || fs::read(&file).is_ok_and(|bytes| game_mod.released(path, &sha256(&bytes)));
-
-        if ours {
-            remove(&file)?;
-            removed.push(path);
-        }
-    }
-
+    let ours = game_mod.paths().into_iter().filter(|path| {
+        marked.contains(path)
+            || fs::read(at(root, path)).is_ok_and(|bytes| game_mod.released(path, &sha256(&bytes)))
+    });
     let settings = game_mod
         .settings
         .iter()
         .map(String::as_str)
         .filter(|_| !keep_settings);
-    for path in game_mod.written().into_iter().chain(settings) {
+
+    ours.chain(game_mod.written())
+        .chain(settings)
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Removes the `paths` of `game_mod` (see [`removal_of`]) from
+/// `installation`'s folder, and its marker, and the folders left empty.
+fn remove_all(installation: &Installation, game_mod: &Mod, paths: &[String]) -> Result<(), Error> {
+    let root = installation.root();
+
+    for path in paths {
         remove(&at(root, path))?;
-        removed.push(path);
     }
     game_mod.unmark(root)?;
 
-    for path in removed {
+    for path in paths {
         prune(root, path);
     }
 
     Ok(())
+}
+
+/// What installing a release does to the files already in a client folder,
+/// listed before it does anything: [`install_downloaded`] follows it, and
+/// [`change`] tells it.
+struct Plan<'a> {
+    /// The files of something else where the release puts its own (see
+    /// [`foreign_of`]).
+    foreign: Vec<String>,
+    /// Every file it backs up: those, and those in conflict with it.
+    backups: Vec<String>,
+    /// Each mod it takes the place of (its alternatives there, then the mod
+    /// itself) with the paths it removes of it (see [`removal_of`]).
+    removals: Vec<(&'a Mod, Vec<String>)>,
+}
+
+impl<'a> Plan<'a> {
+    /// The plan to install `release` of `game_mod` over the client folder at
+    /// `root`, where `unmade` are the files in conflict ([`excluded`]),
+    /// everything placed (see [`Mod::placed`]).
+    fn of(
+        root: &Path,
+        game_mod: &'a Mod,
+        release: &Release,
+        alternatives: &[&'a Mod],
+        unmade: Vec<String>,
+    ) -> Self {
+        let foreign = foreign_of(root, game_mod, release, alternatives);
+        let backups = [foreign.clone(), unmade].concat();
+        let removals = alternatives
+            .iter()
+            .copied()
+            .filter(|other| present(root, other, &[]))
+            .chain([game_mod])
+            .map(|other| (other, removal_of(root, other, true)))
+            .collect();
+
+        Self {
+            foreign,
+            backups,
+            removals,
+        }
+    }
+}
+
+/// What installing `release` of `game_mod` over the client folder at `root`,
+/// with its `alternatives`, does to the game's files, going over whatever
+/// is in the way (see [`install_downloaded`], which does exactly this): the
+/// files placed, and those gone, which are the ones it removes, as spelled
+/// on disk, and the ones it backs up. The player's files stay. Nothing
+/// where [`install_downloaded`] fails for lack of a language.
+pub fn change(root: &Path, game_mod: &Mod, release: &Release, alternatives: &[&Mod]) -> Change {
+    let unmade = excluded(root, game_mod, alternatives);
+    let instead = game_mod
+        .marker(root)
+        .and_then(|marker| marker.instead)
+        .or_else(|| fallback(game_mod))
+        .filter(|_| !lacking(root, game_mod).is_empty());
+    let (locale, locales) = languages(root);
+    let (Some(game_mod), Some(release)) = (
+        game_mod.placed(locale, &locales, instead),
+        release.placed(locale, &locales, instead),
+    ) else {
+        return Change::default();
+    };
+    let alternatives = placed_all(alternatives, root);
+    let alternatives: Vec<&Mod> = alternatives.iter().collect();
+    let plan = Plan::of(root, &game_mod, &release, &alternatives, unmade);
+
+    let mut removes: Vec<String> = Vec::new();
+    let removed = plan
+        .removals
+        .iter()
+        .flat_map(|(_, paths)| paths)
+        .filter(|path| at(root, path).exists())
+        .map(|path| as_there(root, path));
+    for path in plan.backups.iter().cloned().chain(removed) {
+        if !removes.contains(&path) {
+            removes.push(path);
+        }
+    }
+
+    // A file in the way is gone by then, so the new one has the release's
+    // spelling of its name, in the folders as they are.
+    let adds = release
+        .files
+        .iter()
+        .filter(|(path, _)| !(game_mod.is_setting(path) && at(root, path).exists()))
+        .map(|(path, sum)| {
+            let there = as_there(root, path);
+            let spelled = match (removes.contains(&there), path.rsplit_once('/')) {
+                (true, Some((_, name))) => match there.rsplit_once('/') {
+                    Some((folder, _)) => format!("{folder}/{name}"),
+                    None => name.to_owned(),
+                },
+                (true, None) => path.clone(),
+                (false, _) => there,
+            };
+
+            (spelled, sum.clone())
+        })
+        .collect();
+
+    Change { adds, removes }
 }
 
 /// Removes the file or folder at `path`, if there is one.
@@ -2629,6 +2741,182 @@ mod tests {
         assert_eq!(new.marker(root), None);
         assert_eq!(status(root, &new, &[&old]), None);
         assert_eq!(status(root, &old, &[&new]).unwrap().problems, []);
+    }
+
+    /// Every file of the client folder at `root` that a mod can change, by
+    /// path, with its checksum: not the launcher's notes, nor the game's
+    /// settings.
+    fn contents(root: &Path) -> BTreeMap<String, String> {
+        fn walk(root: &Path, folder: &Path, files: &mut BTreeMap<String, String>) {
+            for entry in fs::read_dir(folder).unwrap().map(Result::unwrap) {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with(".old_") || name == "WTF" {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk(root, &path, files);
+                } else {
+                    let relative = path.strip_prefix(root).unwrap();
+                    let _ = files.insert(
+                        relative.to_string_lossy().replace('\\', "/"),
+                        sha256(&fs::read(&path).unwrap()),
+                    );
+                }
+            }
+        }
+
+        let mut files = BTreeMap::new();
+        walk(root, root, &mut files);
+        files
+    }
+
+    /// Installs `release` over everything, as [`change`] said it would, and
+    /// checks that the folder changed by exactly that. Gives the change.
+    fn install_as_changed(
+        installation: &Installation,
+        game_mod: &Mod,
+        release: &Release,
+        download: &[u8],
+        alternatives: &[&Mod],
+    ) -> Change {
+        let root = installation.root();
+        let before = contents(root);
+        let changed = change(root, game_mod, release, alternatives);
+
+        install(
+            installation,
+            game_mod,
+            release,
+            download,
+            alternatives,
+            true,
+        )
+        .unwrap();
+
+        // The backups of before stay, and so aren't counted.
+        let mut expected: BTreeMap<_, _> = before
+            .iter()
+            .filter(|(path, _)| !path.contains(BACKUP))
+            .map(|(path, sum)| (path.clone(), sum.clone()))
+            .collect();
+        for path in &changed.removes {
+            assert!(expected.remove(path).is_some(), "{path} wasn't there");
+        }
+        for (path, sum) in &changed.adds {
+            let _ = expected.insert(path.clone(), sum.clone());
+        }
+        let (backups, after): (BTreeMap<_, _>, BTreeMap<_, _>) = contents(root)
+            .into_iter()
+            .partition(|(path, _)| path.contains(BACKUP));
+        assert_eq!(after, expected);
+        for (path, sum) in backups
+            .into_iter()
+            .filter(|(path, _)| !before.contains_key(path))
+        {
+            let original = path.split(BACKUP).next().unwrap();
+            assert_eq!(before.get(original), Some(&sum), "{path} backs up a file");
+            assert!(changed.removes.iter().any(|gone| gone == original));
+        }
+
+        changed
+    }
+
+    #[test]
+    fn a_change_lists_what_an_install_backs_up_removes_and_places() {
+        let (game_mod, new_zip, old_zip) = glow();
+        let (_root, installation) = crate::testing::client_with(&[
+            ("WTF/Config.wtf", "SET gxApi \"d3d9ex\"\n"),
+            ("Glow.dll", "somebody else's"),
+            ("Glow-spots/1.txt", "a spot"),
+        ]);
+        let root = installation.root();
+        let sorted = |mut list: Vec<String>| {
+            list.sort();
+            list
+        };
+        let paths = |change: &Change| -> Vec<String> {
+            sorted(change.adds.iter().map(|(path, _)| path.clone()).collect())
+        };
+
+        let first = install_as_changed(
+            &installation,
+            &game_mod,
+            &game_mod.releases[1],
+            &old_zip,
+            &[],
+        );
+        assert_eq!(first.removes, ["Glow.dll"], "backed up");
+        assert_eq!(
+            paths(&first),
+            [
+                "Glow.dll",
+                "Glow.ini",
+                "Glow/old.txt",
+                "Glow/setup.exe",
+                "version.dll"
+            ]
+        );
+        assert!(root.join("Glow.dll.backup").is_file());
+
+        fs::write(root.join("Glow.ini"), "Enable=0\n").unwrap();
+        fs::write(root.join("Glow.log"), "ran").unwrap();
+        let second = install_as_changed(
+            &installation,
+            &game_mod,
+            &game_mod.releases[0],
+            &new_zip,
+            &[],
+        );
+        assert_eq!(
+            sorted(second.removes.clone()),
+            [
+                "Glow.dll",
+                "Glow.log",
+                "Glow/old.txt",
+                "Glow/setup.exe",
+                "version.dll"
+            ],
+            "1.0's and what it wrote, but the player's files"
+        );
+        assert_eq!(
+            paths(&second),
+            ["Glow.dll", "Glow/setup.exe", "version.dll"],
+            "the player's Glow.ini stays"
+        );
+        assert!(
+            second
+                .adds
+                .contains(&("Glow.dll".to_owned(), sha256(b"renderer 2")))
+        );
+
+        // An alternative's files go too, and a file of another case is
+        // listed as it is there.
+        let (new, new_zip) = pax("pax-new", "Y new", true);
+        let (old, old_zip) = pax("pax-old", "Y old", false);
+        let (_root, installation) = crate::testing::client_with(&[
+            ("Data/enUS/locale-enUS.MPQ", ""),
+            ("Data/patch-f.mpq", ""),
+            ("Data/patch-Y.MPQ", "somebody else's"),
+        ]);
+
+        let first = install_as_changed(&installation, &new, &new.releases[0], &new_zip, &[&old]);
+        assert_eq!(first.removes, ["Data/patch-Y.MPQ"], "its case, as there");
+        assert_eq!(first.adds.len(), 4);
+
+        let second = install_as_changed(&installation, &old, &old.releases[0], &old_zip, &[&new]);
+        let mut removes = second.removes.clone();
+        removes.sort();
+        assert_eq!(
+            removes,
+            [
+                "Data/enUS/patch-enUS-S.MPQ",
+                "Data/enUS/patch-enUS-Y.MPQ",
+                "Data/patch-s.mpq",
+                "Data/patch-y.mpq"
+            ]
+        );
+        assert_eq!(second.adds.len(), 2);
     }
 
     #[test]
