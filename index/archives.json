@@ -22087,6 +22087,18 @@
     "notes": "Enhancements for your maps.",
     "updated": "2026-10-26"
   },
+  "https://github.com/Aldori15/Questie/archive/908a40b38bd6938b34eca4ce5e776dca2c70de8a.zip": {
+    "folders": [
+      {
+        "name": "Questie-335",
+        "title": "Questie-335 v10.0.3-335",
+        "version": "10.0.3-335",
+        "interface": 30300
+      }
+    ],
+    "notes": "A standalone Classic QuestHelper backported to 335 and sourced using AzerothCore data.",
+    "updated": "2026-10-28"
+  },
   "https://github.com/Arcitec/GearScoreLite_Reborn/archive/a396cdc93894bca2cab351627c97996253f86236.zip": {
     "folders": [
       {
@@ -22650,7 +22662,7 @@
     "notes": "Arena unit frames",
     "updated": "2026-07-04"
   },
-  "https://github.com/NeticSoul/DragonUI/archive/b142a7fa97273a6bf0b045410d1c52f64f154d11.zip": {
+  "https://github.com/NeticSoul/DragonUI/archive/04b8b86b80a0bf569dc9c96a54b3239a679d54bc.zip": {
     "folders": [
       {
         "name": "DragonUI",
@@ -29169,18 +29181,18 @@
     "notes": "|@Version: 16@|Move, scale, hide and adjust transparency of just about any screen element in the game.",
     "updated": "2025-07-18"
   },
-  "https://gitlab.com/juxuanu/kekator/-/archive/bb96a15615436cc6e84eb40ad00af93e2c3f568d/kekator-bb96a15615436cc6e84eb40ad00af93e2c3f568d.zip": {
+  "https://gitlab.com/juxuanu/kekator/-/archive/2c80f7fce29aed54a27a8e39b8a3cfbe4f4bf2d9/kekator-2c80f7fce29aed54a27a8e39b8a3cfbe4f4bf2d9.zip": {
     "folders": [
       {
         "name": "Kekator",
         "title": "Kekator",
-        "version": "0.3",
+        "version": "0.4",
         "interface": 30300
       },
       {
         "name": "Kekator_NPC",
         "title": "Kekator NPC lines",
-        "version": "0.3",
+        "version": "0.4",
         "interface": 30300
       }
     ],
