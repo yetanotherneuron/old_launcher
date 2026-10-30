@@ -6,7 +6,7 @@ use iced::widget::Id;
 use iced_test::simulator;
 
 use super::*;
-use crate::core::{Addon, Marker, Toc};
+use crate::core::{Addon, Bundled, Marker, Toc};
 use crate::testing::{self, offsets};
 
 const CATALOG: &str = r#"{
@@ -94,6 +94,15 @@ fn apply(state: &mut State, catalog: &Catalog, message: Message) -> Errors {
     );
 
     errors
+}
+
+/// What `installation` holds, as the launcher sees it once its game's
+/// archives are looked at, here holding no addon.
+fn known(installation: &Installation) -> Snapshot {
+    Snapshot {
+        bundled: Bundled::none(),
+        ..installation.scan().unwrap()
+    }
 }
 
 /// A client with Skada installed from [`CATALOG`] and `Manual` installed by
@@ -515,7 +524,7 @@ fn uninstalling_offers_to_delete_the_saved_settings_too() {
 #[test]
 fn uninstalling_an_addon_without_settings_does_not_mention_them() {
     let (_root, installation) = testing::client(&["Interface/AddOns/Foo-master/Foo/Foo.toc"]);
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
     let catalog = Catalog::default();
     let mut state = State::new();
 
@@ -704,7 +713,7 @@ fn leftover_data_of_removed_addons_can_be_deleted() {
         "WTF/Account/ME/SavedVariables/Recount.lua",
         "WTF/Account/ME/Realm/Hero/SavedVariables/Recount.lua",
     ]);
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
     let mut state = State::new();
     let catalog = Catalog::default();
 
@@ -716,6 +725,21 @@ fn leftover_data_of_removed_addons_can_be_deleted() {
     for message in ui.into_messages() {
         apply(&mut state, &EMPTY, message);
     }
+
+    // Until the game's archives are known, the data may be an addon's of
+    // theirs.
+    let unknown = installation.scan().unwrap();
+    let mut ui = open(&state, &catalog, &installation, &unknown);
+    assert!(ui.find("Leftover data (0)").is_ok());
+    assert!(ui.find("Recount").is_err());
+    assert!(
+        ui.find(
+            "Leftover data shows once this client's patches are looked at: some addons come \
+             inside them."
+        )
+        .is_ok()
+    );
+    drop(ui);
 
     let mut ui = open(&state, &catalog, &installation, &snapshot);
     assert!(ui.find("Recount").is_ok());
@@ -734,7 +758,7 @@ fn saved_settings_are_left_alone_while_the_game_runs() {
         "WTF/Account/ME/SavedVariables/Skada.lua",
         "WTF/Account/ME/SavedVariables/Recount.lua",
     ]);
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
     let mut state = State::new();
 
     // Clean data is off, and says why on hover.
@@ -1101,7 +1125,7 @@ fn a_failed_repair_keeps_the_list_scrolled_where_it_was() {
     tocs.push("Interface/AddOns/Foo-master/Foo/Foo.toc".into());
     let (_root, installation) =
         testing::client(&tocs.iter().map(String::as_str).collect::<Vec<_>>());
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
 
     // Every state the screen goes through: asked, confirmed and working,
     // failed (the error goes to the app's banner), and back to normal.
@@ -1158,7 +1182,7 @@ fn a_failed_repair_keeps_the_list_scrolled_where_it_was() {
 #[test]
 fn folders_the_client_cannot_load_offer_a_repair() {
     let (_root, installation) = testing::client(&["Interface/AddOns/Foo-master/Foo/Foo.toc"]);
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
     assert_eq!(
         snapshot.addons,
         [Addon {
@@ -1170,6 +1194,14 @@ fn folders_the_client_cannot_load_offer_a_repair() {
     );
     let mut state = State::new();
     let catalog = Catalog::default();
+
+    // Until the game's archives are known, it may be a folder of one of
+    // theirs: it isn't listed, let alone broken.
+    let unknown = installation.scan().unwrap();
+    let mut ui = open(&state, &catalog, &installation, &unknown);
+    assert!(ui.find("Foo-master").is_err());
+    assert!(ui.find("Repair").is_err());
+    drop(ui);
 
     let mut ui = open(&state, &catalog, &installation, &snapshot);
     let _ = ui.click("Repair").unwrap();
@@ -1187,6 +1219,18 @@ fn folders_the_client_cannot_load_offer_a_repair() {
     let mut ui = open(&state, &catalog, &installation, &snapshot);
     assert!(ui.find("Needs attention (1)").is_ok());
     assert!(ui.find("Foo-master").is_ok());
+    drop(ui);
+
+    // Which says nothing loads fine before the archives are known.
+    let mut ui = open(&state, &catalog, &installation, &unknown);
+    assert!(ui.find("Needs attention (0)").is_ok());
+    assert!(
+        ui.find(
+            "What needs attention shows once this client's patches are looked at: some addons \
+             come inside them."
+        )
+        .is_ok()
+    );
 }
 
 /// Serves `files` (path, body) over HTTP on localhost, 404 for anything
@@ -1895,7 +1939,7 @@ fn an_external_addon_is_shown_before_it_installs() {
     let catalog = catalog();
     let mut state = State::new();
     let (_root, installation) = client_with_skada(&catalog);
-    let snapshot = installation.scan().unwrap();
+    let snapshot = known(&installation);
     let path = PathBuf::from("/downloads/skada-master.zip");
     let update =
         |state: &mut State, message| apply_to(state, &catalog, &installation, &snapshot, message);
@@ -1982,6 +2026,17 @@ fn an_external_addon_is_shown_before_it_installs() {
     assert!(
         !shows(&state, "Fresh requires skada, which won't be installed."),
         "Skada is installed"
+    );
+    assert!(
+        open(
+            &state,
+            &catalog,
+            &installation,
+            &installation.scan().unwrap()
+        )
+        .find("Fresh requires Missing, which won't be installed.")
+        .is_err(),
+        "the game's archives may hold it, until they are known"
     );
 
     let messages = clicked(&state, "Skada");

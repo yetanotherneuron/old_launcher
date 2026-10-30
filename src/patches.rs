@@ -23,6 +23,12 @@
 //! locked out. An archive that can't be read is noted and left out, and the
 //! rest goes on.
 //!
+//! A look also tells which addons the archives the game loads hold
+//! ([`State::bundled`]), from what it read: the list of addons asks it by
+//! name on every rescan, without opening an archive. Until a look is over,
+//! the list says nothing that depends on them (see
+//! [`Snapshot`](crate::core::Snapshot)).
+//!
 //! A look also reads the archives the folders hold that the game doesn't
 //! load (backups, switched off ones, names it never lists, but not
 //! Blizzard's own `base-` and `backup-`) through the same cache, to tell
@@ -50,7 +56,7 @@ use crate::core::mpq::Key;
 use crate::core::patches::facts::{Entry, Opened, Source};
 use crate::core::patches::order::{Reason, order_with};
 use crate::core::patches::{Cache, Facts, Graph, Kind, Layer, Order, is_blizzard, strip};
-use crate::core::{Error, Locale};
+use crate::core::{Bundled, Error, Locale};
 use crate::errors::Errors;
 use crate::{blocking, describe, style};
 
@@ -159,7 +165,9 @@ pub struct Scan {
     /// The archives in the order the game loads them, and those it doesn't.
     pub order: Order,
     /// What the loaded archives add up to.
-    pub graph: Graph,
+    pub graph: Arc<Graph>,
+    /// The addons inside them.
+    pub bundled: Bundled,
     /// The archives that couldn't be read.
     pub unreadable: Vec<Unreadable>,
     /// The needs that nothing loaded meets but an archive aside (a backup, a
@@ -560,10 +568,19 @@ impl State {
             .flatten()
     }
 
+    /// The addons inside the archives of the client folder at `root`, once
+    /// the look at them is over: not known before, nor while another look
+    /// is under way, since the archives may have changed.
+    pub fn bundled(&self, root: &Path) -> Bundled {
+        self.settled(root)
+            .map(|scan| scan.bundled.clone())
+            .unwrap_or_default()
+    }
+
     /// What the client folder at `root`'s archives add up to.
     #[cfg(test)]
     pub fn graph(&self, root: &Path) -> Option<&Graph> {
-        self.scan(root).map(|scan| &scan.graph)
+        self.scan(root).map(|scan| &*scan.graph)
     }
 
     /// What is amiss with the patches of the client folder at `root`, in the
@@ -830,7 +847,10 @@ pub fn look(
             ))
         })
         .collect();
-    let graph = Graph::build(&layers, locale);
+    // An archive the game loads that couldn't be read may hold any addon.
+    let whole = layers.len() == paths.len();
+    let graph = Arc::new(Graph::build(&layers, locale));
+    let bundled = Bundled::of(Arc::clone(&graph), whole);
     drop(layers);
 
     let present: Vec<(&str, &Facts)> = kept_aside
@@ -866,6 +886,7 @@ pub fn look(
     Ok(Scan {
         order,
         graph,
+        bundled,
         unreadable,
         unmet,
         listing,
@@ -1310,6 +1331,56 @@ mod tests {
     }
 
     #[test]
+    fn the_addons_inside_the_archives_the_game_loads_are_known_by_name() {
+        let toc = |name: &str| format!("Interface\\AddOns\\{name}\\{name}.toc");
+        let (_root, root) = client(&[
+            (
+                "Data/enUS/locale-enUS.MPQ",
+                &archive(&[&toc("Blizzard_CombatText")]),
+            ),
+            // A mod's, without a list of its files, spelled in lowercase.
+            (
+                "Data/patch-y.mpq",
+                &Writer::new().file(&toc("!pyandre").to_lowercase(), b"x"),
+            ),
+            ("Data/patch-z.mpq.backup", &archive(&[&toc("Aside")])),
+            ("Data/patch-w.mpq.disabled", &archive(&[&toc("Off")])),
+        ]);
+        let folder = tempfile::tempdir().unwrap();
+        let cache = Cache::at(folder.path());
+
+        // Read, then from what the cache kept of them.
+        for time in ["read", "kept"] {
+            let (scan, _) = looked(&root, &cache);
+            let bundled = scan.unwrap().bundled;
+
+            assert_eq!(bundled.hold("blizzard_combattext"), Some(true), "{time}");
+            assert_eq!(bundled.hold("!PYAndre"), Some(true), "{time}");
+            assert_eq!(bundled.hold("Aside"), Some(false), "set aside: {time}");
+            assert_eq!(bundled.hold("Off"), Some(false), "switched off: {time}");
+            assert_eq!(
+                bundled.hold("Blizzard_HelloThisIsSomethingElse"),
+                Some(false),
+                "{time}"
+            );
+        }
+
+        // Not known while a look is under way: the archives may have changed.
+        let mut state = State::new(cache.clone());
+        let mut errors = Errors::default();
+        let _ = state.look(&root, Locale::EnUs);
+        assert!(!state.bundled(&root).known(), "not looked at yet");
+        let (scan, _) = looked(&root, &cache);
+        let _ = state.update(
+            Message::Looked(root.clone(), scan.map(Arc::new)),
+            &mut errors,
+        );
+        assert_eq!(state.bundled(&root).hold("!PYAndre"), Some(true));
+        let _ = state.look(&root, Locale::EnUs);
+        assert!(!state.bundled(&root).known(), "looked at again");
+    }
+
+    #[test]
     fn a_long_archive_still_reports_progress_every_two_hundred_files() {
         let models: Vec<String> = (0..450)
             .map(|number| format!("World\\Model{number}.m2"))
@@ -1604,6 +1675,90 @@ mod tests {
         println!("{} things to look at:", lines.len());
         for line in lines {
             println!("  {line}");
+        }
+    }
+
+    /// `OLD_LAUNCHER_TEST_CLIENT=<client folder> cargo test --release --lib
+    /// patches::tests::a_real_clients_addons -- --ignored --nocapture`, the
+    /// folder only ever read: looks at its patches with a cache in a
+    /// temporary folder (or `$OLD_LAUNCHER_TEST_CACHE`, a copy of another
+    /// run's), and prints whether the archives hold each addon named in
+    /// `$OLD_LAUNCHER_TEST_ADDONS` (separated by commas), which of its addon
+    /// folders belong to an addon inside the archives, the dependencies these
+    /// meet, and what the list of addons says is missing, broken or left
+    /// over.
+    #[test]
+    #[ignore = "reads every archive of the client in $OLD_LAUNCHER_TEST_CLIENT"]
+    fn a_real_clients_addons_inside_its_archives_are_told_apart() {
+        use crate::core::{Addon, SavedVariables, Snapshot};
+
+        let root = PathBuf::from(
+            std::env::var("OLD_LAUNCHER_TEST_CLIENT")
+                .expect("OLD_LAUNCHER_TEST_CLIENT is a client folder"),
+        );
+        let installation = crate::core::Installation::open(&root).expect("it is a client");
+        let locale = installation.locale().expect("it has a language");
+        let folder = tempfile::tempdir().unwrap();
+        let kept = std::env::var("OLD_LAUNCHER_TEST_CACHE")
+            .map_or_else(|_| folder.path().to_path_buf(), PathBuf::from);
+        let scan = look(&root, locale, &Cache::at(&kept), &|_| {}).expect("it is looked at");
+        // Not `Installation::scan`, which sweeps away staging folders.
+        let snapshot = Snapshot {
+            addons: Addon::scan(&installation.addons_directory()).expect("its addons are read"),
+            saved_variables: SavedVariables::scan(&installation.wtf_directory()),
+            bundled: scan.bundled.clone(),
+        };
+
+        println!(
+            "{} archives loaded, {} not read",
+            scan.order.loaded.len(),
+            scan.unreadable.len()
+        );
+        for name in std::env::var("OLD_LAUNCHER_TEST_ADDONS")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            let held = snapshot.bundled.hold(name);
+            let by = scan
+                .graph
+                .provider(crate::core::mpq::key(&format!(
+                    "Interface\\AddOns\\{name}\\{name}.toc"
+                )))
+                .unwrap_or("none");
+            println!("  inside the archives: {name}: {held:?}, from {by}");
+        }
+        for addon in &snapshot.addons {
+            if !snapshot.listed(addon) {
+                println!("  part of an addon inside the archives: {}", addon.name);
+            }
+        }
+        for addon in snapshot
+            .addons
+            .iter()
+            .filter(|addon| snapshot.listed(addon))
+        {
+            if snapshot.broken(addon) {
+                println!("  broken: {}", addon.name);
+            }
+            let Some(toc) = &addon.toc else {
+                continue;
+            };
+            for dependency in &toc.dependencies {
+                if snapshot.bundled.hold(dependency) == Some(true) {
+                    println!(
+                        "  {} requires {dependency}: inside the archives",
+                        addon.name
+                    );
+                }
+            }
+            for dependency in snapshot.missing_dependencies(addon) {
+                println!("  {} requires {dependency}: missing", addon.name);
+            }
+        }
+        for (name, files) in snapshot.orphaned_data() {
+            println!("  left over: {name}, {} files", files.len());
         }
     }
 

@@ -21,7 +21,9 @@ pub struct Adoption {
 }
 
 impl Adoption {
-    /// Recognizes catalog entries among the unmarked folders of `snapshot`.
+    /// Recognizes catalog entries among the unmarked folders of `snapshot`
+    /// that are [listed](Snapshot::listed): not those of an addon inside the
+    /// game's archives.
     ///
     /// An entry is recognized when every folder it installs is present,
     /// loadable and unmarked. Entries installing more folders are matched
@@ -37,7 +39,7 @@ impl Adoption {
         let unmarked: HashMap<String, &Addon> = snapshot
             .addons
             .iter()
-            .filter(|addon| addon.marker.is_none() && addon.toc.is_some())
+            .filter(|addon| addon.marker.is_none() && addon.toc.is_some() && snapshot.listed(addon))
             .map(|addon| (addon.name.to_lowercase(), addon))
             .collect();
 

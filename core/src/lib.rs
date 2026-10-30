@@ -33,7 +33,7 @@ pub mod torrent;
 pub mod transfer;
 pub mod version;
 
-pub use addon::Addon;
+pub use addon::{Addon, Bundled};
 pub use adoption::Adoption;
 pub use catalog::Catalog;
 pub use config::Config;

@@ -40,13 +40,15 @@ impl State {
 
         let main = group.and_then(|group| group.addons.first().copied());
         let toc = main.and_then(|addon| addon.toc.as_ref());
+        // Not until the game's archives are known: they may hold its `.toc`.
         let broken: Vec<&Addon> = group
-            .map(|group| {
+            .zip(snapshot)
+            .map(|(group, snapshot)| {
                 group
                     .addons
                     .iter()
                     .copied()
-                    .filter(|addon| addon.toc.is_none())
+                    .filter(|addon| snapshot.broken(addon))
                     .collect()
             })
             .unwrap_or_default();

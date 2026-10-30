@@ -8,8 +8,8 @@ use std::time::Duration;
 use crate::config::ClientTorrent;
 use crate::error::io_at;
 use crate::{
-    Addon, Adoption, Error, Locale, Marker, SavedVariables, Snapshot, Toc, Version, archive,
-    layout, torrent,
+    Addon, Adoption, Bundled, Error, Locale, Marker, SavedVariables, Snapshot, Toc, Version,
+    archive, layout, torrent,
 };
 
 /// A validated 3.3.5a client directory.
@@ -227,9 +227,10 @@ impl Installation {
         child(&self.root, "Data")
     }
 
-    /// Reads the installed addons and their data files. Staging folders an
-    /// interrupted install left behind, in `Interface/AddOns` and beside
-    /// `Wow.exe` for mods, are removed first (see [`sweep_staging`]).
+    /// Reads the installed addons and their data files, the addons inside
+    /// the archives not known yet (see [`Snapshot::bundled`]). Staging
+    /// folders an interrupted install left behind, in `Interface/AddOns` and
+    /// beside `Wow.exe` for mods, are removed first (see [`sweep_staging`]).
     pub fn scan(&self) -> Result<Snapshot, Error> {
         let addons = self.addons_directory();
         sweep_staging(&addons);
@@ -238,6 +239,7 @@ impl Installation {
         Ok(Snapshot {
             addons: Addon::scan(&addons)?,
             saved_variables: SavedVariables::scan(&self.wtf_directory()),
+            bundled: Bundled::default(),
         })
     }
 

@@ -246,18 +246,18 @@ impl<'a> Library<'a> {
             .collect()
     }
 
-    /// Whether `item` is installed but the client cannot load it properly.
+    /// Whether `item` is installed but the client cannot load it properly:
+    /// a folder is [broken](Snapshot::broken), or a dependency missing. Not
+    /// for what the game's archives may hold, until they are known.
     pub fn needs_attention(&self, item: Item<'a>) -> bool {
-        let Some(group) = self.installed(item) else {
+        let (Some(group), Some(snapshot)) = (self.installed(item), self.snapshot) else {
             return false;
         };
 
-        group.addons.iter().any(|addon| {
-            addon.toc.is_none()
-                || self
-                    .snapshot
-                    .is_some_and(|snapshot| !snapshot.missing_dependencies(addon).is_empty())
-        })
+        group
+            .addons
+            .iter()
+            .any(|addon| snapshot.broken(addon) || !snapshot.missing_dependencies(addon).is_empty())
     }
 
     /// The items `filter` and `query` let through, in the filter's order.
@@ -423,7 +423,7 @@ fn holds(download: &Download, group: &Group<'_>) -> bool {
 mod tests {
     use super::*;
     use crate::catalog::{Download, Folder};
-    use crate::{Addon, Toc};
+    use crate::{Addon, Bundled, Toc};
 
     fn entry(name: &str, source: &str, updated: Option<&str>, folders: &[&str]) -> Entry {
         Entry {
@@ -475,7 +475,8 @@ mod tests {
 
     /// Skada installed from the catalog, `Retired` installed from source `a`
     /// before the catalog dropped it, `Plugin` installed by hand and needing
-    /// `Ace3`, and a folder the client can't load.
+    /// `Ace3`, and a folder the client can't load; the game's archives hold
+    /// no addon.
     fn snapshot(catalog: &Catalog) -> Snapshot {
         let skada = &catalog.entries[0];
         let retired = entry("Retired", "a", None, &["Retired"]);
@@ -493,6 +494,7 @@ mod tests {
                     ..addon("Broken-master", None)
                 },
             ],
+            bundled: Bundled::none(),
             ..Snapshot::default()
         }
     }
@@ -553,6 +555,28 @@ mod tests {
             library.count(&Query::new(""), &status(Status::Installed)),
             4
         );
+    }
+
+    #[test]
+    fn nothing_needs_attention_for_what_the_archives_may_hold_until_they_are_known() {
+        let catalog = catalog();
+        let mut snapshot = snapshot(&catalog);
+        snapshot.bundled = Bundled::default();
+        let library = Library::new(&catalog, Some(&snapshot));
+        let status = |status| Filter {
+            status,
+            ..Filter::default()
+        };
+
+        assert!(shown(&library, status(Status::Attention)).is_empty());
+        assert_eq!(
+            shown(&library, status(Status::Installed)),
+            ["Plugin", "Retired", "Skada"],
+            "a folder without its .toc may be part of one of theirs"
+        );
+        let counts = library.counts(&Query::new(""), &Filter::default());
+        assert_eq!(counts[1], (Status::Installed, 3));
+        assert_eq!(counts[4], (Status::Attention, 0));
     }
 
     #[test]

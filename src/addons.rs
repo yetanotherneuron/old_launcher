@@ -748,6 +748,9 @@ impl State {
             self.filter.status,
             Status::Installed | Status::Attention | Status::LeftoverData
         );
+        // Whether the addons inside the game's archives are known: until
+        // then, nothing needs attention or is left over for them.
+        let known = snapshot.is_some_and(|snapshot| snapshot.bundled.known());
 
         let list: Element<'a, Message> = if needs_client && snapshot.is_none() {
             empty(
@@ -760,12 +763,17 @@ impl State {
             )
             .boxed()
         } else if self.filter.status == Status::LeftoverData {
-            self.leftovers(leftovers, filtered, playing)
+            self.leftovers(leftovers, filtered, known, playing)
         } else {
             let shown = library.shown(&query, &self.filter);
 
             if shown.is_empty() {
                 let (message, action) = match self.filter.status {
+                    Status::Attention if !known => (
+                        "What needs attention shows once this client's patches are looked at: \
+                         some addons come inside them.",
+                        None,
+                    ),
                     _ if filtered => ("No addon matches.", Some(CLEAR)),
                     Status::All => match refresh {
                         catalog::Refresh::Running => ("Fetching the list of addons…", None),
@@ -817,21 +825,27 @@ impl State {
     }
 
     /// The data that removed addons left behind, by addon name, which can't
-    /// be deleted while the game runs (`playing`).
+    /// be deleted while the game runs (`playing`). There is none until the
+    /// addons inside the game's archives are `known`: the data may be
+    /// theirs.
     fn leftovers<'a>(
         &self,
         leftovers: Vec<(String, &'a [PathBuf])>,
         filtered: bool,
+        known: bool,
         playing: bool,
     ) -> Element<'a, Message> {
         if leftovers.is_empty() {
             return empty(
-                if filtered {
+                if !known {
+                    "Leftover data shows once this client's patches are looked at: some \
+                     addons come inside them."
+                } else if filtered {
                     "No leftover data matches."
                 } else {
                     "No leftover data."
                 },
-                filtered.then_some(CLEAR),
+                (known && filtered).then_some(CLEAR),
             )
             .boxed();
         }

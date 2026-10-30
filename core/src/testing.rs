@@ -5,9 +5,16 @@
 #![allow(clippy::panic)]
 
 use std::fs;
+use std::io::Cursor;
 use std::path::Path;
+use std::sync::Arc;
 
-use crate::{Installation, Version};
+use crate::addon::Bundled;
+use crate::mpq::Archive;
+use crate::mpq::writer::{Options, Writer};
+use crate::patches::order::FIRST_PATCH;
+use crate::patches::{Facts, Graph, Layer, Opened};
+use crate::{Installation, Locale, Version};
 
 /// The 3.3.5a client version.
 pub const WOTLK: Version = Version {
@@ -127,6 +134,32 @@ pub fn torrent_naming(
     torrent.extend(info);
     torrent.push(b'e');
     torrent
+}
+
+/// An archive holding `files`, one byte each, with a list of them.
+pub fn archive(files: &[&str]) -> Writer {
+    files
+        .iter()
+        .fold(Writer::new(), |writer, name| writer.file(name, b"x"))
+        .with_listfile(Options::default())
+}
+
+/// The addons inside `archives` (path from the game folder, archive), as a
+/// look at a client that loads them all would find them, the first winning.
+pub fn bundled(archives: &[(&str, &Writer)]) -> Bundled {
+    let layers: Vec<Layer> = archives
+        .iter()
+        .zip((FIRST_PATCH..FIRST_PATCH + archives.len() as u32).rev())
+        .map(|((path, writer), priority)| {
+            let archive = Archive::from_reader(Cursor::new(writer.build()), *path)
+                .unwrap_or_else(|error| panic!("{path}: {error}"));
+            let facts = Facts::of(&Opened::new(archive), &[]);
+
+            Layer::new(priority, (*path).to_owned(), facts, Locale::EnUs)
+        })
+        .collect();
+
+    Bundled::of(Arc::new(Graph::build(&layers, Locale::EnUs)), true)
 }
 
 /// Writes `contents` to `file` under `root`, creating its folders.

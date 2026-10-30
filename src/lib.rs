@@ -139,7 +139,9 @@ enum Selected {
     Open {
         installation: Installation,
         /// `None` until the first scan finishes; later scans keep showing the
-        /// previous snapshot until theirs arrives.
+        /// previous snapshot until theirs arrives. The addons inside its
+        /// archives are those the patches look found (see
+        /// [`App::sync_patches`]).
         snapshot: Option<Snapshot>,
     },
 }
@@ -904,13 +906,15 @@ impl App {
                 }
 
                 match result {
-                    Ok(scanned) => {
+                    Ok(mut scanned) => {
                         log::info!(
                             "Scanned {}: {} in Interface/AddOns, {} with saved settings",
                             root.display(),
                             counted(scanned.addons.len(), "folder"),
                             counted(scanned.saved_variables.iter().count(), "addon")
                         );
+                        // What the last look at the patches found still holds.
+                        scanned.bundled = self.patches.bundled(&root);
                         *snapshot = Some(scanned);
                         self.addons.rescanned();
                         self.propose();
@@ -1632,9 +1636,18 @@ impl App {
 
     /// Tells the mods which clients' patches are being looked at, and what
     /// the selected client's look found, so they work out what installing
-    /// each does to them.
+    /// each does to them; and the addons, which of theirs the archives hold,
+    /// unknown while a look is under way.
     fn sync_patches(&mut self) -> Task<Message> {
         self.clients.waiting_for_patches(self.patches.waiting());
+
+        if let Selected::Open {
+            installation,
+            snapshot: Some(snapshot),
+        } = &mut self.selected
+        {
+            snapshot.bundled = self.patches.bundled(installation.root());
+        }
 
         let Selected::Open { installation, .. } = &self.selected else {
             return Task::none();
@@ -2850,6 +2863,74 @@ mod tests {
             root.to_path_buf(),
             scan.map(std::sync::Arc::new),
         )));
+    }
+
+    #[test]
+    fn the_addons_inside_the_games_archives_count_once_they_are_known() {
+        let toc = |name: &str| format!("Interface\\AddOns\\{name}\\{name}.toc");
+        let (_root, installation) = crate::testing::client_with(&[
+            (
+                "Interface/AddOns/KPack/KPack.toc",
+                "## RequiredDeps: Blizzard_CombatText, Aside, Blizzard_HelloThisIsSomethingElse\n",
+            ),
+            // What the game keeps on disk of its own addon: its key.
+            (
+                "Interface/AddOns/Blizzard_CombatText/Blizzard_CombatText.pub",
+                "key",
+            ),
+            (
+                "Interface/AddOns/Blizzard_Something/Blizzard_Something.toc",
+                "## Title: Something of mine\n",
+            ),
+        ]);
+        let root = installation.root().to_path_buf();
+        for (path, archive) in [
+            ("Data/enUS/locale-enUS.MPQ", toc("Blizzard_CombatText")),
+            ("Data/patch-z.mpq.backup", toc("Aside")),
+        ] {
+            let target = root.join(path);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            core::testing::archive(&[&archive]).write(&target);
+        }
+        let folder = tempfile::tempdir().unwrap();
+        let scanned = || Message::Scanned(root.clone(), Ok(installation.scan().unwrap()));
+        let mut app = opening(installation.clone(), folder.path());
+        let _ = app.update(scanned());
+
+        // The cards listed, and whether one says something is missing or
+        // broken.
+        let said = |app: &App| {
+            let mut ui = simulator(app.view());
+            let mut found = |text: &str| ui.find(text).is_ok();
+            (
+                ["All addons (2)", "KPack", "Something of mine"].map(&mut found),
+                [
+                    "Missing dependencies:",
+                    "Blizzard_HelloThisIsSomethingElse",
+                    "Aside",
+                    "Blizzard_CombatText",
+                    "No Blizzard_CombatText.toc: not loaded",
+                ]
+                .map(&mut found),
+            )
+        };
+
+        // The folders are read, the archives not yet: nothing is said of
+        // what they may hold, and the folder without a `.toc` may be theirs.
+        assert_eq!(said(&app), ([true; 3], [false; 5]));
+
+        // They are: what neither they nor a folder hold is missing. The
+        // game's own folder is part of its addon, and one named like it
+        // with its own `.toc` is an addon like any other.
+        looked_at_patches(&mut app, &root, folder.path());
+        let known = ([true; 3], [true, true, true, false, false]);
+        assert_eq!(said(&app), known);
+        let _ = app.update(scanned());
+        assert_eq!(said(&app), known, "a rescan keeps what the look found");
+
+        // Looked at again: the archives may have changed.
+        let _ = app.look_at_patches();
+        assert_eq!(said(&app), ([true; 3], [false; 5]));
     }
 
     #[test]

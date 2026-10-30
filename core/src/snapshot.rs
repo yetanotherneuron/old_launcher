@@ -1,10 +1,17 @@
 //! What an installation holds, read straight from disk.
+//!
+//! The folders and data files are read at once; the addons inside the
+//! game's archives come from the look at its patches, which takes longer
+//! (see [`Bundled`]). Until they are known, nothing that depends on them is
+//! said: a dependency no folder has isn't missing yet, a folder without its
+//! `.toc` isn't broken yet (nor listed, unless the launcher installed it),
+//! and data no folder owns isn't left over yet.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::catalog::Entry;
-use crate::{Addon, Marker, SavedVariables, Toc};
+use crate::{Addon, Bundled, Marker, SavedVariables, Toc};
 
 /// The addons and addon data of an installation at one point in time.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -13,6 +20,9 @@ pub struct Snapshot {
     pub addons: Vec<Addon>,
     /// Every addon data file under `WTF/Account`.
     pub saved_variables: SavedVariables,
+    /// The addons inside the archives the game loads. Not known when read
+    /// from disk: the launcher fills it in once its look at them is over.
+    pub bundled: Bundled,
 }
 
 /// Addon folders that are installed and removed together: everything one
@@ -107,12 +117,48 @@ fn same(a: &Group<'_>, b: &Group<'_>) -> bool {
 }
 
 impl Snapshot {
+    /// Whether the folder `addon` is listed as an addon of its own. Not when
+    /// it is named after an addon of the archives the game loads, which it
+    /// is part of (Blizzard's folders that hold only their `.pub`, say), nor,
+    /// until the archives are known, when it has no `.toc` and so may be.
+    /// The folders the launcher installed always are.
+    pub fn listed(&self, addon: &Addon) -> bool {
+        addon.marker.is_some()
+            || match self.bundled.hold(&addon.name) {
+                Some(held) => !held,
+                None => addon.toc.is_some(),
+            }
+    }
+
+    /// Whether the client can't load the folder `addon`: it has no `.toc`,
+    /// and the archives the game loads don't hold one for it either. Not
+    /// until the archives are known.
+    pub fn broken(&self, addon: &Addon) -> bool {
+        addon.toc.is_none() && self.bundled.hold(&addon.name) == Some(false)
+    }
+
+    /// Whether the game has the addon called `name`, in any case: a folder
+    /// of that name with its `.toc`, or one inside the archives it loads.
+    /// `None` when no folder has it and the archives aren't known yet.
+    pub fn has(&self, name: &str) -> Option<bool> {
+        let folder = self
+            .addons
+            .iter()
+            .any(|addon| addon.toc.is_some() && addon.name.eq_ignore_ascii_case(name));
+
+        if folder {
+            Some(true)
+        } else {
+            self.bundled.hold(name)
+        }
+    }
+
     /// The installed folders grouped by the catalog entry that installed
-    /// them, sorted by title.
+    /// them, sorted by title: those [listed](Self::listed) alone.
     pub fn groups(&self) -> Vec<Group<'_>> {
         let mut groups: Vec<Group<'_>> = Vec::new();
 
-        for addon in &self.addons {
+        for addon in self.addons.iter().filter(|addon| self.listed(addon)) {
             let existing = addon
                 .marker
                 .as_ref()
@@ -150,7 +196,8 @@ impl Snapshot {
     }
 
     /// Data files left behind by addons that are no longer installed, by
-    /// addon name.
+    /// addon name: no folder has their name, and the archives the game
+    /// loads don't hold them. None until the archives are known.
     pub fn orphaned_data(&self) -> Vec<(String, &[PathBuf])> {
         let installed: HashSet<String> = self
             .addons
@@ -160,11 +207,15 @@ impl Snapshot {
 
         self.saved_variables
             .iter()
-            .filter(|(name, _)| !installed.contains(&name.to_lowercase()))
+            .filter(|(name, _)| {
+                !installed.contains(&name.to_lowercase()) && self.bundled.hold(name) == Some(false)
+            })
             .collect()
     }
 
-    /// The required dependencies of `addon` that are not installed.
+    /// The required dependencies of `addon` that the game doesn't have (see
+    /// [`Snapshot::has`]); none that may be in the archives while they
+    /// aren't known.
     pub fn missing_dependencies<'a>(&self, addon: &'a Addon) -> Vec<&'a str> {
         let Some(toc) = &addon.toc else {
             return Vec::new();
@@ -172,12 +223,7 @@ impl Snapshot {
 
         toc.dependencies
             .iter()
-            .filter(|dependency| {
-                !self
-                    .addons
-                    .iter()
-                    .any(|installed| installed.name.eq_ignore_ascii_case(dependency))
-            })
+            .filter(|dependency| self.has(dependency) == Some(false))
             .map(String::as_str)
             .collect()
     }
@@ -279,13 +325,26 @@ mod tests {
     #[test]
     fn missing_dependencies_ignore_case() {
         let mut dependent = addon("Plugin", None);
-        dependent.toc.as_mut().unwrap().dependencies = vec!["ace3".into(), "Missing".into()];
+        dependent.toc.as_mut().unwrap().dependencies =
+            vec!["ace3".into(), "Missing".into(), "Broken".into()];
         let snapshot = Snapshot {
-            addons: vec![addon("Ace3", None), dependent.clone()],
+            addons: vec![
+                addon("Ace3", None),
+                Addon {
+                    toc: None,
+                    ..addon("Broken", None)
+                },
+                dependent.clone(),
+            ],
+            bundled: Bundled::none(),
             ..Snapshot::default()
         };
 
-        assert_eq!(snapshot.missing_dependencies(&dependent), ["Missing"]);
+        // A folder without its `.toc` is no addon to the game.
+        assert_eq!(
+            snapshot.missing_dependencies(&dependent),
+            ["Missing", "Broken"]
+        );
     }
 
     #[test]
@@ -293,18 +352,137 @@ mod tests {
         let wtf = tempfile::tempdir().unwrap();
         let folder = wtf.path().join("Account/ME/SavedVariables");
         std::fs::create_dir_all(&folder).unwrap();
-        for file in ["ACP.lua", "Recount.lua", "Recount.lua.bak"] {
+        for file in [
+            "ACP.lua",
+            "Recount.lua",
+            "Recount.lua.bak",
+            "Blizzard_CombatText.lua",
+            "Blizzard_Gone.lua",
+        ] {
             std::fs::write(folder.join(file), "").unwrap();
         }
-        let snapshot = Snapshot {
+        let mut snapshot = Snapshot {
             addons: vec![addon("acp", None)],
             saved_variables: SavedVariables::scan(wtf.path()),
+            bundled: Bundled::default(),
         };
 
+        assert!(
+            snapshot.orphaned_data().is_empty(),
+            "the archives may hold any of them"
+        );
+
+        snapshot.bundled = archives();
         let orphaned = snapshot.orphaned_data();
 
-        assert_eq!(orphaned.len(), 1);
-        assert_eq!(orphaned[0].0, "Recount");
-        assert_eq!(orphaned[0].1.len(), 2);
+        let names: Vec<&str> = orphaned.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, ["Blizzard_Gone", "Recount"]);
+        assert_eq!(orphaned[1].1.len(), 2);
+    }
+
+    /// A `.toc` inside the archives, as Blizzard's are.
+    fn toc(name: &str) -> String {
+        format!("Interface\\AddOns\\{name}\\{name}.toc")
+    }
+
+    /// The archives of a client with Blizzard's `Blizzard_CombatText` and
+    /// `Blizzard_RaidUI`, and a mod's `!PYAndre` in an archive without a list
+    /// of its files.
+    fn archives() -> Bundled {
+        crate::testing::bundled(&[
+            (
+                "Data/patch-y.mpq",
+                &crate::mpq::writer::Writer::new().file(&toc("!PYAndre"), b"x"),
+            ),
+            (
+                "Data/enUS/locale-enUS.MPQ",
+                &crate::testing::archive(&[&toc("Blizzard_CombatText"), &toc("Blizzard_RaidUI")]),
+            ),
+        ])
+    }
+
+    /// KPack, requiring addons of the archives and others, a folder of
+    /// Blizzard's holding only its `.pub`, one named like Blizzard's with
+    /// its own `.toc`, and a folder without one.
+    fn kpack() -> Snapshot {
+        let mut kpack = addon("KPack", None);
+        kpack.toc.as_mut().unwrap().dependencies = vec![
+            "Blizzard_CombatText".into(),
+            "!pyandre".into(),
+            "Blizzard_HelloThisIsSomethingElse".into(),
+            "Blizzard_Something".into(),
+        ];
+        let tocless = |name: &str| Addon {
+            toc: None,
+            ..addon(name, None)
+        };
+
+        Snapshot {
+            addons: vec![
+                tocless("Bartender4-master"),
+                tocless("blizzard_combattext"),
+                addon("Blizzard_Something", None),
+                kpack,
+            ],
+            ..Snapshot::default()
+        }
+    }
+
+    #[test]
+    fn a_dependency_the_archives_hold_is_there_and_any_other_is_missing() {
+        let mut snapshot = kpack();
+        snapshot.bundled = archives();
+        let kpack = &snapshot.addons[3];
+
+        assert_eq!(
+            snapshot.missing_dependencies(kpack),
+            ["Blizzard_HelloThisIsSomethingElse"]
+        );
+        assert_eq!(snapshot.has("BLIZZARD_COMBATTEXT"), Some(true));
+        assert_eq!(snapshot.has("Blizzard_Something"), Some(true), "its folder");
+    }
+
+    #[test]
+    fn a_folder_of_an_addon_of_the_archives_is_part_of_it_and_any_other_is_listed() {
+        let mut snapshot = kpack();
+        snapshot.bundled = archives();
+
+        let groups = snapshot.groups();
+        let listed: Vec<&str> = groups.iter().map(Group::title).collect();
+        assert_eq!(
+            listed,
+            [
+                "Bartender4-master",
+                "Blizzard_Something title",
+                "KPack title"
+            ]
+        );
+        let broken: Vec<&str> = snapshot
+            .addons
+            .iter()
+            .filter(|addon| snapshot.broken(addon))
+            .map(|addon| addon.name.as_str())
+            .collect();
+        assert_eq!(broken, ["Bartender4-master"]);
+    }
+
+    #[test]
+    fn nothing_the_archives_may_hold_is_said_before_they_are_known() {
+        let mut snapshot = kpack();
+        let mut installed = Addon {
+            toc: None,
+            ..addon("Skada", Some(marker("Skada")))
+        };
+        installed.name = "SkadaBroken".into();
+        snapshot.addons.push(installed);
+        let kpack = &snapshot.addons[3];
+
+        assert!(snapshot.missing_dependencies(kpack).is_empty());
+        assert_eq!(snapshot.has("Blizzard_HelloThisIsSomethingElse"), None);
+        assert!(snapshot.addons.iter().all(|addon| !snapshot.broken(addon)));
+        let groups = snapshot.groups();
+        let listed: Vec<&str> = groups.iter().map(Group::title).collect();
+        // Those with a `.toc`, and the launcher's own, broken or not.
+        assert_eq!(listed, ["Blizzard_Something title", "KPack title", "Skada"]);
     }
 }

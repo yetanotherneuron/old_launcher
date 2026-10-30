@@ -107,9 +107,7 @@ impl SavedVariables {
                         continue;
                     };
 
-                    if !addon.starts_with("blizzard_") {
-                        files.entry(addon).or_default().push(entry.path());
-                    }
+                    files.entry(addon).or_default().push(entry.path());
                 }
             }
         }
@@ -203,10 +201,15 @@ mod tests {
     }
 
     #[test]
-    fn blizzard_data_is_never_listed() {
+    fn the_data_of_blizzards_addons_is_listed_like_any_other() {
         let root = wtf(&["Account/ME/SavedVariables/Blizzard_CombatLog.lua"]);
 
-        assert_eq!(SavedVariables::scan(root.path()).iter().count(), 0);
+        assert_eq!(
+            SavedVariables::scan(root.path())
+                .of("blizzard_combatlog")
+                .len(),
+            1
+        );
     }
 
     #[test]

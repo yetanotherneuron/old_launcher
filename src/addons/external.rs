@@ -248,7 +248,9 @@ fn sentence(error: &str) -> String {
 /// What installing the `chosen` folders of `found` changes or may get wrong,
 /// in the client as `snapshot` saw it: folders they replace (one from the
 /// `catalog`'s entries no longer updating), folders made for another game
-/// version, and dependencies neither installed nor chosen too.
+/// version, and dependencies the game doesn't have (see [`Snapshot::has`])
+/// that aren't chosen too. Not a dependency the game's archives may hold,
+/// until they are known.
 fn warnings(
     found: &[Found],
     chosen: &[String],
@@ -283,13 +285,12 @@ fn warnings(
         }
 
         for dependency in &folder.toc.dependencies {
-            let present = installed
+            let missing = !chosen
                 .iter()
-                .map(|addon| &addon.name)
-                .chain(chosen)
-                .any(|name| name.eq_ignore_ascii_case(dependency));
+                .any(|name| name.eq_ignore_ascii_case(dependency))
+                && snapshot.and_then(|snapshot| snapshot.has(dependency)) == Some(false);
 
-            if !present {
+            if missing {
                 warnings.push(format!(
                     "{} requires {dependency}, which won't be installed.",
                     folder.name
