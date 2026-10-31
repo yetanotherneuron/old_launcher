@@ -273,7 +273,7 @@ fn shape(url: &str) -> Option<Shape> {
 }
 
 /// Whether `name` is a commit's id rather than a branch's or a tag's name.
-fn commit(name: &str) -> bool {
+pub fn commit(name: &str) -> bool {
     name.len() == 40 && name.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
@@ -590,7 +590,7 @@ async fn last_commit(client: &reqwest::Client, file: &File) -> anyhow::Result<St
 /// `text` as a value in a URL's query: everything but letters, digits,
 /// `-._~` and `/` percent-encoded, but for the escapes it has already (a
 /// path taken from a URL may have some, which stand for what they encode).
-fn query(text: &str) -> String {
+pub fn query(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut encoded = String::with_capacity(text.len());
 

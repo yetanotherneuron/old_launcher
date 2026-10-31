@@ -58,6 +58,12 @@ pub enum Error {
     #[error("no addon in it: no folder holds a .toc file")]
     NoAddon,
 
+    /// An archive that holds addons but none of the folders asked of it: it
+    /// is no longer the one that was listed, a site having uploaded another
+    /// under the same address, say.
+    #[error("it has changed: it no longer holds {}", .0.join(", "))]
+    Changed(Vec<String>),
+
     /// A folder to install from that is in `Interface/AddOns` already.
     #[error("{} is in Interface/AddOns already", .0.display())]
     InAddOns(PathBuf),

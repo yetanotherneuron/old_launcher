@@ -7,6 +7,9 @@
 //! per hundred repositories; archive downloads don't count against the API
 //! limits. Setting `GITHUB_TOKEN` raises the limits if they ever get in the
 //! way.
+//!
+//! A single repository of someone who isn't a maintainer is listed by its
+//! full name, in `REPOSITORIES`, the same way.
 
 use anyhow::Context;
 use old_launcher_core::catalog;
@@ -43,6 +46,10 @@ const EXCLUDED: &[&str] = &["NoM0Re/WoW-3.3.5a-Addons", "NoM0Re/WoW-3.3.5a-Addon
 /// Repositories whose releases attach each addon as a zip of its own:
 /// Trimitor's, made for his Dungeon Maps.
 pub const COLLECTIONS: &[&str] = &["Trimitor/WDM-addons"];
+
+/// Single repositories, by full name (`owner/name`), of owners who aren't
+/// maintainers: the rest of what they keep isn't 3.3.5a addons.
+pub const REPOSITORIES: &[&str] = &["UndeadRogue/wow-3.3.5a-addons"];
 
 /// Repositories bigger than this (in KB, as GitHub reports it) are
 /// collections or asset dumps, not an addon.
@@ -93,6 +100,32 @@ impl Source for Collection {
         let latest: Latest = api(client, &format!("repos/{repository}/releases/latest")).await?;
 
         Ok(listings(repository, latest))
+    }
+}
+
+/// A single repository, by its full name (`owner/name`), whose branch
+/// snapshot is listed like a maintainer's.
+pub struct Repository(pub &'static str);
+
+impl Source for Repository {
+    fn info(&self) -> catalog::Source {
+        let Self(repository) = self;
+        let owner = repository.split('/').next().unwrap_or(repository);
+
+        catalog::Source {
+            id: format!("github-{}", repository.to_lowercase().replace('/', "-")),
+            name: format!("{owner} on GitHub"),
+            homepage: format!("https://github.com/{repository}"),
+        }
+    }
+
+    /// Lists the repository, whatever its size or whether it is a fork: it
+    /// was picked by name.
+    async fn list(&self, client: &reqwest::Client) -> anyhow::Result<Vec<Listing>> {
+        let Self(repository) = self;
+        let described: Described = api(client, &format!("repos/{repository}")).await?;
+
+        Ok(vec![listing(described)])
     }
 }
 
@@ -149,21 +182,10 @@ fn listings(repository: &str, latest: Latest) -> Vec<Listing> {
 /// Only those whose archive has a folder declaring the 3.3.5a interface are
 /// kept by the indexer.
 pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Result<Vec<Listing>> {
-    #[derive(Deserialize)]
-    struct Repository {
-        name: String,
-        full_name: String,
-        description: Option<String>,
-        fork: bool,
-        size: u64,
-        default_branch: String,
-        html_url: String,
-    }
-
     let mut listings = Vec::new();
 
     for page in 1.. {
-        let repositories: Vec<Repository> = api(
+        let repositories: Vec<Described> = api(
             client,
             &format!("users/{owner}/repos?type=owner&per_page=100&page={page}"),
         )
@@ -178,27 +200,7 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
                         && repository.size <= MAX_SIZE
                         && !EXCLUDED.contains(&repository.full_name.as_str())
                 })
-                .map(|repository| Listing {
-                    download: format!(
-                        "https://github.com/{}/archive/refs/heads/{}.zip",
-                        repository.full_name, repository.default_branch
-                    ),
-                    name: repository.name,
-                    description: repository.description.unwrap_or_default().trim().to_owned(),
-                    image: None,
-                    changes: Some(format!(
-                        "{}/commits/{}",
-                        repository.html_url, repository.default_branch
-                    )),
-                    page: Some(repository.html_url),
-                    links: Vec::new(),
-                    // A branch snapshot's files carry the last commit's date.
-                    updated: Updated::FromArchive,
-                    require_wotlk: true,
-                    // The branch moves on under the same URL, until the
-                    // indexer pins it to its commit (see `pin`).
-                    immutable: false,
-                }),
+                .map(listing),
         );
 
         if last {
@@ -207,6 +209,43 @@ pub async fn repositories(client: &reqwest::Client, owner: &str) -> anyhow::Resu
     }
 
     Ok(listings)
+}
+
+/// A repository, as GitHub's API describes it, with what a listing needs.
+#[derive(Deserialize)]
+struct Described {
+    name: String,
+    full_name: String,
+    description: Option<String>,
+    fork: bool,
+    size: u64,
+    default_branch: String,
+    html_url: String,
+}
+
+/// The listing of `repository`: a snapshot of its default branch.
+fn listing(repository: Described) -> Listing {
+    Listing {
+        download: format!(
+            "https://github.com/{}/archive/refs/heads/{}.zip",
+            repository.full_name, repository.default_branch
+        ),
+        name: repository.name,
+        description: repository.description.unwrap_or_default().trim().to_owned(),
+        image: None,
+        changes: Some(format!(
+            "{}/commits/{}",
+            repository.html_url, repository.default_branch
+        )),
+        page: Some(repository.html_url),
+        links: Vec::new(),
+        // A branch snapshot's files carry the last commit's date.
+        updated: Updated::FromArchive,
+        require_wotlk: true,
+        // The branch moves on under the same URL, until the indexer pins it
+        // to its commit (see `pin`).
+        immutable: false,
+    }
 }
 
 /// Calls the GitHub REST API at `path` (relative to `https://api.github.com/`),
@@ -285,5 +324,33 @@ mod tests {
             Collection("Trimitor/WDM-addons").info().id,
             "github-trimitor-wdm-addons"
         );
+    }
+
+    #[test]
+    fn a_single_repository_is_listed_as_a_maintainers_is() {
+        let source = Repository("UndeadRogue/wow-3.3.5a-addons").info();
+        let described: Described = serde_json::from_str(
+            r#"{
+                "name": "wow-3.3.5a-addons",
+                "full_name": "UndeadRogue/wow-3.3.5a-addons",
+                "description": " Addons and ElvUI plugins. ",
+                "fork": false,
+                "size": 4000,
+                "default_branch": "main",
+                "html_url": "https://github.com/UndeadRogue/wow-3.3.5a-addons"
+            }"#,
+        )
+        .unwrap();
+
+        let listed = listing(described);
+
+        assert_eq!(source.id, "github-undeadrogue-wow-3.3.5a-addons");
+        assert_eq!(source.name, "UndeadRogue on GitHub");
+        assert_eq!(
+            listed.download,
+            "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/refs/heads/main.zip"
+        );
+        assert_eq!(listed.description, "Addons and ElvUI plugins.");
+        assert!(!listed.immutable && listed.require_wotlk);
     }
 }

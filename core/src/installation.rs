@@ -243,25 +243,33 @@ impl Installation {
         })
     }
 
-    /// Installs the addons in `archive` and returns their folder names.
+    /// Installs the addons in `archive` named in `folders` and returns their
+    /// folder names.
     ///
     /// The archive is extracted to a staging folder inside `Interface/AddOns`
     /// (so moving out of it is a rename on the same filesystem), then every
-    /// folder with a `.toc` moves into place under the name its `.toc`
-    /// declares, replacing any folder already there. The `replacing` folders
-    /// (a previous install of the same entry) are removed first, so folders a
-    /// new version dropped do not linger. Each installed folder gets `marker`.
+    /// folder with a `.toc` whose name is in `folders` (the name its `.toc`
+    /// declares, compared ignoring case) moves into place under that name,
+    /// replacing any folder already there. An archive holding several
+    /// unrelated addons is listed as one download for each, and takes only
+    /// its own from it. The `replacing` folders (a previous install of the
+    /// same entry) are removed first, so folders a new version dropped do not
+    /// linger. Each installed folder gets `marker`.
+    ///
+    /// An archive that holds addons but none of `folders` is [`Error::Changed`]
+    /// rather than [`Error::NoAddon`], and nothing is touched.
     pub fn install(
         &self,
         archive: &[u8],
         marker: &Marker,
+        folders: &[String],
         replacing: &[String],
     ) -> Result<Vec<String>, Error> {
         let staging = self.staging()?;
 
         archive::extract(archive, staging.path())?;
 
-        self.place(staging.path(), |_| true, Some(marker), replacing)
+        self.place(staging.path(), folders, Some(marker), replacing)
     }
 
     /// What [`Installation::import`] would install from `path`, an archive
@@ -321,7 +329,7 @@ impl Installation {
         }
 
         // What isn't placed goes with the staging folder.
-        self.place(staging.path(), is_chosen, None, &[])
+        self.place(staging.path(), chosen, None, &[])
     }
 
     /// A staging folder inside `Interface/AddOns`, so moving out of it is a
@@ -336,12 +344,16 @@ impl Installation {
             .map_err(io_at(&addons))
     }
 
-    /// Moves the addon folders in `staging` whose names are `chosen` into
-    /// `Interface/AddOns`, under the name their `.toc` declares, replacing
-    /// any folder already there, once the `replacing` folders are gone. Each
-    /// gets `marker`, when there is one. A module left out is deleted from
-    /// inside its addon, where the client wouldn't load it anyway. Returns
-    /// their folder names.
+    /// Moves the addon folders in `staging` whose names are `chosen`
+    /// (compared ignoring case) into `Interface/AddOns`, under the name their
+    /// `.toc` declares, replacing any folder already there, once the
+    /// `replacing` folders are gone. Each gets `marker`, when there is one. A
+    /// module left out is deleted from inside its addon, where the client
+    /// wouldn't load it anyway. Returns their folder names.
+    ///
+    /// Fails with [`Error::NoAddon`] when `staging` holds no addon folder at
+    /// all, and with [`Error::Changed`] when it holds some but none of
+    /// `chosen`.
     ///
     /// What is replaced moves aside, into a staging folder deleted at the
     /// end: an install cut short leaves no folder half deleted, and the
@@ -349,17 +361,25 @@ impl Installation {
     fn place(
         &self,
         staging: &Path,
-        chosen: impl Fn(&str) -> bool,
+        chosen: &[String],
         marker: Option<&Marker>,
         replacing: &[String],
     ) -> Result<Vec<String>, Error> {
         let addons = self.addons_directory();
-        let (folders, left_out): (Vec<_>, Vec<_>) = layout::find(staging)?
-            .into_iter()
-            .partition(|folder| chosen(&folder.name));
+        let (folders, left_out): (Vec<_>, Vec<_>) =
+            layout::find(staging)?.into_iter().partition(|folder| {
+                chosen
+                    .iter()
+                    .any(|chosen| chosen.eq_ignore_ascii_case(&folder.name))
+            });
 
         if folders.is_empty() {
-            return Err(Error::NoAddon);
+            // With nothing asked for, the archive can't have dropped any.
+            return Err(if left_out.is_empty() || chosen.is_empty() {
+                Error::NoAddon
+            } else {
+                Error::Changed(chosen.to_vec())
+            });
         }
 
         let aside = self.staging()?;
@@ -1538,7 +1558,12 @@ mod tests {
         ]);
 
         let installed = installation
-            .install(&archive, &marker("Skada"), &[])
+            .install(
+                &archive,
+                &marker("Skada"),
+                &["Skada".to_owned(), "SkadaImprovement".to_owned()],
+                &[],
+            )
             .unwrap();
 
         assert_eq!(installed, ["Skada", "SkadaImprovement"]);
@@ -1549,6 +1574,36 @@ mod tests {
                 .addons
                 .iter()
                 .all(|addon| addon.marker == Some(marker("Skada")))
+        );
+    }
+
+    #[test]
+    fn installing_takes_only_the_folders_it_is_given_from_an_archive() {
+        let (_root, installation) = client();
+        let archive = zip_of(&[
+            ("Pack/A/A.toc", ""),
+            ("Pack/B/B.toc", ""),
+            ("Pack/C/C.toc", ""),
+        ]);
+
+        let installed = installation
+            .install(
+                &archive,
+                &marker("Pack/AC"),
+                &["a".to_owned(), "C".to_owned()],
+                &[],
+            )
+            .unwrap();
+
+        assert_eq!(installed, ["A", "C"]);
+        assert_eq!(folders(&installation), ["A", "C"]);
+        assert!(
+            installation
+                .scan()
+                .unwrap()
+                .addons
+                .iter()
+                .all(|addon| addon.marker == Some(marker("Pack/AC")))
         );
     }
 
@@ -1597,7 +1652,9 @@ mod tests {
         let (_root, installation) = client();
         let archive = zip_of(&[("Foo-master/Foo.toc", "")]);
 
-        installation.install(&archive, &marker("Foo"), &[]).unwrap();
+        installation
+            .install(&archive, &marker("Foo"), &["Foo".to_owned()], &[])
+            .unwrap();
 
         let entries: Vec<_> = fs::read_dir(installation.addons_directory())
             .unwrap()
@@ -1612,8 +1669,17 @@ mod tests {
         let old = zip_of(&[("A/A.toc", ""), ("A_Old/A_Old.toc", "")]);
         let new = zip_of(&[("A/A.toc", "## Version: 2")]);
 
-        let previous = installation.install(&old, &marker("A"), &[]).unwrap();
-        installation.install(&new, &marker("A"), &previous).unwrap();
+        let previous = installation
+            .install(
+                &old,
+                &marker("A"),
+                &["A".to_owned(), "A_Old".to_owned()],
+                &[],
+            )
+            .unwrap();
+        installation
+            .install(&new, &marker("A"), &["A".to_owned()], &previous)
+            .unwrap();
 
         assert_eq!(folders(&installation), ["A"]);
     }
@@ -1626,7 +1692,12 @@ mod tests {
         fs::write(manual.join("stale.lua"), "").unwrap();
 
         installation
-            .install(&zip_of(&[("ACP/ACP.toc", "")]), &marker("ACP"), &[])
+            .install(
+                &zip_of(&[("ACP/ACP.toc", "")]),
+                &marker("ACP"),
+                &["ACP".to_owned()],
+                &[],
+            )
             .unwrap();
 
         assert!(!manual.join("stale.lua").exists());
@@ -1803,7 +1874,12 @@ mod tests {
     fn a_folder_in_addons_is_not_imported_again() {
         let (_root, installation) = client();
         installation
-            .install(&zip_of(&[("Foo/Foo.toc", "")]), &marker("Foo"), &[])
+            .install(
+                &zip_of(&[("Foo/Foo.toc", "")]),
+                &marker("Foo"),
+                &["Foo".to_owned()],
+                &[],
+            )
             .unwrap();
         let foo = installation.addons_directory().join("Foo");
 
@@ -1869,11 +1945,16 @@ mod tests {
     fn modules_kept_inside_their_addon_go_in_beside_it() {
         let (_root, installation) = client();
 
+        let all = ["Overachiever", "Overachiever_Tabs", "Overachiever_Trade"];
         let installed = installation
-            .install(&zip_of(&overachiever()), &marker("Overachiever"), &[])
+            .install(
+                &zip_of(&overachiever()),
+                &marker("Overachiever"),
+                &all.map(str::to_owned),
+                &[],
+            )
             .unwrap();
 
-        let all = ["Overachiever", "Overachiever_Tabs", "Overachiever_Trade"];
         assert_eq!(installed, all);
         assert_eq!(folders(&installation), all);
         let addons = installation.addons_directory();
@@ -1929,17 +2010,60 @@ mod tests {
     fn archives_without_addons_change_nothing() {
         let (_root, installation) = client();
         installation
-            .install(&zip_of(&[("A/A.toc", "")]), &marker("A"), &[])
+            .install(
+                &zip_of(&[("A/A.toc", "")]),
+                &marker("A"),
+                &["A".to_owned()],
+                &[],
+            )
             .unwrap();
 
         let result = installation.install(
             &zip_of(&[("README.md", "")]),
             &marker("A"),
             &["A".to_owned()],
+            &["A".to_owned()],
         );
 
         assert!(matches!(result, Err(Error::NoAddon)));
         assert_eq!(folders(&installation), ["A"]);
+    }
+
+    #[test]
+    fn an_archive_that_no_longer_holds_the_folders_listed_has_changed() {
+        let (_root, installation) = client();
+        installation
+            .install(
+                &zip_of(&[("A/A.toc", "")]),
+                &marker("A"),
+                &["A".to_owned()],
+                &[],
+            )
+            .unwrap();
+
+        // The site uploaded the archive again, with its folders renamed.
+        let error = installation
+            .install(
+                &zip_of(&[("Pack/A2/A2.toc", ""), ("Pack/B/B.toc", "")]),
+                &marker("A"),
+                &["A".to_owned(), "A_Options".to_owned()],
+                &["A".to_owned()],
+            )
+            .unwrap_err();
+
+        assert!(matches!(&error, Error::Changed(asked) if asked == &["A", "A_Options"]));
+        assert_eq!(
+            error.to_string(),
+            "it has changed: it no longer holds A, A_Options"
+        );
+        assert_eq!(folders(&installation), ["A"], "the installed one is kept");
+        assert_eq!(
+            fs::read_dir(installation.addons_directory())
+                .unwrap()
+                .count(),
+            1,
+            "no staging folder left"
+        );
     }
 
     fn touch(installation: &Installation, files: &[&str]) {
@@ -2059,6 +2183,7 @@ mod tests {
             .install(
                 &zip_of(&[("A/A.toc", ""), ("B/B.toc", "")]),
                 &marker("AB"),
+                &["A".to_owned(), "B".to_owned()],
                 &[],
             )
             .unwrap();
@@ -2148,7 +2273,7 @@ mod tests {
 
         let archive = zip_of(&[("A/A.toc", "## Version: 2")]);
         installation
-            .install(&archive, &marker("A"), &["A".to_owned()])
+            .install(&archive, &marker("A"), &["A".to_owned()], &["A".to_owned()])
             .unwrap();
 
         assert_eq!(

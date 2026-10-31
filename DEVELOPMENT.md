@@ -128,16 +128,20 @@ The indexer lists every source, pins the downloads that move (a branch's
 snapshot) to what they serve now, downloads every archive but those it
 inspected before that haven't changed since (`index/archives.json`, by
 URL; delete it after changing how archives are inspected), records the
-folders each one installs, merges the listings of the same addon, and
-orders each entry's downloads newest first. `indexer/src/main.rs` and
-`source.rs` say how; each source's module says what it takes and leaves
-out.
+folders each one installs, splits the archives in `split::ARCHIVES`,
+compilations of unrelated addons, into one listing per addon by what their
+`.toc` files require (`indexer/src/split.rs`), merges the listings of the
+same addon, and orders each entry's downloads newest first.
+`indexer/src/main.rs` and `source.rs` say how; each source's module says
+what it takes and leaves out.
 
 **Adding a source** is a module in `indexer/src/source/` implementing
 `Source` (`info` describes it, `list` returns its listings) and a line in
 the ordered list in `main.rs`; the first source listing an addon describes
-it. A GitHub maintainer is one more name in `github::MAINTAINERS`, a
-GitLab project one more path in `gitlab::AUTHORS`.
+it. A GitHub maintainer is one more name in `github::MAINTAINERS`, a single
+repository one more `owner/name` in `github::REPOSITORIES` (plus a line in
+`split::ARCHIVES` when it is a compilation of unrelated addons), a GitLab
+project one more path in `gitlab::AUTHORS`.
 
 ## The list of mods
 

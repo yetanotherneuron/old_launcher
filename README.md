@@ -69,6 +69,8 @@ every week:
   s0h2x, KhalGH, Sattva-108, Xurkon, Wrath-AddOns.
 - [Trimitor/WDM-addons](https://github.com/Trimitor/WDM-addons), addons
   made for the Dungeon Maps mod.
+- [UndeadRogue/wow-3.3.5a-addons](https://github.com/UndeadRogue/wow-3.3.5a-addons),
+  addons and ElvUI plugins.
 - Addon authors on GitLab: juxuanu (Kekator).
 - [CurseForge](https://www.curseforge.com/wow), for the addons with a file
   for patch 3.3.5 whose authors let other apps download it.

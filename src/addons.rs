@@ -1151,8 +1151,14 @@ fn install(
             progress.send(Stage::Installing).await;
 
             let marker = download.marker();
+            // The archive may hold other addons than this download's.
+            let folders: Vec<String> = download
+                .folders
+                .iter()
+                .map(|folder| folder.name.clone())
+                .collect();
 
-            blocking(move || installation.install(&archive, &marker, &replacing))
+            blocking(move || installation.install(&archive, &marker, &folders, &replacing))
                 .await
                 .map_err(Failure::Failed)
         };

@@ -1298,7 +1298,12 @@ fn download(source: &str, url: String) -> (String, Download) {
         page: None,
         changes: None,
         links: Vec::new(),
-        folders: Vec::new(),
+        folders: vec![crate::core::catalog::Folder {
+            name: "ACP".into(),
+            title: None,
+            version: None,
+            interface: None,
+        }],
     };
 
     (source.to_owned(), download)

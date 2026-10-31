@@ -66,7 +66,9 @@ pub struct Download {
     pub name: String,
     /// Where to download the archive.
     pub url: String,
-    /// When its newest file was modified (`YYYY-MM-DD`), if the archive says.
+    /// When it was last updated (`YYYY-MM-DD`): as its source says, or its
+    /// newest file, or, for an addon of a repository's snapshot, the last
+    /// commit that changed its folders; none when nothing says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
     /// The addon's own page at the source, if it has one.
@@ -79,7 +81,9 @@ pub struct Download {
     /// Other pages about the addon (original author, CurseForge, …).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<Link>,
-    /// The folders it puts in `Interface/AddOns`.
+    /// The folders it puts in `Interface/AddOns`, and the only ones
+    /// installing it takes from the archive: an archive holding several
+    /// unrelated addons is listed as one download for each.
     pub folders: Vec<Folder>,
 }
 
@@ -108,12 +112,47 @@ pub struct Folder {
     pub interface: Option<u32>,
 }
 
+/// What tells an addon folder of an archive apart from the others, as the
+/// indexer records it to tell which of them belong together: what its `.toc`
+/// requires, which folder it sits inside, and where.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Part {
+    /// The folder, as in [`Contents::folders`].
+    pub name: String,
+    /// Where it sits in the archive, its directories joined by `/`
+    /// (`addons-main/Addons/ElvUI_MultiBot`), whose last may be named
+    /// otherwise than the folder, which takes its `.toc`'s name. Empty for
+    /// the archive's root.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    /// The folders its `.toc` requires (`Dependencies`, `RequiredDeps`),
+    /// as written.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+    /// The `.toc` notes, without UI escape sequences and trimmed; none when
+    /// blank.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    /// The addon folder of the archive it sits inside, when it is a module
+    /// of another (see [`layout::find`]): the closest one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inside: Option<String>,
+    /// When it last changed (`YYYY-MM-DD`), when the indexer can tell better
+    /// than the archive's file dates do; none as inspected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+}
+
 /// What an archive installs, as the indexer records it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Contents {
     /// The addon folders, as [`Installation::install`](crate::Installation::install)
     /// would place them.
     pub folders: Vec<Folder>,
+    /// What tells each of the folders apart, one for each in the same
+    /// order. Empty when recorded by an indexer from before parts were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<Part>,
     /// What the addon says it does: the `.toc` notes of the first folder
     /// that has some, without UI escape sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -265,21 +304,48 @@ impl Contents {
 
         let updated = archive::extract(archive, staging.path())?;
 
+        let found = layout::find(staging.path())?;
         let mut folders = Vec::new();
+        let mut parts = Vec::new();
         let mut notes = None;
 
-        for folder in layout::find(staging.path())? {
+        for folder in &found {
             let toc = Toc::parse(&fs::read(&folder.toc).map_err(io_at(&folder.toc))?);
+            let folder_notes = toc
+                .notes
+                .map(|notes| notes.trim().to_owned())
+                .filter(|notes| !notes.is_empty());
+            // A module sits inside the folder of its addon, and of the
+            // addon's own addon when that is a module too: the closest is
+            // the one it belongs to.
+            let inside = found
+                .iter()
+                .filter(|other| other.path != folder.path && folder.path.starts_with(&other.path))
+                .max_by_key(|other| other.path.components().count())
+                .map(|other| other.name.clone());
+            let path = folder
+                .path
+                .strip_prefix(staging.path())
+                .unwrap_or(&folder.path)
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
 
             if notes.is_none() {
-                notes = toc
-                    .notes
-                    .map(|notes| notes.trim().to_owned())
-                    .filter(|notes| !notes.is_empty());
+                notes.clone_from(&folder_notes);
             }
 
+            parts.push(Part {
+                name: folder.name.clone(),
+                path,
+                dependencies: toc.dependencies,
+                notes: folder_notes,
+                inside,
+                updated: None,
+            });
             folders.push(Folder {
-                name: folder.name,
+                name: folder.name.clone(),
                 title: toc.title,
                 version: toc.version,
                 interface: toc.interface,
@@ -288,6 +354,7 @@ impl Contents {
 
         Ok(Self {
             folders,
+            parts,
             notes,
             updated,
         })
@@ -515,6 +582,75 @@ mod tests {
             None,
             "blank notes say nothing"
         );
+    }
+
+    #[test]
+    fn an_archive_says_what_each_folder_requires_and_sits_inside() {
+        let archive = zip_of(&[
+            (
+                "Pack-main/Foo-main/Foo.toc",
+                "## Title: Foo\n## Notes: |cff00ff00Does foo.|r \n",
+            ),
+            (
+                "Pack-main/Foo-main/Foo_Options/Foo_Options.toc",
+                "## Dependencies: Foo\n",
+            ),
+            (
+                "Pack-main/Bar/Bar.toc",
+                "## Dependencies: Blizzard_RaidUI, Foo\n## Notes:\n",
+            ),
+        ]);
+
+        let contents = Contents::inspect(&archive).unwrap();
+
+        assert_eq!(
+            contents
+                .folders
+                .iter()
+                .map(|folder| folder.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Bar", "Foo", "Foo_Options"]
+        );
+        assert_eq!(
+            contents.parts,
+            [
+                Part {
+                    name: "Bar".into(),
+                    path: "Pack-main/Bar".into(),
+                    dependencies: vec!["Blizzard_RaidUI".into(), "Foo".into()],
+                    notes: None,
+                    inside: None,
+                    updated: None,
+                },
+                Part {
+                    name: "Foo".into(),
+                    path: "Pack-main/Foo-main".into(),
+                    dependencies: Vec::new(),
+                    notes: Some("Does foo.".into()),
+                    inside: None,
+                    updated: None,
+                },
+                Part {
+                    name: "Foo_Options".into(),
+                    path: "Pack-main/Foo-main/Foo_Options".into(),
+                    dependencies: vec!["Foo".into()],
+                    notes: None,
+                    inside: Some("Foo".into()),
+                    updated: None,
+                },
+            ]
+        );
+        assert_eq!(contents.notes.as_deref(), Some("Does foo."));
+    }
+
+    #[test]
+    fn a_catalog_from_before_parts_reads_without_them() {
+        let json = br#"{ "folders": [{ "name": "A" }] }"#;
+
+        let contents: Contents = serde_json::from_slice(json).unwrap();
+
+        assert_eq!(contents.folders.len(), 1);
+        assert!(contents.parts.is_empty());
     }
 
     #[test]

@@ -38,6 +38,9 @@ impl Toc {
     ///
     /// Old addons are often Latin-1 rather than UTF-8, so invalid UTF-8 is
     /// decoded as Latin-1 instead of being rejected.
+    ///
+    /// Lines end at `\n`, `\r\n` or a lone `\r` (old Mac files), as the
+    /// game reads them: a file of the last kind is not one long line.
     pub fn parse(bytes: &[u8]) -> Self {
         let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
         let source = match std::str::from_utf8(bytes) {
@@ -47,7 +50,8 @@ impl Toc {
 
         let mut toc = Self::default();
 
-        for line in source.lines() {
+        // The empty line between a `\r\n`'s halves has no field to read.
+        for line in source.split(['\r', '\n']) {
             let Some(field) = line.strip_prefix("##") else {
                 continue;
             };
@@ -383,6 +387,23 @@ mod tests {
         let toc = Toc::parse(b"## Title: Caf\xe9\n");
 
         assert_eq!(toc.title.as_deref(), Some("Café"));
+    }
+
+    #[test]
+    fn lines_may_end_at_a_lone_carriage_return() {
+        // LUI v3's Forte_Paladin.toc is one: old Mac line endings.
+        let toc = Toc::parse(
+            b"## Interface: 30300\r\
+              ## Title: Forte |cff33ff99Paladin|r\r\
+              ## Dependencies: Forte_Core, Forte_Cooldowns\r\
+              ## OptionalDeps: LibStub\r\
+              Forte_Paladin.lua\r",
+        );
+
+        assert_eq!(toc.interface, Some(30300));
+        assert_eq!(toc.title.as_deref(), Some("Forte Paladin"));
+        assert_eq!(toc.dependencies, ["Forte_Core", "Forte_Cooldowns"]);
+        assert_eq!(toc.optional_dependencies, ["LibStub"]);
     }
 
     #[test]
