@@ -42,6 +42,11 @@
       "homepage": "https://github.com/Trimitor/WDM-addons"
     },
     {
+      "id": "github-undeadrogue-wow-3.3.5a-addons",
+      "name": "UndeadRogue on GitHub",
+      "homepage": "https://github.com/UndeadRogue/wow-3.3.5a-addons"
+    },
+    {
       "id": "github-wrath-addons",
       "name": "Wrath-AddOns on GitHub",
       "homepage": "https://github.com/Wrath-AddOns"
@@ -1003,22 +1008,17 @@
       ]
     },
     {
-      "name": "AddFriend",
-      "description": "AddFriend adds Add Friend and Add Guild options to player context menus.",
+      "name": "AddFriend-3.3.5a",
+      "description": "AddFriend is a simple addon that adds an \"Add Friend\" and \"Invite Guild\" option to the context menu of player options.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/AddFriend.jpeg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "AddFriend",
+          "name": "AddFriend-3.3.5a",
           "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/0a8a808b63e1aa95055e2e5175fb9bb28e4b6745.zip",
           "updated": "2024-07-07",
+          "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
-          "links": [
-            {
-              "label": "CurseForge",
-              "url": "https://www.curseforge.com/wow/addons/addfriend"
-            }
-          ],
           "folders": [
             {
               "name": "AddFriend",
@@ -4475,7 +4475,10 @@
           "page": "https://addons.rising-gods.de/addons/bammod",
           "folders": [
             {
-              "name": "BamMod"
+              "name": "BamMod",
+              "title": "BamMod V2.2  -Ace2-",
+              "version": "2.2.6",
+              "interface": 30300
             }
           ]
         }
@@ -4624,6 +4627,21 @@
               "name": "Bartender4",
               "title": "Bartender4",
               "version": "4.4.2-12-g94f3b58",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Bartender4 (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Bartender4",
+              "title": "Bartender4",
+              "version": "4.4.2",
               "interface": 30300
             }
           ]
@@ -4799,6 +4817,27 @@
               "name": "BaudBag",
               "title": "Baud Bag",
               "version": "3.3.4",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Baud Error Frame",
+      "description": "Improved error reporting.",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "Baud Error Frame (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "!BaudErrorFrame",
+              "title": "Baud Error Frame",
+              "version": "1.3",
               "interface": 30300
             }
           ]
@@ -7059,6 +7098,21 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "ButtonFacade (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "ButtonFacade",
+              "title": "ButtonFacade",
+              "version": "3.3.300",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -7100,6 +7154,27 @@
               "name": "ButtonFacade_Aperture",
               "title": "ButtonFacade: Aperture",
               "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ButtonFacade: Darion",
+      "description": "Darion skin for Button Facade.",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "ButtonFacade: Darion (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "ButtonFacade_Darion",
+              "title": "ButtonFacade: Darion",
+              "version": "3.0.3.2",
               "interface": 30300
             }
           ]
@@ -7320,6 +7395,26 @@
               "name": "ByeNow",
               "title": "ByeNow",
               "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "caelNameplates",
+      "description": "Custom minimalistic nameplates",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "caelNameplates (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "caelNamePlates",
+              "title": "caelNameplates",
               "interface": 30300
             }
           ]
@@ -7972,10 +8067,26 @@
       ]
     },
     {
-      "name": "Cell",
-      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
+      "name": "Cell-WotLK",
+      "description": "A World of Warcraft raid frame addon.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/b4cfc797a02e71cd70be3b7a4d2e8557797bab53.zip",
+          "updated": "2026-10-20",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -7988,22 +8099,6 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/b4cfc797a02e71cd70be3b7a4d2e8557797bab53.zip",
-          "updated": "2026-10-20",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -8047,6 +8142,26 @@
               "name": "Cellular",
               "title": "Cellular",
               "version": "3.3.006",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CError",
+      "description": "Blocks all errors from the middle of your screen such as 'Not enough Energy'.",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "CError (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "CError",
+              "title": "CError",
               "interface": 30300
             }
           ]
@@ -8657,22 +8772,17 @@
       ]
     },
     {
-      "name": "ClassicNumbers",
-      "description": "ClassicNumbers replaces the default floating damage text with the classic popping animation. It offers configurable size, transparency, duration, scroll speed, damage-school colors, number shortening, and filters for small hits and critical strikes. Open its options with /cn.",
+      "name": "ClassicNumbers-WotLK",
+      "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "ClassicNumbers",
+          "name": "ClassicNumbers-WotLK",
           "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/5c2ef10b0c36da7d91b3dc33d23826a6c331777d.zip",
           "updated": "2026-07-13",
+          "page": "https://github.com/NoM0Re/ClassicNumbers-WotLK",
           "changes": "https://github.com/NoM0Re/ClassicNumbers-WotLK/commits/main",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK"
-            }
-          ],
           "folders": [
             {
               "name": "ClassicNumbers",
@@ -8879,6 +8989,21 @@
           "updated": "2010-10-21",
           "page": "https://www.curseforge.com/wow/addons/clique",
           "changes": "https://www.curseforge.com/wow/addons/clique/files",
+          "folders": [
+            {
+              "name": "Clique",
+              "title": "Clique",
+              "version": "wowi:revision",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Clique (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
               "name": "Clique",
@@ -12865,8 +12990,8 @@
         {
           "source": "nom0re",
           "name": "DragonUI",
-          "url": "https://github.com/NeticSoul/DragonUI/archive/04b8b86b80a0bf569dc9c96a54b3239a679d54bc.zip",
-          "updated": "2026-10-30",
+          "url": "https://github.com/NeticSoul/DragonUI/archive/f154bd5cf4982359619896c354904da1e212ebd3.zip",
+          "updated": "2026-10-31",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -12878,13 +13003,13 @@
             {
               "name": "DragonUI",
               "title": "DragonUI",
-              "version": "2.5",
+              "version": "3.0",
               "interface": 30300
             },
             {
               "name": "DragonUI_Options",
               "title": "DragonUI Options",
-              "version": "2.5",
+              "version": "3.0",
               "interface": 30300
             }
           ]
@@ -13320,6 +13445,28 @@
       ]
     },
     {
+      "name": "Dynamic Farclip",
+      "description": "Holds a target framerate by trimming farclip only where terrain submission is the bottleneck.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "Dynamic Farclip (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "DynamicFarclip",
+              "title": "Dynamic Farclip",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "EA",
       "description": "EA is a small addon our guild used on lanathel and sindragosa 25hm",
       "image": "https://cdn-wow.mmoui.com/preview/pvw41522.png",
@@ -13335,6 +13482,28 @@
               "name": "ea",
               "title": "EA",
               "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Earthshield Addon",
+      "description": "Shows who you cast your earthshield on, and how much spell power you casted it with, if you have less spellpower the the prev earthsheild the color turns red, if you got more spellpower, the color becomes green",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw43072.jpg",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "Earthshield Addon",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=17772&d=1282486982&minion",
+          "updated": "2010-08-22",
+          "page": "https://www.wowinterface.com/downloads/info17772-EarthshieldAddon.html",
+          "folders": [
+            {
+              "name": "Earthshieldaddon",
+              "title": "EShield",
+              "version": ".5 Beta",
               "interface": 30300
             }
           ]
@@ -13463,15 +13632,61 @@
         {
           "source": "curseforge",
           "name": "EbonBroadcaster",
-          "url": "https://edge.forgecdn.net/files/9369/844/EbonBroadcaster_v1_4.zip",
-          "updated": "2026-10-30",
+          "url": "https://edge.forgecdn.net/files/9386/468/EbonBroadcaster-1.5.2.zip",
+          "updated": "2026-10-31",
           "page": "https://www.curseforge.com/wow/addons/ebonbroadcaster",
           "changes": "https://www.curseforge.com/wow/addons/ebonbroadcaster/files",
           "folders": [
             {
               "name": "EbonBroadcaster",
               "title": "EbonBroadcaster",
-              "version": "1.4",
+              "version": "1.5.2",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EbonBroadcaster - RaidFinder",
+      "description": "Community raid finder for Project Ebonhold 3.3.5a. Requires EbonBroadcaster 1.5.0 or newer",
+      "image": "https://media.forgecdn.net/attachments/2128/356/ebonraidfinder-create-listing-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "EbonBroadcaster - RaidFinder",
+          "url": "https://edge.forgecdn.net/files/9383/941/EbonBroadcaster_RaidFinder-1.1.0.zip",
+          "updated": "2026-10-31",
+          "page": "https://www.curseforge.com/wow/addons/ebonbroadcaster-raidfinder",
+          "changes": "https://www.curseforge.com/wow/addons/ebonbroadcaster-raidfinder/files",
+          "folders": [
+            {
+              "name": "EbonBroadcaster_RaidFinder",
+              "title": "EbonBroadcaster - RaidFinder",
+              "version": "1.1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EbonMinimapBag",
+      "description": "Collects minimap addon buttons into a compact, configurable, draggable bar for legacy WoW clients.",
+      "image": "https://media.forgecdn.net/attachments/2125/299/ebonminimapbag-settings-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "EbonMinimapBag",
+          "url": "https://edge.forgecdn.net/files/9374/82/EbonMinimapBag_v2_0.zip",
+          "updated": "2026-10-30",
+          "page": "https://www.curseforge.com/wow/addons/ebonminimapbag",
+          "changes": "https://www.curseforge.com/wow/addons/ebonminimapbag/files",
+          "folders": [
+            {
+              "name": "EbonMinimapBag",
+              "title": "EbonMinimapBag",
+              "version": "2.0",
               "interface": 30300
             }
           ]
@@ -14010,6 +14225,94 @@
               "name": "ElvUIBackport_ProfileConverter",
               "title": "ElvUI Profile Converter",
               "version": "1.1.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ElvUI Auctionator Tabs",
+      "description": "Applies the ElvUI tab skin to Auctionator's Buy / Sell / More... tabs on the Auction House frame.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "ElvUI Auctionator Tabs (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "ElvUI_AuctionatorTabs",
+              "title": "ElvUI Auctionator Tabs",
+              "version": "1.00",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ElvUI Inline Aura Bridge",
+      "description": "Lets Inline Aura display auras on ElvUI's action buttons.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "ElvUI Inline Aura Bridge (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "ElvUI_InlineAuraBridge",
+              "title": "ElvUI Inline Aura Bridge",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ElvUI MultiBot",
+      "description": "Starts the MultiBot bar hidden and restyles its buttons to match ElvUI.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "ElvUI MultiBot (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "MultiBotElvUI",
+              "title": "ElvUI MultiBot",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ElvUI Questie Tracker",
+      "description": "Applies ElvUI's button, icon and font styling to the Questie Tracker (the on-screen quest log).",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "ElvUI Questie Tracker (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "ElvUI_QuestieTracker",
+              "title": "ElvUI Questie Tracker",
+              "version": "1.00",
               "interface": 30300
             }
           ]
@@ -14793,6 +15096,27 @@
               "name": "EnhancedCharStats",
               "title": "Enhanced Characters Statistics",
               "version": "1.5.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "EnhancedColourPicker  -Ace2-",
+      "description": "Adds Copy and Paste Functions to the ColorPicker",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "EnhancedColourPicker  -Ace2- (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "EnhancedColourPicker",
+              "title": "EnhancedColourPicker  -Ace2-",
+              "version": "b1.9056.1",
               "interface": 30300
             }
           ]
@@ -15904,7 +16228,10 @@
           "page": "https://addons.rising-gods.de/addons/feral-night",
           "folders": [
             {
-              "name": "FeralbyNight"
+              "name": "FeralbyNight",
+              "title": "Feral by Night",
+              "version": "3.321",
+              "interface": 30300
             }
           ]
         }
@@ -16156,7 +16483,10 @@
           "page": "https://addons.rising-gods.de/addons/fizzwidget-disenchant-predictor",
           "folders": [
             {
-              "name": "GFW_DisenchantPredictor"
+              "name": "GFW_DisenchantPredictor",
+              "title": "Fizzwidget Disenchant Predictor",
+              "version": "3.3.1",
+              "interface": 30300
             }
           ]
         }
@@ -16528,6 +16858,116 @@
               "name": "Forte_Core",
               "title": "ForteXorcist II",
               "version": "1.965.3",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_DeathKnight",
+              "title": "ForteDeathKnight",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Druid",
+              "title": "ForteDruid",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Healthstone",
+              "title": "ForteHealthstone",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Hunter",
+              "title": "ForteHunter",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Mage",
+              "title": "ForteMage",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Paladin",
+              "title": "FortePaladin",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Priest",
+              "title": "FortePriest",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Rogue",
+              "title": "ForteRogue",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Shaman",
+              "title": "ForteShaman",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Shard",
+              "title": "ForteShard",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Soulstone",
+              "title": "ForteSoulstone",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Summon",
+              "title": "ForteSummon",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Talent",
+              "title": "ForteTalent",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Timer",
+              "title": "ForteTimer",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Vehicle",
+              "title": "ForteVehicle",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Warlock",
+              "title": "ForteWarlock",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Warrior",
+              "title": "ForteWarrior",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "ForteXorcist II (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Forte_Casting",
+              "title": "ForteCasting",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Cooldown",
+              "title": "ForteCooldown",
+              "interface": 30300
+            },
+            {
+              "name": "Forte_Core",
+              "title": "ForteXorcist II",
+              "version": "1.959.8",
               "interface": 30300
             },
             {
@@ -18339,6 +18779,21 @@
               "name": "Grid",
               "title": "Grid",
               "version": "1.30300.1308",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Grid (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Grid",
+              "title": "Grid",
+              "version": "1.30300.1304",
               "interface": 30300
             }
           ]
@@ -20663,6 +21118,28 @@
       "description": "Inline Aura zeigt die verbleibende Laufzeit und Anzahl aufgetragener Stacks von Buffs und Debuffs auf den zugehörigen Buttons der Action Bars an.",
       "image": "https://addons.rising-gods.de/sites/default/files/2017-03/636142132979931763%5B1%5D.jpg",
       "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "Inline Aura (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "InlineAura",
+              "title": "Inline Aura",
+              "version": "1.4",
+              "interface": 30300
+            },
+            {
+              "name": "InlineAura_Config",
+              "title": "Inline Aura - Configuration GUI",
+              "version": "1.4",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "rising-gods",
           "name": "Inline Aura",
@@ -23086,6 +23563,21 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Lib: SharedMedia-3.0 (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "LibSharedMedia-3.0",
+              "title": "Lib: SharedMedia-3.0",
+              "version": "3.0-56",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -23792,299 +24284,20 @@
       ]
     },
     {
-      "name": "LUI v3",
-      "description": "LUI ersetzt das Standardinterface von Blizzard vollständig und bietet dir ein alternatives, anpassbares Interface im Gegenzug.",
-      "image": "https://addons.rising-gods.de/sites/default/files/2016-12/LUIv3.png",
+      "name": "LUI",
+      "description": "User Interface Modification",
       "downloads": [
         {
           "source": "rising-gods",
-          "name": "LUI v3",
+          "name": "LUI (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
           "updated": "2010-07-04",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
-              "name": "!BaudErrorFrame",
-              "title": "Baud Error Frame",
-              "version": "1.3",
-              "interface": 30300
-            },
-            {
-              "name": "!YouArentInAPartyFix",
-              "title": "YouArentInAPartyFix",
-              "interface": 30300
-            },
-            {
-              "name": "Bartender4",
-              "title": "Bartender4",
-              "version": "4.4.2",
-              "interface": 30300
-            },
-            {
-              "name": "ButtonFacade",
-              "title": "ButtonFacade",
-              "version": "3.3.300",
-              "interface": 30300
-            },
-            {
-              "name": "ButtonFacade_Darion",
-              "title": "ButtonFacade: Darion",
-              "version": "3.0.3.2",
-              "interface": 30300
-            },
-            {
-              "name": "caelNamePlates",
-              "title": "caelNameplates",
-              "interface": 30300
-            },
-            {
-              "name": "CError",
-              "title": "CError",
-              "interface": 30300
-            },
-            {
-              "name": "Clique",
-              "title": "Clique",
-              "version": "wowi:revision",
-              "interface": 30300
-            },
-            {
-              "name": "EnhancedColourPicker",
-              "title": "EnhancedColourPicker  -Ace2-",
-              "version": "b1.9056.1",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Casting",
-              "title": "ForteCasting",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Cooldown",
-              "title": "ForteCooldown",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Core",
-              "title": "ForteXorcist II",
-              "version": "1.959.8",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_DeathKnight",
-              "title": "ForteDeathKnight",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Druid",
-              "title": "ForteDruid",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Healthstone",
-              "title": "ForteHealthstone",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Hunter",
-              "title": "ForteHunter",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Mage",
-              "title": "ForteMage",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Paladin"
-            },
-            {
-              "name": "Forte_Priest",
-              "title": "FortePriest",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Rogue",
-              "title": "ForteRogue",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Shaman",
-              "title": "ForteShaman",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Shard",
-              "title": "ForteShard",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Soulstone",
-              "title": "ForteSoulstone",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Summon",
-              "title": "ForteSummon",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Talent",
-              "title": "ForteTalent",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Timer",
-              "title": "ForteTimer",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Vehicle",
-              "title": "ForteVehicle",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Warlock",
-              "title": "ForteWarlock",
-              "interface": 30300
-            },
-            {
-              "name": "Forte_Warrior",
-              "title": "ForteWarrior",
-              "interface": 30300
-            },
-            {
-              "name": "Grid",
-              "title": "Grid",
-              "version": "1.30300.1304",
-              "interface": 30300
-            },
-            {
-              "name": "LibSharedMedia-3.0",
-              "title": "Lib: SharedMedia-3.0",
-              "version": "3.0-56",
-              "interface": 30300
-            },
-            {
               "name": "LUI",
               "title": "LUI",
               "version": "3.0",
-              "interface": 30300
-            },
-            {
-              "name": "Mapster",
-              "title": "Mapster",
-              "version": "1.3.9",
-              "interface": 30300
-            },
-            {
-              "name": "Omen",
-              "title": "Omen3",
-              "version": "3.0.9",
-              "interface": 30300
-            },
-            {
-              "name": "OmniCC",
-              "title": "OmniCC",
-              "version": "2.5.9",
-              "interface": 30300
-            },
-            {
-              "name": "OmniCC_Options",
-              "title": "OmniCC Options",
-              "interface": 30300
-            },
-            {
-              "name": "oUF",
-              "title": "oUF",
-              "version": "1.3.28",
-              "interface": 30300
-            },
-            {
-              "name": "oUF_Experience",
-              "title": "oUF Experience",
-              "version": "30300.5-Release",
-              "interface": 30300
-            },
-            {
-              "name": "oUF_LUI",
-              "title": "oUF LUI",
-              "interface": 30300
-            },
-            {
-              "name": "oUF_Reputation",
-              "title": "oUF Reputation",
-              "version": "30200.2-Release",
-              "interface": 30300
-            },
-            {
-              "name": "PallyPower",
-              "title": "PallyPower",
-              "version": "v3.2.14",
-              "interface": 30300
-            },
-            {
-              "name": "pMinimap",
-              "title": "pMinimap",
-              "version": "30300.8-Release",
-              "interface": 30300
-            },
-            {
-              "name": "Recount",
-              "title": "Recount",
-              "interface": 30300
-            },
-            {
-              "name": "SharedMedia",
-              "title": "SharedMedia",
-              "version": "3.0.1-177",
-              "interface": 30300
-            },
-            {
-              "name": "StatBlockCore",
-              "title": "StatBlockCore",
-              "version": "2.65",
-              "interface": 30300
-            },
-            {
-              "name": "Stuffing",
-              "title": "Stuffing",
-              "version": "0.0.20",
-              "interface": 30300
-            },
-            {
-              "name": "Stuffing_Config",
-              "title": "Stuffing_Config",
-              "version": "0.0.20",
-              "interface": 30300
-            },
-            {
-              "name": "TipTop",
-              "version": "2.3",
-              "interface": 30300
-            },
-            {
-              "name": "XLoot",
-              "title": "XLoot  -Ace2-",
-              "version": "0.91.1",
-              "interface": 30300
-            },
-            {
-              "name": "XLootGroup",
-              "title": "XLoot Group",
-              "version": "0.61",
-              "interface": 30300
-            },
-            {
-              "name": "XLootMaster",
-              "title": "XLoot Master",
-              "version": "0.81",
-              "interface": 30300
-            },
-            {
-              "name": "XLootMonitor",
-              "title": "XLoot Monitor",
-              "version": "0.71",
               "interface": 30300
             }
           ]
@@ -24631,6 +24844,21 @@
               "url": "https://www.curseforge.com/wow/addons/mapster"
             }
           ],
+          "folders": [
+            {
+              "name": "Mapster",
+              "title": "Mapster",
+              "version": "1.3.9",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Mapster (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
               "name": "Mapster",
@@ -26126,6 +26354,50 @@
       ]
     },
     {
+      "name": "Mouselook Binder",
+      "description": "Toggle mouselook with a key, and choose what left/right click do while mouselooking.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "Mouselook Binder (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "MouselookBinder",
+              "title": "Mouselook Binder",
+              "version": "1.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mouselook Binder ElvUI",
+      "description": "Assign the mouselook left/right click from inside ElvUI's keybind mode.",
+      "downloads": [
+        {
+          "source": "github-undeadrogue-wow-3.3.5a-addons",
+          "name": "Mouselook Binder ElvUI (wow-3.3.5a-addons)",
+          "url": "https://github.com/UndeadRogue/wow-3.3.5a-addons/archive/42b037944fc7b75d8670ee9208da270e409e093d.zip",
+          "updated": "2026-10-04",
+          "page": "https://github.com/UndeadRogue/wow-3.3.5a-addons",
+          "changes": "https://github.com/UndeadRogue/wow-3.3.5a-addons/commits/main",
+          "folders": [
+            {
+              "name": "MouselookBinder_ElvUI",
+              "title": "Mouselook Binder ElvUI",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Mouseover Raid Icons",
       "description": "Adds keybinds to assign a raid icon to your mouseover target",
       "downloads": [
@@ -26499,6 +26771,28 @@
       ]
     },
     {
+      "name": "ncCamera",
+      "description": "ncCamera is a simple addon that does one simple thing: it allows you to zoom out your camera to the maximum amount(further than found in the Video options).",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw35526.gif",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "ncCamera",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=15678&d=1264286168&minion",
+          "updated": "2010-01-23",
+          "page": "https://www.wowinterface.com/downloads/info15678-ncCamera.html",
+          "folders": [
+            {
+              "name": "ncCamera",
+              "title": "ncCamera",
+              "version": "1.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "ncClassPlates",
       "description": "ncClassPlates is a PvP-oriënted nameplate addon that morphs your nameplates into class and totem icons. The screenshots on the right hand should be self-explaining.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw43098.png",
@@ -26514,6 +26808,28 @@
               "name": "ncClassPlates",
               "title": "ncClassPlates",
               "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ncError",
+      "description": "ncError is yet another error hiding addon, it hides all errors and not notifications(like quest progress) in a whitelist or blacklist method. You can use a slashcommand to print out the latest error hidden. Memory usage is nihil.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw32642.gif",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "ncError",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=14973&d=1267190937&minion",
+          "updated": "2010-02-26",
+          "page": "https://www.wowinterface.com/downloads/info14973-ncError.html",
+          "folders": [
+            {
+              "name": "ncError",
+              "title": "ncError",
+              "version": "1.5",
               "interface": 30300
             }
           ]
@@ -26578,6 +26894,28 @@
             {
               "name": "ncHoverName",
               "title": "ncHoverName",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ncItemTooltip",
+      "description": "ncItemTooltip is a little addon that adds information to item tooltips. It adds the possibility to show item ID, item count in bags and stack limit. Memory usage ~2kB.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw38852.png",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "ncItemTooltip",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16531&d=1271952695&minion",
+          "updated": "2010-04-22",
+          "page": "https://www.wowinterface.com/downloads/info16531-ncItemTooltip.html",
+          "folders": [
+            {
+              "name": "ncItemTooltip",
+              "title": "ncItemTooltip",
               "version": "1.0",
               "interface": 30300
             }
@@ -26657,15 +26995,15 @@
         {
           "source": "curseforge",
           "name": "Necromancer's Pet Frames Optimized (ConquestReborn)",
-          "url": "https://edge.forgecdn.net/files/9362/382/NecroMinions-v0.7.zip",
-          "updated": "2026-10-29",
+          "url": "https://edge.forgecdn.net/files/9380/508/NecroMinions_v0.8.3.zip",
+          "updated": "2026-10-31",
           "page": "https://www.curseforge.com/wow/addons/necromancers-pet-frames-optimized-conquestreborn",
           "changes": "https://www.curseforge.com/wow/addons/necromancers-pet-frames-optimized-conquestreborn/files",
           "folders": [
             {
               "name": "NecroMinions",
               "title": "NecroMinions",
-              "version": "0.7 Necromancer Summon Filter",
+              "version": "0.8.3",
               "interface": 30300
             }
           ]
@@ -27063,7 +27401,7 @@
       ]
     },
     {
-      "name": "NPC Silencer (GERMAN Version)",
+      "name": "NPC-Silencer international",
       "description": "Schaltet Npc's stumm!",
       "downloads": [
         {
@@ -27322,6 +27660,21 @@
           ]
         },
         {
+          "source": "rising-gods",
+          "name": "Omen3 (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Omen",
+              "title": "Omen3",
+              "version": "3.0.9",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "nom0re",
           "name": "Omen Threat Meter",
           "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/Omen.zip",
@@ -27508,6 +27861,32 @@
             {
               "name": "OmniCC_Config",
               "title": "OmniCC Config",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OmniCC",
+      "description": "Cooldown count for everything",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "OmniCC (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "OmniCC",
+              "title": "OmniCC",
+              "version": "2.5.9",
+              "interface": 30300
+            },
+            {
+              "name": "OmniCC_Options",
+              "title": "OmniCC Options",
               "interface": 30300
             }
           ]
@@ -27972,6 +28351,44 @@
               "name": "OrlanHeal",
               "title": "OrlanHeal",
               "version": "1.1.3",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "oUF",
+      "description": "Unit frame framework. Does nothing by itself.",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "oUF (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "oUF",
+              "title": "oUF",
+              "version": "1.3.28",
+              "interface": 30300
+            },
+            {
+              "name": "oUF_Experience",
+              "title": "oUF Experience",
+              "version": "30300.5-Release",
+              "interface": 30300
+            },
+            {
+              "name": "oUF_LUI",
+              "title": "oUF LUI",
+              "interface": 30300
+            },
+            {
+              "name": "oUF_Reputation",
+              "title": "oUF Reputation",
+              "version": "30200.2-Release",
               "interface": 30300
             }
           ]
@@ -29037,22 +29454,39 @@
       ]
     },
     {
-      "name": "PallyPower Improved",
-      "description": "PallyPower Improved helps paladins manage blessings, auras, seals and Righteous Fury through an interactive interface with indicators for missing buffs.",
+      "name": "PallyPower Skinner",
+      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "PallyPower Skinner",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
+          "updated": "2010-05-17",
+          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
+          "folders": [
+            {
+              "name": "!PPSkinner",
+              "title": "PP Skinner",
+              "version": "1.0.1.r",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PallyPower-Improved-3.3.5",
+      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "PallyPower Improved",
+          "name": "PallyPower-Improved-3.3.5",
           "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/8a87a53bb16ff680e5a2bff0977385235e7553a2.zip",
           "updated": "2026-10-07",
+          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
           "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
-          "links": [
-            {
-              "label": "GitHub",
-              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
-            }
-          ],
           "folders": [
             {
               "name": "PallyPower",
@@ -29092,25 +29526,18 @@
               "interface": 30300
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "PallyPower Skinner",
-      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
-      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
-      "downloads": [
+        },
         {
-          "source": "wowinterface",
-          "name": "PallyPower Skinner",
-          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
-          "updated": "2010-05-17",
-          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
+          "source": "rising-gods",
+          "name": "PallyPower (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
-              "name": "!PPSkinner",
-              "title": "PP Skinner",
-              "version": "1.0.1.r",
+              "name": "PallyPower",
+              "title": "PallyPower",
+              "version": "v3.2.14",
               "interface": 30300
             }
           ]
@@ -30476,8 +30903,8 @@
         {
           "source": "nom0re",
           "name": "PlateBuffs",
-          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/6584ceb51a1e906be373ac1be61178658a968e50.zip",
-          "updated": "2026-09-29",
+          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/d0f87173004c0046b3ba2d6e06e243292e6e708e.zip",
+          "updated": "2026-10-31",
           "changes": "https://github.com/KhalGH/PlateBuffs-WoTLK/commits/main",
           "links": [
             {
@@ -30599,6 +31026,21 @@
       "description": "pMinimap is a very lightweight and streamlined Minimap addon.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pMinimap.png",
       "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "pMinimap (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "pMinimap",
+              "title": "pMinimap",
+              "version": "30300.8-Release",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "nom0re",
           "name": "pMinimap",
@@ -31635,8 +32077,8 @@
         {
           "source": "nom0re",
           "name": "Questie",
-          "url": "https://github.com/Aldori15/Questie/archive/908a40b38bd6938b34eca4ce5e776dca2c70de8a.zip",
-          "updated": "2026-10-28",
+          "url": "https://github.com/Aldori15/Questie/archive/f1b5c606f582c7e588646fde8894919c68eedac5.zip",
+          "updated": "2026-10-31",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
             {
@@ -31647,8 +32089,46 @@
           "folders": [
             {
               "name": "Questie-335",
-              "title": "Questie-335 v10.0.3-335",
-              "version": "10.0.3-335",
+              "title": "Questie-335 v10.0.4-335",
+              "version": "10.0.4-335",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "github-xurkon",
+          "name": "PE-Questie",
+          "url": "https://github.com/Xurkon/PE-Questie/archive/89c3b3173df8eef3427bb5492a7fa8cea2846e3f.zip",
+          "updated": "2026-03-04",
+          "page": "https://github.com/Xurkon/PE-Questie",
+          "changes": "https://github.com/Xurkon/PE-Questie/commits/main",
+          "folders": [
+            {
+              "name": "Questie-335",
+              "title": "Questie - Ebonhold",
+              "version": "9.9.2",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Questie-X",
+      "description": "A universal WoW quest-helper addon with a plugin architecture for custom private servers.",
+      "downloads": [
+        {
+          "source": "github-xurkon",
+          "name": "Questie-X",
+          "url": "https://github.com/Xurkon/Questie-X/archive/788dad06815bd028d0708266497b67fa9b7e66a3.zip",
+          "updated": "2026-07-07",
+          "page": "https://github.com/Xurkon/Questie-X",
+          "changes": "https://github.com/Xurkon/Questie-X/commits/main",
+          "folders": [
+            {
+              "name": "Questie-X",
+              "title": "Questie-X",
+              "version": "1.6.4",
               "interface": 30300
             }
           ]
@@ -33413,6 +33893,20 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "Recount (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Recount",
+              "title": "Recount",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -35021,6 +35515,21 @@
               "name": "SharedMedia",
               "title": "SharedMedia",
               "version": "3.0.3-178",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "SharedMedia (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "SharedMedia",
+              "title": "SharedMedia",
+              "version": "3.0.1-177",
               "interface": 30300
             }
           ]
@@ -37255,6 +37764,21 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "rising-gods",
+          "name": "StatBlockCore (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "StatBlockCore",
+              "title": "StatBlockCore",
+              "version": "2.65",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -37486,6 +38010,33 @@
               "name": "Stuf_ForeignLanguage",
               "title": "STUF [ForeignLanguage]",
               "version": "3.3.006",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Stuffing",
+      "description": "Hmmmm, stuffing!",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "Stuffing (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "Stuffing",
+              "title": "Stuffing",
+              "version": "0.0.20",
+              "interface": 30300
+            },
+            {
+              "name": "Stuffing_Config",
+              "title": "Stuffing_Config",
+              "version": "0.0.20",
               "interface": 30300
             }
           ]
@@ -38710,6 +39261,26 @@
               "name": "TipTacTalents",
               "title": "TipTacTalents",
               "version": "10.02.27",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TipTop",
+      "description": "Tooltip enhancement",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "TipTop (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "TipTop",
+              "version": "2.3",
               "interface": 30300
             }
           ]
@@ -42367,6 +42938,45 @@
       ]
     },
     {
+      "name": "XLoot  -Ace2-",
+      "description": "A remake of the built-in lootframe. By Xuerian.",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "XLoot  -Ace2- (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "XLoot",
+              "title": "XLoot  -Ace2-",
+              "version": "0.91.1",
+              "interface": 30300
+            },
+            {
+              "name": "XLootGroup",
+              "title": "XLoot Group",
+              "version": "0.61",
+              "interface": 30300
+            },
+            {
+              "name": "XLootMaster",
+              "title": "XLoot Master",
+              "version": "0.81",
+              "interface": 30300
+            },
+            {
+              "name": "XLootMonitor",
+              "title": "XLoot Monitor",
+              "version": "0.71",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Xloot-pfUI",
       "description": "XLoot for TBC 2.4.3 and WOTLK 3.3.5 with pfUI Style",
       "image": "https://addons.rising-gods.de/sites/default/files/2016-11/2013-01-31_07-41-21%5B1%5D.png",
@@ -42632,6 +43242,26 @@
             {
               "name": "YouGotMail",
               "title": "YouGotMail",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "YouArentInAPartyFix",
+      "description": "Fixes \"You aren't in a party.\" spam in battlegrounds",
+      "downloads": [
+        {
+          "source": "rising-gods",
+          "name": "YouArentInAPartyFix (LUI v3)",
+          "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
+          "updated": "2010-07-04",
+          "page": "https://addons.rising-gods.de/addons/lui-v3",
+          "folders": [
+            {
+              "name": "!YouArentInAPartyFix",
+              "title": "YouArentInAPartyFix",
               "interface": 30300
             }
           ]
