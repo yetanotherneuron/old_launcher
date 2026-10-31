@@ -94,7 +94,9 @@ or on [Discord](https://discord.gg/tS35paspnf).
   launcher, a copy of each client's torrent, fetched again from its peers
   if missing, each mod's last download, so installing it again downloads
   nothing, and the list of fonts installed on your computer, made again
-  when they change.
+  when they change. On Linux, Wine also keeps a prefix for each client in
+  `~/.local/share/old_launcher/prefixes`, about 0.6 GB each, unless the
+  client's launch settings set `WINEPREFIX`.
 - A client downloading from a torrent goes into a `.download` folder
   inside the folder you chose, its files into place once complete.
   It is shared with the others downloading it, as BitTorrent works, until
