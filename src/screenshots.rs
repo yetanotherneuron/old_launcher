@@ -177,6 +177,28 @@ fn screenshots() {
             clients::mods::Seen::default(),
         ),
     )));
+    // Its patches looked at, as the launcher does once a client opens: what
+    // its archives hold is known, so the misplaced folder shows.
+    let facts = tempfile::tempdir().unwrap();
+    let locale = installation.locale().unwrap_or(Locale::EnUs);
+    let look_at_patches = |app: &mut App| {
+        let _ = app.patches.look(installation.root(), locale);
+        let scan = patches::look(
+            installation.root(),
+            locale,
+            &crate::core::patches::Cache::at(facts.path()),
+            &|_| {},
+        );
+        assert!(
+            scan.as_ref().is_ok_and(|scan| scan.unreadable.is_empty()),
+            "{scan:?}"
+        );
+        let _ = app.update(Message::Patches(patches::Message::Looked(
+            installation.root().to_path_buf(),
+            scan.map(Arc::new),
+        )));
+    };
+    look_at_patches(&mut app);
 
     // The scene `name`, with the text `top`, if any, scrolled to the top of
     // the dialog it is in.
@@ -321,23 +343,7 @@ fn screenshots() {
     let _ = app.update(Message::Clients(clients::Message::Mods(
         clients::mods::Message::Found(installation.root().to_path_buf(), seen),
     )));
-    let facts = tempfile::tempdir().unwrap();
-    let locale = installation.locale().unwrap_or(Locale::EnUs);
-    let _ = app.patches.look(installation.root(), locale);
-    let scan = patches::look(
-        installation.root(),
-        locale,
-        &crate::core::patches::Cache::at(facts.path()),
-        &|_| {},
-    );
-    assert!(
-        scan.as_ref().is_ok_and(|scan| scan.unreadable.is_empty()),
-        "{scan:?}"
-    );
-    let _ = app.update(Message::Patches(patches::Message::Looked(
-        installation.root().to_path_buf(),
-        scan.map(Arc::new),
-    )));
+    look_at_patches(&mut app);
     shoot(&app, "mods", Some("Mods"));
 
     // A byte of Dungeon Maps changes past its archive, its size and time
