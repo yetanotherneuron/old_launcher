@@ -27,10 +27,11 @@ fn snapshot(url: &str) -> Option<(&str, &str)> {
 
 /// Dates each folder of `contents`, found in the archive at `url`, by the
 /// last commit that changed it, when `url` is a GitHub snapshot of a commit.
-/// A folder dated already keeps its date, and one at the repository's root
-/// none: everything in the repository is its own, which the snapshot's
-/// commit changed. Stops at the first lookup that fails, the folders left
-/// keeping no date, until a later run asks again.
+/// A folder dated by its commit already keeps that date, and one at the
+/// repository's root gets none: everything in the repository is its own,
+/// which the snapshot's commit changed. Stops at the first lookup that
+/// fails, the folders left keeping only their files' date, until a later
+/// run asks again.
 pub async fn date(
     client: &reqwest::Client,
     url: &str,
@@ -46,8 +47,8 @@ pub async fn date(
             continue;
         };
 
-        if part.updated.is_none() {
-            part.updated = Some(last_changed(client, repository, commit, path).await?);
+        if part.committed.is_none() {
+            part.committed = Some(last_changed(client, repository, commit, path).await?);
         }
     }
 
@@ -131,12 +132,13 @@ mod tests {
                     notes: None,
                     inside: None,
                     updated: None,
+                    committed: None,
                 })
                 .collect(),
             notes: None,
             updated: None,
         };
-        contents.parts[1].updated = Some("2026-01-01".into());
+        contents.parts[1].committed = Some("2026-01-01".into());
         let before = contents.clone();
         let commit = "a".repeat(40);
 
@@ -176,8 +178,8 @@ mod tests {
         date(&client, url, &mut contents).await.unwrap();
 
         for part in &contents.parts {
-            println!("{} ({}): {:?}", part.name, part.path, part.updated);
-            assert!(part.updated.is_some(), "{}", part.name);
+            println!("{} ({}): {:?}", part.name, part.path, part.committed);
+            assert!(part.committed.is_some(), "{}", part.name);
         }
     }
 }

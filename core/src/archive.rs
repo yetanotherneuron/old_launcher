@@ -41,18 +41,90 @@ impl Format {
 /// A calendar date: year, month, day.
 type Date = (u16, u8, u8);
 
+/// When the entries of an extracted archive were modified, as far as the
+/// archive records plausible dates.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Dates {
+    /// The newest date of any entry, folders included.
+    newest: Option<Date>,
+    /// Each file's place in the archive, its directories joined by `/` and
+    /// lowercase, as a case-insensitive file system merges them, with its
+    /// date. Folders aren't: a folder's date tells when something was last
+    /// put in it or taken out, as when it was copied into a bundle of addons,
+    /// not when what it holds changed.
+    files: Vec<(String, Date)>,
+}
+
+impl Dates {
+    /// The newest date among all the entries, folders included
+    /// (`YYYY-MM-DD`): when the archive was last put together. For a
+    /// snapshot of a repository that is the date of its last commit.
+    pub fn newest(&self) -> Option<String> {
+        self.newest.map(written)
+    }
+
+    /// The newest date among the files inside `folder` (`YYYY-MM-DD`), a
+    /// place in the archive, its directories joined by `/`: among them all
+    /// when empty.
+    pub fn newest_in(&self, folder: &str) -> Option<String> {
+        let folder = folder.to_lowercase();
+
+        self.files
+            .iter()
+            .filter(|(file, _)| {
+                folder.is_empty()
+                    || file
+                        .strip_prefix(&folder)
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .map(|&(_, date)| date)
+            .max()
+            .map(written)
+    }
+
+    /// Notes the date of the entry named `name`, a folder or a file, unless
+    /// it cannot be real: before any 3.3.5a addon existed (unset timestamps
+    /// read as 1980), or in the future.
+    fn note(&mut self, name: &str, folder: bool, date: Option<Date>) {
+        let today = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs() as i64 / 86_400);
+        let Some(date) = date.filter(|date| date.0 >= 2000 && *date <= civil(today)) else {
+            return;
+        };
+
+        self.newest = self.newest.max(Some(date));
+
+        if !folder {
+            let place = Path::new(&name.replace('\\', "/"))
+                .components()
+                .filter_map(|component| match component {
+                    Component::Normal(name) => Some(name.to_string_lossy().to_lowercase()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+
+            self.files.push((place, date));
+        }
+    }
+}
+
+/// `date` as the catalog writes dates (`YYYY-MM-DD`).
+fn written((year, month, day): Date) -> String {
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
 /// Extracts the archive in `bytes` into the existing directory `destination`,
-/// and returns the newest modification date among its files (`YYYY-MM-DD`)
-/// when the archive records a plausible one. For a snapshot of a repository
-/// that is the date of its last commit.
+/// and returns when its entries were modified.
 ///
 /// Entries that would land outside `destination` (absolute paths, `..`) abort
 /// the extraction, and symbolic links are skipped.
-pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error> {
+pub fn extract(bytes: &[u8], destination: &Path) -> Result<Dates, Error> {
     // `sevenz_rust2` refuses any `..` in the joined path, even one that is
     // part of `destination` itself.
     let destination = &fs::canonicalize(destination).map_err(io_at(destination))?;
-    let mut newest: Option<Date> = None;
+    let mut dates = Dates::default();
 
     match Format::detect(bytes).ok_or(Error::UnknownArchive)? {
         Format::Zip => {
@@ -65,13 +137,15 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                     continue;
                 }
 
-                newer(
-                    &mut newest,
+                let name = file.name()?.into_owned();
+                dates.note(
+                    &name,
+                    file.is_dir(),
                     file.last_modified()
                         .map(|time| (time.year(), time.month(), time.day())),
                 );
 
-                let path = contained(destination, &file.name()?)?;
+                let path = contained(destination, &name)?;
 
                 if file.is_dir() {
                     fs::create_dir_all(&path).map_err(io_at(&path))?;
@@ -95,7 +169,7 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                         // 100 ns ticks since 1601, to days since 1970.
                         let seconds = u64::from(entry.last_modified_date) / 10_000_000;
                         let days = (seconds as i64 - 11_644_473_600).div_euclid(86_400);
-                        newer(&mut newest, Some(civil(days)));
+                        dates.note(entry.name(), entry.is_directory(), Some(civil(days)));
                     }
 
                     sevenz_rust2::default_entry_extract_fn(entry, reader, path)
@@ -109,8 +183,10 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
             let unix = matches!(archive, rars::Archive::Rar50Plus(_));
 
             archive.extract_to(None, |entry| {
-                newer(
-                    &mut newest,
+                let name = entry.name_lossy();
+                dates.note(
+                    &name,
+                    entry.is_directory,
                     entry.file_time.map(|time| {
                         if unix {
                             civil(i64::from(time).div_euclid(86_400))
@@ -120,7 +196,6 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                     }),
                 );
 
-                let name = entry.name_lossy();
                 let path = contained(destination, &name).map_err(|error| {
                     rars::Error::from(io::Error::new(
                         io::ErrorKind::InvalidData,
@@ -151,8 +226,14 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                     continue;
                 }
 
-                newer(
-                    &mut newest,
+                let name = entry
+                    .path()
+                    .map_err(io_at(destination))?
+                    .to_string_lossy()
+                    .into_owned();
+                dates.note(
+                    &name,
+                    kind.is_dir(),
                     entry
                         .header()
                         .mtime()
@@ -160,11 +241,6 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
                         .map(|seconds| civil((seconds / 86_400) as i64)),
                 );
 
-                let name = entry
-                    .path()
-                    .map_err(io_at(destination))?
-                    .to_string_lossy()
-                    .into_owned();
                 let path = contained(destination, &name)?;
 
                 if kind.is_dir() {
@@ -181,31 +257,15 @@ pub fn extract(bytes: &[u8], destination: &Path) -> Result<Option<String>, Error
         }
     }
 
-    Ok(newest.map(|(year, month, day)| format!("{year:04}-{month:02}-{day:02}")))
-}
-
-/// Keeps the newer of `newest` and `date`, ignoring dates that cannot be
-/// real: before any 3.3.5a addon existed (unset timestamps read as 1980), or
-/// in the future.
-fn newer(newest: &mut Option<Date>, date: Option<Date>) {
-    let today = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs() as i64 / 86_400);
-
-    if let Some(date) = date.filter(|date| date.0 >= 2000 && *date <= civil(today)) {
-        *newest = (*newest).max(Some(date));
-    }
+    Ok(dates)
 }
 
 /// The UTC calendar date `seconds` after 1970-01-01, written as the catalog
 /// writes dates (`YYYY-MM-DD`).
 pub fn date(seconds: i64) -> String {
-    let (year, month, day) = civil(seconds.div_euclid(86_400));
-
-    format!("{year:04}-{month:02}-{day:02}")
+    written(civil(seconds.div_euclid(86_400)))
 }
 
-/// The calendar date `days` days after 1970-01-01.
 /// The date of a DOS timestamp, which sits in its high 16 bits.
 fn dos_date(time: u32) -> Date {
     (
@@ -215,6 +275,7 @@ fn dos_date(time: u32) -> Date {
     )
 }
 
+/// The calendar date `days` days after 1970-01-01.
 fn civil(days: i64) -> Date {
     // Howard Hinnant's `civil_from_days`.
     let z = days + 719_468;
@@ -266,6 +327,27 @@ pub(crate) fn zip_of(files: &[(&str, &str)]) -> Vec<u8> {
     writer.finish().unwrap().into_inner()
 }
 
+/// Builds an in-memory zip archive holding `files` (path, contents, date),
+/// each modified at noon of its date: a folder when its path ends in `/`.
+#[cfg(test)]
+pub(crate) fn dated_zip_of(files: &[(&str, &str, Date)]) -> Vec<u8> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+
+    for &(path, contents, (year, month, day)) in files {
+        let time = zip::DateTime::from_date_and_time(year, month, day, 12, 0, 0).unwrap();
+        let options = zip::write::SimpleFileOptions::default().last_modified_time(time);
+
+        if path.ends_with('/') {
+            writer.add_directory(path, options).unwrap();
+        } else {
+            writer.start_file(path, options).unwrap();
+            writer.write_all(contents.as_bytes()).unwrap();
+        }
+    }
+
+    writer.finish().unwrap().into_inner()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,7 +394,10 @@ mod tests {
         ]);
 
         assert_eq!(
-            extract(&archive, destination.path()).unwrap().as_deref(),
+            extract(&archive, destination.path())
+                .unwrap()
+                .newest()
+                .as_deref(),
             Some("2024-09-10")
         );
         let dll = fs::read_to_string(destination.path().join("dxvk-3.1.1/x32/d3d9.dll")).unwrap();
@@ -348,7 +433,10 @@ mod tests {
             .unwrap();
         let archive = builder.into_inner().unwrap().finish().unwrap();
 
-        assert_eq!(extract(&archive, destination.path()).unwrap(), None);
+        assert_eq!(
+            extract(&archive, destination.path()).unwrap().newest(),
+            None
+        );
         assert!(fs::symlink_metadata(destination.path().join("d3d9.dll")).is_err());
     }
 
@@ -358,31 +446,35 @@ mod tests {
         let archive = zip_of(&[("ACP/ACP.toc", "## Title: ACP"), ("ACP/ACP.lua", "-- code")]);
 
         // Without timestamps, zip entries read as 1980: no plausible date.
-        assert_eq!(extract(&archive, destination.path()).unwrap(), None);
+        assert_eq!(
+            extract(&archive, destination.path()).unwrap().newest(),
+            None
+        );
 
         let toc = fs::read_to_string(destination.path().join("ACP/ACP.toc")).unwrap();
         assert_eq!(toc, "## Title: ACP");
     }
 
     #[test]
-    fn extraction_reports_the_newest_file_date() {
+    fn extraction_dates_the_archive_by_any_entry_and_a_folder_by_its_files() {
         let destination = tempfile::tempdir().unwrap();
-        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        for (path, (year, month, day)) in [("A/A.toc", (2019, 3, 4)), ("A/A.lua", (2024, 11, 30))] {
-            let time = zip::DateTime::from_date_and_time(year, month, day, 12, 0, 0).unwrap();
-            writer
-                .start_file(
-                    path,
-                    zip::write::SimpleFileOptions::default().last_modified_time(time),
-                )
-                .unwrap();
-        }
-        let archive = writer.finish().unwrap().into_inner();
+        let archive = dated_zip_of(&[
+            // Put in a bundle later.
+            ("Pack/A/", "", (2025, 6, 7)),
+            ("Pack/A/A.toc", "", (2019, 3, 4)),
+            ("Pack/A/A.lua", "", (2021, 5, 6)),
+            // Made on Windows.
+            ("Pack\\B\\B.toc", "", (2024, 11, 30)),
+            ("Pack/AB/AB.toc", "", (2023, 1, 2)),
+        ]);
+        let dates = extract(&archive, destination.path()).unwrap();
 
-        assert_eq!(
-            extract(&archive, destination.path()).unwrap().as_deref(),
-            Some("2024-11-30")
-        );
+        assert_eq!(dates.newest().as_deref(), Some("2025-06-07"));
+        assert_eq!(dates.newest_in("").as_deref(), Some("2024-11-30"));
+        assert_eq!(dates.newest_in("Pack/A").as_deref(), Some("2021-05-06"));
+        assert_eq!(dates.newest_in("pack/b").as_deref(), Some("2024-11-30"));
+        assert_eq!(dates.newest_in("Pack/AB").as_deref(), Some("2023-01-02"));
+        assert_eq!(dates.newest_in("Pack/C"), None);
     }
 
     /// RAR 5 dates files in seconds since 1970, and older RAR in DOS time:
@@ -412,7 +504,10 @@ mod tests {
             let archive = builder.to_bytes_with_resources(&spool, None).unwrap();
 
             assert_eq!(
-                extract(&archive, destination.path()).unwrap().as_deref(),
+                extract(&archive, destination.path())
+                    .unwrap()
+                    .newest()
+                    .as_deref(),
                 Some("2010-07-24"),
                 "{version:?}"
             );

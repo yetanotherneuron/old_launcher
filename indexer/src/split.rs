@@ -185,6 +185,7 @@ mod tests {
                     notes: None,
                     inside: inside.map(str::to_owned),
                     updated: None,
+                    committed: None,
                 })
                 .collect(),
             notes: None,

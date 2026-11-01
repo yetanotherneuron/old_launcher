@@ -66,9 +66,11 @@ pub struct Download {
     pub name: String,
     /// Where to download the archive.
     pub url: String,
-    /// When it was last updated (`YYYY-MM-DD`): as its source says, or its
-    /// newest file, or, for an addon of a repository's snapshot, the last
-    /// commit that changed its folders; none when nothing says.
+    /// When it was last updated (`YYYY-MM-DD`): as its source says, or as the
+    /// newest date in its archive (of the files in its own folders, for one
+    /// of the addons of an archive holding several), or, for an addon of a
+    /// repository's snapshot, the last commit that changed its folders; none
+    /// when nothing says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
     /// The addon's own page at the source, if it has one.
@@ -137,10 +139,16 @@ pub struct Part {
     /// of another (see [`layout::find`]): the closest one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inside: Option<String>,
-    /// When it last changed (`YYYY-MM-DD`), when the indexer can tell better
-    /// than the archive's file dates do; none as inspected.
+    /// When the newest file in it, the folders inside it included, was
+    /// modified (`YYYY-MM-DD`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
+    /// When the last commit that changed it was made (`YYYY-MM-DD`), for an
+    /// archive that is a snapshot of a repository, whose files all carry the
+    /// date of the snapshot's commit; none as inspected, until the indexer
+    /// looks it up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub committed: Option<String>,
 }
 
 /// What an archive installs, as the indexer records it.
@@ -157,7 +165,8 @@ pub struct Contents {
     /// that has some, without UI escape sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    /// When the newest file in the archive was modified (`YYYY-MM-DD`).
+    /// When the newest entry in the archive, folders included, was modified
+    /// (`YYYY-MM-DD`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
 }
@@ -302,7 +311,7 @@ impl Contents {
         let temporary = std::env::temp_dir();
         let staging = tempfile::tempdir().map_err(io_at(&temporary))?;
 
-        let updated = archive::extract(archive, staging.path())?;
+        let dates = archive::extract(archive, staging.path())?;
 
         let found = layout::find(staging.path())?;
         let mut folders = Vec::new();
@@ -338,11 +347,12 @@ impl Contents {
 
             parts.push(Part {
                 name: folder.name.clone(),
+                updated: dates.newest_in(&path),
                 path,
                 dependencies: toc.dependencies,
                 notes: folder_notes,
                 inside,
-                updated: None,
+                committed: None,
             });
             folders.push(Folder {
                 name: folder.name.clone(),
@@ -356,7 +366,7 @@ impl Contents {
             folders,
             parts,
             notes,
-            updated,
+            updated: dates.newest(),
         })
     }
 }
@@ -364,7 +374,7 @@ impl Contents {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::archive::zip_of;
+    use crate::archive::{dated_zip_of, zip_of};
 
     fn download(source: &str, name: &str, folders: &[&str]) -> Download {
         Download {
@@ -621,6 +631,7 @@ mod tests {
                     notes: None,
                     inside: None,
                     updated: None,
+                    committed: None,
                 },
                 Part {
                     name: "Foo".into(),
@@ -629,6 +640,7 @@ mod tests {
                     notes: Some("Does foo.".into()),
                     inside: None,
                     updated: None,
+                    committed: None,
                 },
                 Part {
                     name: "Foo_Options".into(),
@@ -637,10 +649,42 @@ mod tests {
                     notes: None,
                     inside: Some("Foo".into()),
                     updated: None,
+                    committed: None,
                 },
             ]
         );
         assert_eq!(contents.notes.as_deref(), Some("Does foo."));
+    }
+
+    #[test]
+    fn each_folder_of_an_archive_is_dated_by_its_newest_file() {
+        let archive = dated_zip_of(&[
+            // When the pack was put together.
+            ("Pack/Foo-main/", "", (2010, 8, 1)),
+            ("Pack/Foo-main/Foo.toc", "", (2009, 12, 16)),
+            (
+                "Pack/Foo-main/Foo_Options/Foo_Options.toc",
+                "## Dependencies: Foo\n",
+                (2010, 1, 18),
+            ),
+            ("Pack/Bar/Bar.toc", "", (2010, 7, 4)),
+        ]);
+
+        let contents = Contents::inspect(&archive).unwrap();
+
+        assert_eq!(
+            contents
+                .parts
+                .iter()
+                .map(|part| (part.name.as_str(), part.updated.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                ("Bar", Some("2010-07-04")),
+                ("Foo", Some("2010-01-18")),
+                ("Foo_Options", Some("2010-01-18")),
+            ]
+        );
+        assert_eq!(contents.updated.as_deref(), Some("2010-08-01"));
     }
 
     #[test]

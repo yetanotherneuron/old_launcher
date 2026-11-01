@@ -57,8 +57,9 @@ pub struct Listing {
 /// Where a listing's last-update date comes from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Updated {
-    /// The newest file date inside its archive: the last commit, for a
-    /// snapshot of a repository.
+    /// The newest date inside its archive: the last commit, for a snapshot
+    /// of a repository. For one of the addons of an archive holding several,
+    /// the newest of its own folders' (see `piece`).
     FromArchive,
     /// A date the source gives (`YYYY-MM-DD`), or `None` when it has none,
     /// for archives whose file dates mean nothing (a build job stamped them

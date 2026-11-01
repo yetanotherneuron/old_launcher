@@ -127,7 +127,9 @@ quotes, since it has `$` signs.
 The indexer lists every source, pins the downloads that move (a branch's
 snapshot) to what they serve now, downloads every archive but those it
 inspected before that haven't changed since (`index/archives.json`, by
-URL; delete it after changing how archives are inspected), records the
+URL; after changing how archives are inspected, remove the entries the
+change affects, not the whole file, or CurseForge's archives are all
+downloaded again), records the
 folders each one installs, splits the archives in `split::ARCHIVES`,
 compilations of unrelated addons, into one listing per addon by what their
 `.toc` files require (`indexer/src/split.rs`), merges the listings of the

@@ -247,8 +247,8 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
                     }
                 };
 
-                // Folders left undated give their addons the archive's date,
-                // until a later run dates them.
+                // Folders left undated by a commit give their addons their
+                // files' date, until a later run dates them.
                 if to_split
                     && let Err(error) =
                         commits::date(&client, &listing.download, &mut archive.contents).await
@@ -675,10 +675,10 @@ fn shown_names(contents: &Contents, groups: &[split::Group]) -> Vec<String> {
 /// The addon that `group` makes up in the archive of `listing`, which holds
 /// `contents`, as a listing of its own, shown as `shown` (see
 /// [`shown_names`]). It takes the folders of the group, dated by the newest
-/// of them when they all have a date (see [`commits`]), else as the archive
-/// is, and the page and changes of the listing; what the listing says of the
-/// archive as a whole (its description, screenshot and links) isn't its own
-/// to say.
+/// of them, each by the last commit that changed it (see [`commits`]) or else
+/// by its newest file, or as the archive is when none has a date, and the
+/// page and changes of the listing; what the listing says of the archive as a
+/// whole (its description, screenshot and links) isn't its own to say.
 ///
 /// Its download is named for the addon and the listing it comes from
 /// (`Bartender4 (LUI v3)`), as players read download names: on the source's
@@ -710,10 +710,13 @@ fn piece(
         updated: group
             .folders
             .iter()
-            .map(|&folder| contents.parts[folder].updated.clone())
-            .collect::<Option<Vec<_>>>()
-            .and_then(|dates| dates.into_iter().max())
-            .or_else(|| contents.updated.clone()),
+            .filter_map(|&folder| {
+                let part = &contents.parts[folder];
+                part.committed.as_ref().or(part.updated.as_ref())
+            })
+            .max()
+            .or(contents.updated.as_ref())
+            .cloned(),
     };
     let listing = Listing {
         name: format!("{shown} ({})", listing.name),
@@ -1030,6 +1033,7 @@ mod tests {
                     notes: None,
                     inside: None,
                     updated: None,
+                    committed: None,
                 })
                 .collect(),
             notes: None,
@@ -1167,6 +1171,7 @@ mod tests {
             notes: notes.map(str::to_owned),
             inside: None,
             updated: None,
+            committed: None,
         };
         let folder = |name: &str, title: Option<&str>| catalog::Folder {
             name: name.to_owned(),
@@ -1241,7 +1246,7 @@ mod tests {
     }
 
     #[test]
-    fn each_addon_of_an_archive_takes_its_folders_date_when_all_have_one() {
+    fn each_addon_of_an_archive_is_dated_by_its_folders() {
         let mut contents = pack(&[
             ("Core", None, None, &[]),
             ("Core_Extra", None, None, &["Core"]),
@@ -1261,14 +1266,26 @@ mod tests {
         assert_eq!(
             dates(&contents),
             [Some("2026-05-02".into()), Some("2026-10-04".into())],
-            "the newest of its folders; without one, the archive's"
+            "the newest file of its folders; without one, the archive's"
         );
 
-        contents.parts[1].updated = None;
+        // A snapshot of a repository: every file of the commit's day.
+        for part in &mut contents.parts {
+            part.updated.clone_from(&contents.updated);
+        }
+        contents.parts[0].committed = Some("2026-03-01".into());
+        contents.parts[1].committed = Some("2026-05-02".into());
+        assert_eq!(
+            dates(&contents),
+            [Some("2026-05-02".into()), Some("2026-10-04".into())],
+            "the last commit that changed its folders; without one, its files'"
+        );
+
+        contents.parts[1].committed = None;
         assert_eq!(
             dates(&contents),
             [Some("2026-10-04".into()), Some("2026-10-04".into())],
-            "one of its folders without a date"
+            "one of its folders not dated by a commit"
         );
     }
 
@@ -1297,6 +1314,7 @@ mod tests {
                     notes: None,
                     inside: None,
                     updated: None,
+                    committed: None,
                 })
                 .collect(),
             notes: None,
