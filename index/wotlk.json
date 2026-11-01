@@ -1008,17 +1008,22 @@
       ]
     },
     {
-      "name": "AddFriend-3.3.5a",
-      "description": "AddFriend is a simple addon that adds an \"Add Friend\" and \"Invite Guild\" option to the context menu of player options.",
+      "name": "AddFriend",
+      "description": "AddFriend adds Add Friend and Add Guild options to player context menus.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/AddFriend.jpeg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "AddFriend-3.3.5a",
+          "name": "AddFriend",
           "url": "https://github.com/NoM0Re/AddFriend-3.3.5a/archive/0a8a808b63e1aa95055e2e5175fb9bb28e4b6745.zip",
           "updated": "2024-07-07",
-          "page": "https://github.com/NoM0Re/AddFriend-3.3.5a",
           "changes": "https://github.com/NoM0Re/AddFriend-3.3.5a/commits/main",
+          "links": [
+            {
+              "label": "CurseForge",
+              "url": "https://www.curseforge.com/wow/addons/addfriend"
+            }
+          ],
           "folders": [
             {
               "name": "AddFriend",
@@ -4635,7 +4640,7 @@
           "source": "rising-gods",
           "name": "Bartender4 (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-01-18",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -4831,7 +4836,7 @@
           "source": "rising-gods",
           "name": "Baud Error Frame (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-17",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -7103,7 +7108,7 @@
           "source": "rising-gods",
           "name": "ButtonFacade (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-01-15",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -7168,7 +7173,7 @@
           "source": "rising-gods",
           "name": "ButtonFacade: Darion (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-17",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -7409,7 +7414,7 @@
           "source": "rising-gods",
           "name": "caelNameplates (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-02-16",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -8067,26 +8072,10 @@
       ]
     },
     {
-      "name": "Cell-WotLK",
-      "description": "A World of Warcraft raid frame addon.",
+      "name": "Cell",
+      "description": "Cell is a highly customizable party and raid frame addon with automatic layouts, built-in click-casting, aura and raid-debuff indicators, ready checks, death reports, and other raid tools. Open its options with /cell.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Cell.png",
       "downloads": [
-        {
-          "source": "nom0re",
-          "name": "Cell-WotLK",
-          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/b4cfc797a02e71cd70be3b7a4d2e8557797bab53.zip",
-          "updated": "2026-10-20",
-          "page": "https://github.com/NoM0Re/Cell-WotLK",
-          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
-          "folders": [
-            {
-              "name": "Cell",
-              "title": "Cell",
-              "version": "r279-beta",
-              "interface": 30300
-            }
-          ]
-        },
         {
           "source": "nom0re",
           "name": "Cell",
@@ -8099,6 +8088,22 @@
               "url": "https://github.com/NoM0Re/Cell-WotLK"
             }
           ],
+          "folders": [
+            {
+              "name": "Cell",
+              "title": "Cell",
+              "version": "r279-beta",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "nom0re",
+          "name": "Cell-WotLK",
+          "url": "https://github.com/NoM0Re/Cell-WotLK/archive/b4cfc797a02e71cd70be3b7a4d2e8557797bab53.zip",
+          "updated": "2026-10-20",
+          "page": "https://github.com/NoM0Re/Cell-WotLK",
+          "changes": "https://github.com/NoM0Re/Cell-WotLK/commits/main",
           "folders": [
             {
               "name": "Cell",
@@ -8156,7 +8161,7 @@
           "source": "rising-gods",
           "name": "CError (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -8772,17 +8777,22 @@
       ]
     },
     {
-      "name": "ClassicNumbers-WotLK",
-      "description": "Vanilla style damage popping animation for 3.3.5a WotLK",
+      "name": "ClassicNumbers",
+      "description": "ClassicNumbers replaces the default floating damage text with the classic popping animation. It offers configurable size, transparency, duration, scroll speed, damage-school colors, number shortening, and filters for small hits and critical strikes. Open its options with /cn.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/ClassicNumbers.png",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "ClassicNumbers-WotLK",
+          "name": "ClassicNumbers",
           "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK/archive/5c2ef10b0c36da7d91b3dc33d23826a6c331777d.zip",
           "updated": "2026-07-13",
-          "page": "https://github.com/NoM0Re/ClassicNumbers-WotLK",
           "changes": "https://github.com/NoM0Re/ClassicNumbers-WotLK/commits/main",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/ClassicNumbers-WotLK"
+            }
+          ],
           "folders": [
             {
               "name": "ClassicNumbers",
@@ -9002,7 +9012,7 @@
           "source": "rising-gods",
           "name": "Clique (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-05-09",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -15110,7 +15120,7 @@
           "source": "rising-gods",
           "name": "EnhancedColourPicker  -Ace2- (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-05-10",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -18787,7 +18797,7 @@
           "source": "rising-gods",
           "name": "Grid (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-06-23",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -23568,7 +23578,7 @@
           "source": "rising-gods",
           "name": "Lib: SharedMedia-3.0 (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-17",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -27401,7 +27411,7 @@
       ]
     },
     {
-      "name": "NPC-Silencer international",
+      "name": "NPC Silencer (GERMAN Version)",
       "description": "Schaltet Npc's stumm!",
       "downloads": [
         {
@@ -27663,7 +27673,7 @@
           "source": "rising-gods",
           "name": "Omen3 (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -27875,7 +27885,7 @@
           "source": "rising-gods",
           "name": "OmniCC (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -29454,39 +29464,22 @@
       ]
     },
     {
-      "name": "PallyPower Skinner",
-      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
-      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
-      "downloads": [
-        {
-          "source": "wowinterface",
-          "name": "PallyPower Skinner",
-          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
-          "updated": "2010-05-17",
-          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
-          "folders": [
-            {
-              "name": "!PPSkinner",
-              "title": "PP Skinner",
-              "version": "1.0.1.r",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "PallyPower-Improved-3.3.5",
-      "description": "This version of PallyPower for WoW 3.3.5a introduces several new features",
+      "name": "PallyPower Improved",
+      "description": "PallyPower Improved helps paladins manage blessings, auras, seals and Righteous Fury through an interactive interface with indicators for missing buffs.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/pallypower.jpg",
       "downloads": [
         {
           "source": "nom0re",
-          "name": "PallyPower-Improved-3.3.5",
+          "name": "PallyPower Improved",
           "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/archive/8a87a53bb16ff680e5a2bff0977385235e7553a2.zip",
           "updated": "2026-10-07",
-          "page": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5",
           "changes": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5/commits/main",
+          "links": [
+            {
+              "label": "GitHub",
+              "url": "https://github.com/NoM0Re/PallyPower-Improved-3.3.5"
+            }
+          ],
           "folders": [
             {
               "name": "PallyPower",
@@ -29531,13 +29524,35 @@
           "source": "rising-gods",
           "name": "PallyPower (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-06-23",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
               "name": "PallyPower",
               "title": "PallyPower",
               "version": "v3.2.14",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PallyPower Skinner",
+      "description": "I've been wanting to change the interface addon PallyPower, but since changing the original code is not always acceptably, and for good reasons for the lack of further updates via the same Curse Client, I decided to write a small independent addon that will change the skin yourself.",
+      "image": "https://cdn-wow.mmoui.com/preview/pvw39605.jpg",
+      "downloads": [
+        {
+          "source": "wowinterface",
+          "name": "PallyPower Skinner",
+          "url": "https://cdn.wowinterface.com/downloads/getfile.php?id=16732&d=1274131358&minion",
+          "updated": "2010-05-17",
+          "page": "https://www.wowinterface.com/downloads/info16732-PallyPowerSkinner.html",
+          "folders": [
+            {
+              "name": "!PPSkinner",
+              "title": "PP Skinner",
+              "version": "1.0.1.r",
               "interface": 30300
             }
           ]
@@ -31030,7 +31045,7 @@
           "source": "rising-gods",
           "name": "pMinimap (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-16",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -33898,7 +33913,7 @@
           "source": "rising-gods",
           "name": "Recount (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-07",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -35523,7 +35538,7 @@
           "source": "rising-gods",
           "name": "SharedMedia (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-09",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -37769,7 +37784,7 @@
           "source": "rising-gods",
           "name": "StatBlockCore (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-09",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -38024,7 +38039,7 @@
           "source": "rising-gods",
           "name": "Stuffing (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-05-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -39275,7 +39290,7 @@
           "source": "rising-gods",
           "name": "TipTop (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2009-12-09",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -41553,8 +41568,8 @@
         {
           "source": "nom0re",
           "name": "WeakAuras",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/download/5.22.1-9386a0cb/WeakAuras2.zip",
-          "updated": "2026-10-29",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/releases/download/5.22.1-e40f6424/WeakAuras2.zip",
+          "updated": "2026-11-01",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/releases",
           "links": [
             {
@@ -41566,7 +41581,7 @@
             {
               "name": "APIDocumentation",
               "title": "APIDocumentation",
-              "version": "1.0.2",
+              "version": "1.0.3",
               "interface": 30300
             },
             {
@@ -41609,15 +41624,15 @@
         {
           "source": "nom0re",
           "name": "WeakAuras-WotLK",
-          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/9386a0cb3dd96c19bedb563197ba0fe03ff7f2d9.zip",
-          "updated": "2026-10-29",
+          "url": "https://github.com/NoM0Re/WeakAuras-WotLK/archive/e40f6424644ed711fc27e8af20c9bed2b963b6aa.zip",
+          "updated": "2026-10-31",
           "page": "https://github.com/NoM0Re/WeakAuras-WotLK",
           "changes": "https://github.com/NoM0Re/WeakAuras-WotLK/commits/master",
           "folders": [
             {
               "name": "APIDocumentation",
               "title": "APIDocumentation",
-              "version": "1.0.2",
+              "version": "1.0.3",
               "interface": 30300
             },
             {
@@ -42945,7 +42960,7 @@
           "source": "rising-gods",
           "name": "XLoot  -Ace2- (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {
@@ -43256,7 +43271,7 @@
           "source": "rising-gods",
           "name": "YouArentInAPartyFix (LUI v3)",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip",
-          "updated": "2010-07-04",
+          "updated": "2010-04-02",
           "page": "https://addons.rising-gods.de/addons/lui-v3",
           "folders": [
             {

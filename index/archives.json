@@ -2503,6 +2503,698 @@
     "etag": "\"51e2b-158921d9ca0\"",
     "last_modified": "Wed, 23 Nov 2016 16:56:04 GMT"
   },
+  "https://addons.rising-gods.de/sites/default/files/addons/LUI%20v3.025.zip": {
+    "folders": [
+      {
+        "name": "!BaudErrorFrame",
+        "title": "Baud Error Frame",
+        "version": "1.3",
+        "interface": 30300
+      },
+      {
+        "name": "!YouArentInAPartyFix",
+        "title": "YouArentInAPartyFix",
+        "interface": 30300
+      },
+      {
+        "name": "Bartender4",
+        "title": "Bartender4",
+        "version": "4.4.2",
+        "interface": 30300
+      },
+      {
+        "name": "ButtonFacade",
+        "title": "ButtonFacade",
+        "version": "3.3.300",
+        "interface": 30300
+      },
+      {
+        "name": "ButtonFacade_Darion",
+        "title": "ButtonFacade: Darion",
+        "version": "3.0.3.2",
+        "interface": 30300
+      },
+      {
+        "name": "CError",
+        "title": "CError",
+        "interface": 30300
+      },
+      {
+        "name": "Clique",
+        "title": "Clique",
+        "version": "wowi:revision",
+        "interface": 30300
+      },
+      {
+        "name": "EnhancedColourPicker",
+        "title": "EnhancedColourPicker  -Ace2-",
+        "version": "b1.9056.1",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Casting",
+        "title": "ForteCasting",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Cooldown",
+        "title": "ForteCooldown",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Core",
+        "title": "ForteXorcist II",
+        "version": "1.959.8",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_DeathKnight",
+        "title": "ForteDeathKnight",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Druid",
+        "title": "ForteDruid",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Healthstone",
+        "title": "ForteHealthstone",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Hunter",
+        "title": "ForteHunter",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Mage",
+        "title": "ForteMage",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Paladin",
+        "title": "FortePaladin",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Priest",
+        "title": "FortePriest",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Rogue",
+        "title": "ForteRogue",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Shaman",
+        "title": "ForteShaman",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Shard",
+        "title": "ForteShard",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Soulstone",
+        "title": "ForteSoulstone",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Summon",
+        "title": "ForteSummon",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Talent",
+        "title": "ForteTalent",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Timer",
+        "title": "ForteTimer",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Vehicle",
+        "title": "ForteVehicle",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Warlock",
+        "title": "ForteWarlock",
+        "interface": 30300
+      },
+      {
+        "name": "Forte_Warrior",
+        "title": "ForteWarrior",
+        "interface": 30300
+      },
+      {
+        "name": "Grid",
+        "title": "Grid",
+        "version": "1.30300.1304",
+        "interface": 30300
+      },
+      {
+        "name": "LUI",
+        "title": "LUI",
+        "version": "3.0",
+        "interface": 30300
+      },
+      {
+        "name": "LibSharedMedia-3.0",
+        "title": "Lib: SharedMedia-3.0",
+        "version": "3.0-56",
+        "interface": 30300
+      },
+      {
+        "name": "Mapster",
+        "title": "Mapster",
+        "version": "1.3.9",
+        "interface": 30300
+      },
+      {
+        "name": "Omen",
+        "title": "Omen3",
+        "version": "3.0.9",
+        "interface": 30300
+      },
+      {
+        "name": "OmniCC",
+        "title": "OmniCC",
+        "version": "2.5.9",
+        "interface": 30300
+      },
+      {
+        "name": "OmniCC_Options",
+        "title": "OmniCC Options",
+        "interface": 30300
+      },
+      {
+        "name": "PallyPower",
+        "title": "PallyPower",
+        "version": "v3.2.14",
+        "interface": 30300
+      },
+      {
+        "name": "Recount",
+        "title": "Recount",
+        "interface": 30300
+      },
+      {
+        "name": "SharedMedia",
+        "title": "SharedMedia",
+        "version": "3.0.1-177",
+        "interface": 30300
+      },
+      {
+        "name": "StatBlockCore",
+        "title": "StatBlockCore",
+        "version": "2.65",
+        "interface": 30300
+      },
+      {
+        "name": "Stuffing",
+        "title": "Stuffing",
+        "version": "0.0.20",
+        "interface": 30300
+      },
+      {
+        "name": "Stuffing_Config",
+        "title": "Stuffing_Config",
+        "version": "0.0.20",
+        "interface": 30300
+      },
+      {
+        "name": "TipTop",
+        "version": "2.3",
+        "interface": 30300
+      },
+      {
+        "name": "XLoot",
+        "title": "XLoot  -Ace2-",
+        "version": "0.91.1",
+        "interface": 30300
+      },
+      {
+        "name": "XLootGroup",
+        "title": "XLoot Group",
+        "version": "0.61",
+        "interface": 30300
+      },
+      {
+        "name": "XLootMaster",
+        "title": "XLoot Master",
+        "version": "0.81",
+        "interface": 30300
+      },
+      {
+        "name": "XLootMonitor",
+        "title": "XLoot Monitor",
+        "version": "0.71",
+        "interface": 30300
+      },
+      {
+        "name": "caelNamePlates",
+        "title": "caelNameplates",
+        "interface": 30300
+      },
+      {
+        "name": "oUF",
+        "title": "oUF",
+        "version": "1.3.28",
+        "interface": 30300
+      },
+      {
+        "name": "oUF_Experience",
+        "title": "oUF Experience",
+        "version": "30300.5-Release",
+        "interface": 30300
+      },
+      {
+        "name": "oUF_LUI",
+        "title": "oUF LUI",
+        "interface": 30300
+      },
+      {
+        "name": "oUF_Reputation",
+        "title": "oUF Reputation",
+        "version": "30200.2-Release",
+        "interface": 30300
+      },
+      {
+        "name": "pMinimap",
+        "title": "pMinimap",
+        "version": "30300.8-Release",
+        "interface": 30300
+      }
+    ],
+    "parts": [
+      {
+        "name": "!BaudErrorFrame",
+        "path": "LUI v3.025/Interface/AddOns/!BaudErrorFrame",
+        "notes": "Improved error reporting.",
+        "updated": "2009-12-17"
+      },
+      {
+        "name": "!YouArentInAPartyFix",
+        "path": "LUI v3.025/Interface/AddOns/!YouArentInAPartyFix",
+        "notes": "Fixes \"You aren't in a party.\" spam in battlegrounds",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "Bartender4",
+        "path": "LUI v3.025/Interface/AddOns/Bartender4",
+        "notes": "Simple and Advanced combined - Bartender4 ActionBar AddOn",
+        "updated": "2010-01-18"
+      },
+      {
+        "name": "ButtonFacade",
+        "path": "LUI v3.025/Interface/AddOns/ButtonFacade",
+        "notes": "Allows the dynamic skinning of button-based addons.",
+        "updated": "2010-01-15"
+      },
+      {
+        "name": "ButtonFacade_Darion",
+        "path": "LUI v3.025/Interface/AddOns/ButtonFacade_Darion",
+        "notes": "Darion skin for Button Facade.",
+        "updated": "2009-12-17"
+      },
+      {
+        "name": "CError",
+        "path": "LUI v3.025/Interface/AddOns/CError",
+        "notes": "Blocks all errors from the middle of your screen such as 'Not enough Energy'.",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "Clique",
+        "path": "LUI v3.025/Interface/AddOns/Clique",
+        "notes": "Simply powerful click-casting interface",
+        "updated": "2010-05-09"
+      },
+      {
+        "name": "EnhancedColourPicker",
+        "path": "LUI v3.025/Interface/AddOns/EnhancedColourPicker",
+        "notes": "Adds Copy and Paste Functions to the ColorPicker",
+        "updated": "2010-05-10"
+      },
+      {
+        "name": "Forte_Casting",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Casting",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Casting Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Cooldown",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Cooldown",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Cooldown Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Core",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Core",
+        "notes": "Powerful Class AddOn for Raiders",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_DeathKnight",
+        "path": "LUI v3.025/Interface/AddOns/Forte_DeathKnight",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Death Knight Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Druid",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Druid",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Druid Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Healthstone",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Healthstone",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Healthstone Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Hunter",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Hunter",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Hunter Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Mage",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Mage",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Mage Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Paladin",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Paladin",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Paladin Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Priest",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Priest",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Priest Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Rogue",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Rogue",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Rogue Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Shaman",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Shaman",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Shaman Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Shard",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Shard",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Shard Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Soulstone",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Soulstone",
+        "dependencies": [
+          "Forte_Core",
+          "Forte_Casting"
+        ],
+        "notes": "Forte Soulstone Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Summon",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Summon",
+        "dependencies": [
+          "Forte_Core",
+          "Forte_Casting"
+        ],
+        "notes": "Forte Summon Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Talent",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Talent",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Talent Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Timer",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Timer",
+        "dependencies": [
+          "Forte_Core",
+          "Forte_Casting"
+        ],
+        "notes": "Forte Timer Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Vehicle",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Vehicle",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Vehicle Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Warlock",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Warlock",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Warlock Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Forte_Warrior",
+        "path": "LUI v3.025/Interface/AddOns/Forte_Warrior",
+        "dependencies": [
+          "Forte_Core"
+        ],
+        "notes": "Forte Warrior Module",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Grid",
+        "path": "LUI v3.025/Interface/AddOns/Grid",
+        "notes": "A modular, lightweight, and screen-estate saving grid of party/raid unit frames.",
+        "updated": "2010-06-23"
+      },
+      {
+        "name": "LUI",
+        "path": "LUI v3.025/Interface/AddOns/LUI",
+        "notes": "User Interface Modification",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "LibSharedMedia-3.0",
+        "path": "LUI v3.025/Interface/AddOns/LibSharedMedia-3.0",
+        "notes": "Shared handling of media data (fonts, sounds, textures, ...) between addons.",
+        "updated": "2009-12-17"
+      },
+      {
+        "name": "Mapster",
+        "path": "LUI v3.025/Interface/AddOns/Mapster",
+        "notes": "Simple Map Mod",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "Omen",
+        "path": "LUI v3.025/Interface/AddOns/Omen",
+        "notes": "A lightweight, flexible, multi-target threat meter.",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "OmniCC",
+        "path": "LUI v3.025/Interface/AddOns/OmniCC",
+        "notes": "Cooldown count for everything",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "OmniCC_Options",
+        "path": "LUI v3.025/Interface/AddOns/OmniCC_Options",
+        "dependencies": [
+          "OmniCC"
+        ],
+        "notes": "A load on demand option menu for OmniCC",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "PallyPower",
+        "path": "LUI v3.025/Interface/AddOns/PallyPower",
+        "notes": "Raid/Party Paladin buffs",
+        "updated": "2010-06-23"
+      },
+      {
+        "name": "Recount",
+        "path": "LUI v3.025/Interface/AddOns/Recount",
+        "notes": "Records Damage and Healing for Graph Based Display",
+        "updated": "2010-04-07"
+      },
+      {
+        "name": "SharedMedia",
+        "path": "LUI v3.025/Interface/AddOns/SharedMedia",
+        "notes": "Inserts some media into LibSharedMedia's storage.",
+        "updated": "2009-12-09"
+      },
+      {
+        "name": "StatBlockCore",
+        "path": "LUI v3.025/Interface/AddOns/StatBlockCore",
+        "notes": "A core for your informational plugins to plug into.",
+        "updated": "2009-12-09"
+      },
+      {
+        "name": "Stuffing",
+        "path": "LUI v3.025/Interface/AddOns/Stuffing",
+        "notes": "Hmmmm, stuffing!",
+        "updated": "2010-05-02"
+      },
+      {
+        "name": "Stuffing_Config",
+        "path": "LUI v3.025/Interface/AddOns/Stuffing_Config",
+        "dependencies": [
+          "Stuffing"
+        ],
+        "notes": "Stuffing configuration GUI",
+        "updated": "2010-01-21"
+      },
+      {
+        "name": "TipTop",
+        "path": "LUI v3.025/Interface/AddOns/TipTop",
+        "notes": "Tooltip enhancement",
+        "updated": "2009-12-09"
+      },
+      {
+        "name": "XLoot",
+        "path": "LUI v3.025/Interface/AddOns/XLoot",
+        "notes": "A remake of the built-in lootframe. By Xuerian.",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "XLootGroup",
+        "path": "LUI v3.025/Interface/AddOns/XLootGroup",
+        "dependencies": [
+          "XLoot"
+        ],
+        "notes": "Minimalistic Group roll frames.",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "XLootMaster",
+        "path": "LUI v3.025/Interface/AddOns/XLootMaster",
+        "dependencies": [
+          "XLoot"
+        ],
+        "notes": "Highly configurable master looter dropdown menu",
+        "updated": "2009-12-09"
+      },
+      {
+        "name": "XLootMonitor",
+        "path": "LUI v3.025/Interface/AddOns/XLootMonitor",
+        "dependencies": [
+          "XLoot"
+        ],
+        "notes": "A live monitor of loot picked up by yourself and your group",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "caelNamePlates",
+        "path": "LUI v3.025/Interface/AddOns/caelNamePlates",
+        "notes": "Custom minimalistic nameplates",
+        "updated": "2010-02-16"
+      },
+      {
+        "name": "oUF",
+        "path": "LUI v3.025/Interface/AddOns/oUF",
+        "notes": "Unit frame framework. Does nothing by itself.",
+        "updated": "2010-06-27"
+      },
+      {
+        "name": "oUF_Experience",
+        "path": "LUI v3.025/Interface/AddOns/oUF_Experience",
+        "dependencies": [
+          "oUF"
+        ],
+        "notes": "Experience Bar support for oUF layouts.",
+        "updated": "2010-04-02"
+      },
+      {
+        "name": "oUF_LUI",
+        "path": "LUI v3.025/Interface/AddOns/oUF_LUI",
+        "dependencies": [
+          "oUF"
+        ],
+        "notes": "LUI's oUF layout",
+        "updated": "2010-07-04"
+      },
+      {
+        "name": "oUF_Reputation",
+        "path": "LUI v3.025/Interface/AddOns/oUF_Reputation",
+        "dependencies": [
+          "oUF"
+        ],
+        "notes": "Reputation Bar support for oUF layouts.",
+        "updated": "2009-11-14"
+      },
+      {
+        "name": "pMinimap",
+        "path": "LUI v3.025/Interface/AddOns/pMinimap",
+        "notes": "Yet another square minimap addon",
+        "updated": "2009-12-16"
+      }
+    ],
+    "notes": "Improved error reporting.",
+    "updated": "2010-07-04",
+    "etag": "\"f685cd-158fcd3aa80\"",
+    "last_modified": "Wed, 14 Dec 2016 10:14:40 GMT"
+  },
   "https://addons.rising-gods.de/sites/default/files/addons/LargerMacroIconSelection-v1.0.zip": {
     "folders": [
       {
@@ -23256,12 +23948,12 @@
     "notes": "A powerful, comprehensive utility for displaying graphics and information based on buffs, debuffs, and other triggers.",
     "updated": "2026-09-15"
   },
-  "https://github.com/NoM0Re/WeakAuras-WotLK/archive/9386a0cb3dd96c19bedb563197ba0fe03ff7f2d9.zip": {
+  "https://github.com/NoM0Re/WeakAuras-WotLK/archive/e40f6424644ed711fc27e8af20c9bed2b963b6aa.zip": {
     "folders": [
       {
         "name": "APIDocumentation",
         "title": "APIDocumentation",
-        "version": "1.0.2",
+        "version": "1.0.3",
         "interface": 30300
       },
       {
@@ -23301,14 +23993,14 @@
       }
     ],
     "notes": "A comprehensive documentation of the Blizzard API, including constants, functions, and events.",
-    "updated": "2026-10-29"
+    "updated": "2026-10-31"
   },
-  "https://github.com/NoM0Re/WeakAuras-WotLK/releases/download/5.22.1-9386a0cb/WeakAuras2.zip": {
+  "https://github.com/NoM0Re/WeakAuras-WotLK/releases/download/5.22.1-e40f6424/WeakAuras2.zip": {
     "folders": [
       {
         "name": "APIDocumentation",
         "title": "APIDocumentation",
-        "version": "1.0.2",
+        "version": "1.0.3",
         "interface": 30300
       },
       {
@@ -23348,8 +24040,8 @@
       }
     ],
     "notes": "A comprehensive documentation of the Blizzard API, including constants, functions, and events.",
-    "updated": "2026-10-29",
-    "asset": 689391995
+    "updated": "2026-11-01",
+    "asset": 697595428
   },
   "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/1835b29eca764f2669f65195fc00f45677e33853/src/Addons/NotPlater-3.3.5.zip": {
     "folders": [
@@ -25649,7 +26341,8 @@
         "name": "DynamicFarclip",
         "path": "wow-3.3.5a-addons-42b037944fc7b75d8670ee9208da270e409e093d/Addons/DynamicFarclip",
         "notes": "Holds a target framerate by trimming farclip only where terrain submission is the bottleneck.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "ElvUI_AuctionatorTabs",
@@ -25658,7 +26351,8 @@
           "ElvUI"
         ],
         "notes": "Applies the ElvUI tab skin to Auctionator's Buy / Sell / More... tabs on the Auction House frame.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "ElvUI_InlineAuraBridge",
@@ -25668,7 +26362,8 @@
           "InlineAura"
         ],
         "notes": "Lets Inline Aura display auras on ElvUI's action buttons.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "MultiBotElvUI",
@@ -25678,7 +26373,8 @@
           "MultiBot"
         ],
         "notes": "Starts the MultiBot bar hidden and restyles its buttons to match ElvUI.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "ElvUI_QuestieTracker",
@@ -25688,13 +26384,15 @@
           "Questie-335"
         ],
         "notes": "Applies ElvUI's button, icon and font styling to the Questie Tracker (the on-screen quest log).",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "InlineAura",
         "path": "wow-3.3.5a-addons-42b037944fc7b75d8670ee9208da270e409e093d/Addons/InlineAura",
         "notes": "Display aura information inside action buttons",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "InlineAura_Config",
@@ -25702,13 +26400,15 @@
         "dependencies": [
           "InlineAura"
         ],
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "MouselookBinder",
         "path": "wow-3.3.5a-addons-42b037944fc7b75d8670ee9208da270e409e093d/Addons/MouselookBinder",
         "notes": "Toggle mouselook with a key, and choose what left/right click do while mouselooking.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       },
       {
         "name": "MouselookBinder_ElvUI",
@@ -25718,7 +26418,8 @@
           "MouselookBinder"
         ],
         "notes": "Assign the mouselook left/right click from inside ElvUI's keybind mode.",
-        "updated": "2026-10-04"
+        "updated": "2026-10-04",
+        "committed": "2026-10-04"
       }
     ],
     "notes": "Holds a target framerate by trimming farclip only where terrain submission is the bottleneck.",
