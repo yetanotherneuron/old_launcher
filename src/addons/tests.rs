@@ -615,6 +615,465 @@ fn confirming_runs_the_deletion_and_asks_for_a_rescan() {
     assert!(errors.messages().is_empty());
 }
 
+/// A catalog of two addons that both install `Cell`, one of them with a
+/// second folder, and one installing `Manual`.
+fn clashing_catalog() -> Catalog {
+    Catalog::parse(
+        r#"{
+            "version": 2,
+            "sources": [{ "id": "test", "name": "Test Source", "homepage": "https://example.com" }],
+            "entries": [
+                { "name": "Cell",
+                  "downloads": [{ "source": "test", "name": "Cell", "url": "https://example.com/Cell.zip",
+                                  "folders": [{ "name": "Cell" }] }] },
+                { "name": "Cell-WotLK",
+                  "downloads": [{ "source": "test", "name": "Cell-WotLK", "url": "https://example.com/Cell-WotLK.zip",
+                                  "folders": [{ "name": "Cell" }, { "name": "Cell_Options" }] }] },
+                { "name": "Manual Thing",
+                  "downloads": [{ "source": "test", "name": "Manual Thing", "url": "https://example.com/Manual.zip",
+                                  "folders": [{ "name": "Manual" }] }] }
+            ]
+        }"#
+        .as_bytes(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn installing_over_another_addon_asks_to_uninstall_it_first() {
+    let catalog = clashing_catalog();
+    let (_root, installation) = testing::client(&[
+        "Interface/AddOns/cell/Cell.toc",
+        "Interface/AddOns/Cell_Options/Cell_Options.toc",
+    ]);
+    for folder in ["cell", "Cell_Options"] {
+        catalog.entries[1].downloads[0]
+            .marker()
+            .write(&installation.addons_directory().join(folder))
+            .unwrap();
+    }
+    let snapshot = installation.scan().unwrap();
+    let client = client();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+    let mut update = |state: &mut State, message| {
+        state.update(
+            message,
+            &catalog,
+            Ok(&client),
+            Some(&installation),
+            Some(&snapshot),
+            false,
+            &mut errors,
+        )
+    };
+
+    assert_eq!(
+        conflicts(
+            &catalog.entries[0],
+            &catalog.entries[0].downloads[0],
+            &snapshot,
+            &catalog
+        ),
+        [Uninstall {
+            name: "Cell-WotLK".into(),
+            folders: vec!["cell".into(), "Cell_Options".into()],
+            required_by: Vec::new(),
+        }]
+    );
+
+    // Pressing Install asks instead of installing.
+    let key = Key::of(&catalog.entries[0]);
+    let _ = update(&mut state, Message::Install(key.clone()));
+    assert!(state.conflict.is_some() && state.jobs.is_empty());
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    for wanted in [
+        "Install Cell?",
+        "Some folders of \"Cell\" already exist in Interface/AddOns, owned by addon \
+         \"Cell-WotLK\".",
+        "Do you want to uninstall \"Cell-WotLK\" first, and then install \"Cell\"?",
+        "Interface/AddOns/Cell_Options — Cell-WotLK",
+        "Interface/AddOns/cell — Cell-WotLK",
+        "Replace Cell-WotLK",
+    ] {
+        assert!(ui.find(wanted).is_ok(), "{wanted}");
+    }
+    let _ = ui.click("Cancel").unwrap();
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert!(matches!(messages[..], [Message::Cancel]));
+    for message in messages {
+        let _ = update(&mut state, message);
+    }
+    assert!(state.conflict.is_none() && state.jobs.is_empty());
+
+    // Agreeing installs, with the other addon's folders going first.
+    let _ = update(&mut state, Message::Install(key.clone()));
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    let _ = ui.click("Replace Cell-WotLK").unwrap();
+    let messages: Vec<Message> = ui.into_messages().collect();
+    assert!(matches!(messages[..], [Message::Confirm]));
+    for message in messages {
+        let _ = update(&mut state, message);
+    }
+    assert!(state.conflict.is_none());
+    assert!(state.jobs.contains_key(&key));
+    assert_eq!(state.under_way(), ["Installing Cell"]);
+
+    // Reinstalling the addon the folders belong to doesn't ask.
+    let other = Key::of(&catalog.entries[1]);
+    let _ = update(&mut state, Message::Install(other.clone()));
+    assert!(state.conflict.is_none());
+    assert!(state.jobs.contains_key(&other));
+    assert!(errors.messages().is_empty());
+}
+
+#[test]
+fn installing_over_an_addon_being_installed_waits_for_it() {
+    let catalog = clashing_catalog();
+    let (_root, installation) = testing::client(&["Interface/AddOns/Cell/Cell.toc"]);
+    catalog.entries[1].downloads[0]
+        .marker()
+        .write(&installation.addons_directory().join("Cell"))
+        .unwrap();
+    let snapshot = installation.scan().unwrap();
+    let client = client();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+    let mut update = |state: &mut State, message| {
+        state.update(
+            message,
+            &catalog,
+            Ok(&client),
+            Some(&installation),
+            Some(&snapshot),
+            false,
+            &mut errors,
+        )
+    };
+
+    // Cell-WotLK is being reinstalled: Cell can't take its folder meanwhile.
+    let _ = update(&mut state, Message::Install(Key::of(&catalog.entries[1])));
+    let _ = update(&mut state, Message::Install(Key::of(&catalog.entries[0])));
+    assert!(state.conflict.is_none());
+    assert_eq!(state.jobs.len(), 1);
+    assert_eq!(
+        errors.messages(),
+        [
+            "Cell was not installed: it would replace folders of Cell-WotLK, which is being \
+             installed. Wait for that to end."
+        ]
+    );
+}
+
+#[test]
+fn one_conflict_is_asked_about_at_a_time() {
+    let catalog = clashing_catalog();
+    let (_root, installation) = testing::client(&[
+        "Interface/AddOns/Cell/Cell.toc",
+        "Interface/AddOns/Manual/Manual.toc",
+    ]);
+    let snapshot = installation.scan().unwrap();
+    let client = client();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+    let mut update = |state: &mut State, message| {
+        state.update(
+            message,
+            &catalog,
+            Ok(&client),
+            Some(&installation),
+            Some(&snapshot),
+            false,
+            &mut errors,
+        )
+    };
+
+    // As a restore installs several at once.
+    let _ = update(&mut state, Message::Install(Key::of(&catalog.entries[0])));
+    let _ = update(&mut state, Message::Install(Key::of(&catalog.entries[2])));
+    assert_eq!(
+        state
+            .conflict
+            .as_ref()
+            .map(|conflict| conflict.name.as_str()),
+        Some("Cell")
+    );
+    assert!(state.jobs.is_empty());
+    assert_eq!(
+        errors.messages(),
+        [
+            "Manual Thing was not installed: it would replace folders that are already there, \
+             and Cell is waiting for an answer about that. Install it afterwards."
+        ]
+    );
+}
+
+/// Installing Cell over Cell-WotLK and over a `Manual` folder put there by
+/// hand: the dialog names both, and agreeing removes exactly their folders
+/// once the archive is in.
+#[tokio::test]
+async fn agreeing_removes_only_the_folders_the_dialog_listed() {
+    let server = serve(vec![(
+        "/cell.zip",
+        Some(zip_with(&[
+            ("Cell/Cell.toc", "## Title: Cell\n"),
+            ("Manual/Manual.toc", "## Title: Manual\n"),
+        ])),
+    )])
+    .await;
+    let catalog = Catalog::parse(
+        format!(
+            r#"{{ "version": 2,
+                  "sources": [{{ "id": "test", "name": "Test Source", "homepage": "https://example.com" }}],
+                  "entries": [
+                    {{ "name": "Cell",
+                       "downloads": [{{ "source": "test", "name": "Cell", "url": "{server}/cell.zip",
+                                       "folders": [{{ "name": "Cell" }}, {{ "name": "Manual" }}] }}] }},
+                    {{ "name": "Cell-WotLK",
+                       "downloads": [{{ "source": "test", "name": "Cell-WotLK", "url": "https://example.com/Cell-WotLK.zip",
+                                       "folders": [{{ "name": "Cell" }}, {{ "name": "Cell_Options" }}] }}] }}
+                  ] }}"#
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    let (_root, installation) = testing::client_with(&[
+        ("Interface/AddOns/Cell/Cell.toc", "## Title: Cell\n"),
+        (
+            "Interface/AddOns/Cell_Options/Cell_Options.toc",
+            "## Title: Cell Options\n",
+        ),
+        (
+            "Interface/AddOns/Needy/Needy.toc",
+            "## Title: Needy\n## Dependencies: Other\n",
+        ),
+        ("Interface/AddOns/Manual/Manual.toc", "## Title: Manual\n"),
+        ("Interface/AddOns/Other/Other.toc", "## Title: Other\n"),
+    ]);
+    for folder in ["Cell", "Cell_Options"] {
+        catalog.entries[1].downloads[0]
+            .marker()
+            .write(&installation.addons_directory().join(folder))
+            .unwrap();
+    }
+    let snapshot = installation.scan().unwrap();
+    let entry = &catalog.entries[0];
+    let mut state = State::new();
+    let mut errors = Errors::default();
+
+    let _ = state.update(
+        Message::Install(Key::of(entry)),
+        &catalog,
+        Ok(&client()),
+        Some(&installation),
+        Some(&snapshot),
+        false,
+        &mut errors,
+    );
+    let conflict = state.conflict.clone().unwrap();
+    assert_eq!(
+        conflict.uninstall,
+        [
+            Uninstall {
+                name: "Cell-WotLK".into(),
+                folders: vec!["Cell".into(), "Cell_Options".into()],
+                required_by: Vec::new(),
+            },
+            Uninstall {
+                name: "Manual".into(),
+                folders: vec!["Manual".into()],
+                required_by: Vec::new(),
+            }
+        ]
+    );
+    assert!(!conflict.blocked());
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    for wanted in [
+        "Some folders of \"Cell\" already exist in Interface/AddOns, owned by addons \
+         \"Cell-WotLK\" and \"Manual\".",
+        "Do you want to uninstall \"Cell-WotLK\" and \"Manual\" first, and then install \
+         \"Cell\"?",
+        "Interface/AddOns/Cell_Options — Cell-WotLK",
+        "Interface/AddOns/Manual — Manual",
+        "Replace Cell-WotLK and Manual",
+    ] {
+        assert!(ui.find(wanted).is_ok(), "{wanted}");
+    }
+    drop(ui);
+
+    // What the task started by agreeing does.
+    let mut replacing = conflict.replacing();
+    replacing.extend(
+        snapshot
+            .installed(entry)
+            .into_iter()
+            .map(|addon| addon.name.clone()),
+    );
+    let folders = install(
+        client(),
+        None,
+        "Test Source".to_owned(),
+        entry.downloads[0].clone(),
+        installation.clone(),
+        replacing,
+        Arc::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(folders, ["Cell", "Manual"]);
+
+    let after = installation.scan().unwrap();
+    let names: Vec<&str> = after
+        .addons
+        .iter()
+        .map(|addon| addon.name.as_str())
+        .collect();
+    assert_eq!(names, ["Cell", "Manual", "Needy", "Other"]);
+    for addon in &after.addons {
+        let from_cell = addon.name == "Cell" || addon.name == "Manual";
+        assert_eq!(
+            addon.marker.as_ref(),
+            from_cell.then(|| entry.downloads[0].marker()).as_ref(),
+            "{}",
+            addon.name
+        );
+    }
+}
+
+/// Installing over an addon that another installed addon needs is refused:
+/// the dialog says which, and its button does nothing.
+#[test]
+fn installing_over_an_addon_another_needs_is_refused() {
+    let catalog = clashing_catalog();
+    let (_root, installation) = testing::client_with(&[
+        ("Interface/AddOns/Cell/Cell.toc", "## Title: Cell\n"),
+        (
+            "Interface/AddOns/Cell_Options/Cell_Options.toc",
+            "## Title: Cell Options\n",
+        ),
+        (
+            "Interface/AddOns/Needy/Needy.toc",
+            "## Title: Needy\n## Dependencies: Cell_Options\n",
+        ),
+    ]);
+    for folder in ["Cell", "Cell_Options"] {
+        catalog.entries[1].downloads[0]
+            .marker()
+            .write(&installation.addons_directory().join(folder))
+            .unwrap();
+    }
+    let snapshot = installation.scan().unwrap();
+    let client = client();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+    let mut update = |state: &mut State, message| {
+        state.update(
+            message,
+            &catalog,
+            Ok(&client),
+            Some(&installation),
+            Some(&snapshot),
+            false,
+            &mut errors,
+        )
+    };
+
+    let _ = update(&mut state, Message::Install(Key::of(&catalog.entries[0])));
+    let conflict = state.conflict.clone().unwrap();
+    assert_eq!(
+        conflict.uninstall,
+        [Uninstall {
+            name: "Cell-WotLK".into(),
+            folders: vec!["Cell".into(), "Cell_Options".into()],
+            required_by: vec!["Needy".into()],
+        }]
+    );
+    assert!(conflict.blocked());
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    assert!(
+        ui.find(
+            "\"Needy\" requires \"Cell-WotLK\", so this replacement would break it. Uninstall \
+             \"Needy\" first."
+        )
+        .is_ok()
+    );
+    let _ = ui.click("Replace Cell-WotLK").unwrap();
+    assert!(
+        ui.into_messages().next().is_none(),
+        "the button is disabled"
+    );
+
+    // Nor does agreeing by other means go ahead.
+    let _ = update(&mut state, Message::Confirm);
+    assert!(state.conflict.is_some() && state.jobs.is_empty());
+}
+
+#[test]
+fn installing_over_a_folder_put_there_by_hand_asks_to_replace_it() {
+    let catalog = clashing_catalog();
+    let (_root, installation) = testing::client(&["Interface/AddOns/Manual/Manual.toc"]);
+    let snapshot = installation.scan().unwrap();
+    let client = client();
+    let mut state = State::new();
+    let mut errors = Errors::default();
+    let key = Key::of(&catalog.entries[2]);
+
+    assert_eq!(
+        conflicts(
+            &catalog.entries[2],
+            &catalog.entries[2].downloads[0],
+            &snapshot,
+            &catalog
+        ),
+        [Uninstall {
+            name: "Manual".into(),
+            folders: vec!["Manual".into()],
+            required_by: Vec::new(),
+        }]
+    );
+
+    let _ = state.update(
+        Message::Install(key.clone()),
+        &catalog,
+        Ok(&client),
+        Some(&installation),
+        Some(&snapshot),
+        false,
+        &mut errors,
+    );
+    assert!(state.jobs.is_empty());
+
+    let mut ui = open(&state, &catalog, &installation, &snapshot);
+    for wanted in [
+        "Install Manual Thing?",
+        "Some folders of \"Manual Thing\" already exist in Interface/AddOns, owned by addon \
+         \"Manual\".",
+        "Do you want to uninstall \"Manual\" first, and then install \"Manual Thing\"?",
+        "Interface/AddOns/Manual — Manual",
+        "Replace Manual",
+    ] {
+        assert!(ui.find(wanted).is_ok(), "{wanted}");
+    }
+    let _ = ui.click("Replace Manual").unwrap();
+    for message in ui.into_messages().collect::<Vec<_>>() {
+        let _ = state.update(
+            message,
+            &catalog,
+            Ok(&client),
+            Some(&installation),
+            Some(&snapshot),
+            false,
+            &mut errors,
+        );
+    }
+    assert!(state.conflict.is_none());
+    assert!(state.jobs.contains_key(&key));
+    assert!(errors.messages().is_empty());
+}
+
 #[test]
 fn failures_go_to_the_banner_saying_what_failed() {
     let catalog = catalog();

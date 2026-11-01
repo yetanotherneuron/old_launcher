@@ -23,7 +23,7 @@ It's a portable program: nothing to install, just run it.
 
 - **Play**: on Linux through Proton (umu-launcher), Wine or any runner, under GameMode when installed, each client in a Wine prefix of its own.
 - **One list** of every addon, available and installed, to search and filter.
-- **Install** or reinstall with one click, from the freshest source or the one you pick.
+- **Install** or reinstall with one click, from the freshest source or the one you pick; it asks before replacing another addon's folders, and refuses when that would break an addon that needs them.
 - **Install an addon from outside the list**, from a folder or an archive.
 - **Update** addons that have a newer version available, and the launcher itself.
 - **Manage** addons: uninstall, clean saved settings, repair broken folders.

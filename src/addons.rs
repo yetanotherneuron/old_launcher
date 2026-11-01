@@ -5,7 +5,7 @@ mod card;
 mod confirm;
 mod external;
 
-pub use confirm::Confirm;
+pub use confirm::{Confirm, Conflict, Uninstall};
 use external::External;
 
 use std::collections::{HashMap, HashSet};
@@ -51,6 +51,9 @@ pub struct State {
     /// yet, so their cards still show what they looked like before it.
     settling: HashSet<Key>,
     confirm: Option<Confirm>,
+    /// An install that would take folders from other addons, while the
+    /// dialog asks whether to go ahead.
+    conflict: Option<Conflict>,
     /// The confirmed deletion running, if one is, as it describes itself.
     working: Option<String>,
     /// The dialog installing an addon from an archive or folder, while open.
@@ -230,6 +233,7 @@ impl State {
             jobs: HashMap::new(),
             settling: HashSet::new(),
             confirm: None,
+            conflict: None,
             working: None,
             external: None,
             github: None,
@@ -252,6 +256,112 @@ impl State {
     /// or not at all.
     pub fn sign_in(&mut self, github: Option<github::Signed>) {
         self.github = github;
+    }
+
+    /// The entry `key` and the download it installs from, with what the
+    /// install needs, when one can start: a client is open, the catalog
+    /// still lists the entry and no install of it is under way. Otherwise
+    /// nothing, and when there is nothing to download with, why in `errors`.
+    fn ready<'a>(
+        &self,
+        key: &Key,
+        catalog: &'a Catalog,
+        client: Result<&'a reqwest::Client, &str>,
+        installation: Option<&'a Installation>,
+        errors: &mut Errors,
+    ) -> Option<(
+        &'a Entry,
+        &'a Download,
+        &'a reqwest::Client,
+        &'a Installation,
+    )> {
+        let installation = installation?;
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| Key::of(entry) == *key)?;
+
+        if self.busy(key) {
+            return None;
+        }
+
+        let client = match client {
+            Ok(client) => client,
+            Err(error) => {
+                errors.report(unavailable(error));
+                return None;
+            }
+        };
+        let download = entry.preferred()?;
+
+        Some((entry, download, client, installation))
+    }
+
+    /// Starts installing `download` of `entry` into `installation` with
+    /// `client`, replacing what `snapshot` says the entry installed before
+    /// and the `replacing` folders of other addons besides.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each is a dependency of its own, as in update"
+    )]
+    fn start(
+        &mut self,
+        entry: &Entry,
+        download: &Download,
+        mut replacing: Vec<String>,
+        catalog: &Catalog,
+        client: &reqwest::Client,
+        installation: &Installation,
+        snapshot: Option<&Snapshot>,
+    ) -> Action<Instruction, Message> {
+        let key = Key::of(entry);
+
+        replacing.extend(
+            snapshot
+                .into_iter()
+                .flat_map(|snapshot| snapshot.installed(entry))
+                .map(|addon| addon.name.clone()),
+        );
+
+        let source = catalog
+            .source(&download.source)
+            .map_or_else(|| download.source.clone(), |source| source.name.clone());
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        log::info!(
+            "Installing {} into {}",
+            entry.name,
+            installation.root().display()
+        );
+
+        let task = Task::sip(
+            install(
+                client.clone(),
+                self.github.clone(),
+                source.clone(),
+                download.clone(),
+                installation.clone(),
+                replacing,
+                Arc::clone(&cancel),
+            ),
+            Message::Progressed.with(key.clone()),
+            Message::Finished.with(key.clone()),
+        );
+
+        let _ = self.jobs.insert(
+            key,
+            Job {
+                name: entry.name.clone(),
+                stage: Stage::Downloading {
+                    source,
+                    received: 0,
+                    total: None,
+                },
+                cancel,
+            },
+        );
+
+        Action::task(task)
     }
 
     /// What the screen is doing to the client's files that quitting would
@@ -285,7 +395,8 @@ impl State {
     /// settings are left alone while its game runs (`playing`): the game
     /// writes them back. Installs download with `client` (or say why there
     /// is none) and replace what `snapshot` says the same entry installed
-    /// before. Whatever fails goes to `errors`.
+    /// before; when they would take folders from other addons, they wait for
+    /// the user to agree. Whatever fails goes to `errors`.
     #[expect(
         clippy::too_many_arguments,
         reason = "each is a dependency of its own, as in the other screens"
@@ -336,75 +447,61 @@ impl State {
                 Action::instruction(Instruction::Reload)
             }
             Message::Install(key) => {
-                let Some(installation) = installation else {
+                let Some((entry, download, client, installation)) =
+                    self.ready(&key, catalog, client, installation, errors)
+                else {
                     return Action::none();
-                };
-                let Some(entry) = catalog.entries.iter().find(|entry| Key::of(entry) == key) else {
-                    return Action::none();
-                };
-                if self.busy(&key) {
-                    return Action::none();
-                }
-                let client = match client {
-                    Ok(client) => client,
-                    Err(error) => {
-                        errors.report(unavailable(error));
-                        return Action::none();
-                    }
                 };
 
-                let replacing = snapshot
-                    .map(|snapshot| {
-                        snapshot
-                            .installed(entry)
-                            .into_iter()
-                            .map(|addon| addon.name.clone())
-                            .collect()
-                    })
+                let uninstall = snapshot
+                    .map(|snapshot| conflicts(entry, download, snapshot, catalog))
                     .unwrap_or_default();
 
-                let Some(download) = entry.preferred().cloned() else {
-                    return Action::none();
-                };
-                let source = catalog
-                    .source(&download.source)
-                    .map_or_else(|| download.source.clone(), |source| source.name.clone());
-                let cancel = Arc::new(AtomicBool::new(false));
+                if !uninstall.is_empty() {
+                    // Several installs at once (a restore) could each want
+                    // the dialog: it holds one.
+                    if let Some(pending) = &self.conflict {
+                        errors.report(format!(
+                            "{} was not installed: it would replace folders that are already \
+                             there, and {} is waiting for an answer about that. Install it \
+                             afterwards.",
+                            entry.name, pending.name
+                        ));
+                        return Action::none();
+                    }
+                    // An install of the other addon still running would put
+                    // its folders back after they were uninstalled.
+                    if let Some(job) = self
+                        .jobs
+                        .values()
+                        .find(|job| uninstall.iter().any(|addon| addon.name == job.name))
+                    {
+                        errors.report(format!(
+                            "{} was not installed: it would replace folders of {}, which is \
+                             being installed. Wait for that to end.",
+                            entry.name, job.name
+                        ));
+                        return Action::none();
+                    }
 
-                log::info!(
-                    "Installing {} into {}",
-                    entry.name,
-                    installation.root().display()
-                );
-
-                let task = Task::sip(
-                    install(
-                        client.clone(),
-                        self.github.clone(),
-                        source.clone(),
-                        download,
-                        installation.clone(),
-                        replacing,
-                        Arc::clone(&cancel),
-                    ),
-                    Message::Progressed.with(key.clone()),
-                    Message::Finished.with(key.clone()),
-                );
-
-                let _ = self.jobs.insert(
-                    key,
-                    Job {
+                    self.conflict = Some(Conflict {
+                        key,
                         name: entry.name.clone(),
-                        stage: Stage::Downloading {
-                            source,
-                            received: 0,
-                            total: None,
-                        },
-                        cancel,
-                    },
-                );
+                        uninstall,
+                    });
 
-                Action::task(task)
+                    return Action::none();
+                }
+
+                self.start(
+                    entry,
+                    download,
+                    Vec::new(),
+                    catalog,
+                    client,
+                    installation,
+                    snapshot,
+                )
             }
             Message::Stop(key) => {
                 // Only downloads stop; once installing, folders are already
@@ -464,6 +561,7 @@ impl State {
             }
             Message::Cancel => {
                 self.confirm = None;
+                self.conflict = None;
                 // An install from the dialog runs to its end in view.
                 if !matches!(self.external, Some(External::Installing(_))) {
                     self.external = None;
@@ -471,6 +569,35 @@ impl State {
                 Action::none()
             }
             Message::Confirm => {
+                if let Some(conflict) = self.conflict.take() {
+                    // The dialog's button is disabled then; nothing else
+                    // may agree on its behalf.
+                    if conflict.blocked() {
+                        self.conflict = Some(conflict);
+                        return Action::none();
+                    }
+
+                    let Some((entry, download, client, installation)) =
+                        self.ready(&conflict.key, catalog, client, installation, errors)
+                    else {
+                        // The client closed or the list changed meanwhile.
+                        errors.report(format!("{} can't be installed right now.", conflict.name));
+                        return Action::none();
+                    };
+
+                    log::info!("{}", conflict.describe());
+
+                    return self.start(
+                        entry,
+                        download,
+                        conflict.replacing(),
+                        catalog,
+                        client,
+                        installation,
+                        snapshot,
+                    );
+                }
+
                 let (Some(mut confirm), Some(installation)) = (self.confirm.take(), installation)
                 else {
                     return Action::none();
@@ -813,11 +940,12 @@ impl State {
 
         let content = column![toolbar, container(list).height(Fill)].spacing(12);
 
-        let dialog = match (&self.confirm, installation, &self.external) {
-            (Some(confirm), Some(installation), _) => {
+        let dialog = match (&self.confirm, installation, &self.conflict, &self.external) {
+            (Some(confirm), Some(installation), _, _) => {
                 Some(confirm.view(installation.root(), playing).boxed())
             }
-            (None, _, Some(external)) => Some(external.view(snapshot, catalog).boxed()),
+            (None, _, Some(conflict), _) => Some(conflict.view().boxed()),
+            (None, _, None, Some(external)) => Some(external.view(snapshot, catalog).boxed()),
             _ => None,
         };
 
@@ -1059,6 +1187,102 @@ impl Operation<Option<f32>> for Locate {
     fn finish(&self) -> Outcome<Option<f32>> {
         Outcome::Some(self.top())
     }
+}
+
+/// What installing `download` of `entry` takes from other addons, as
+/// `snapshot` saw the client: the addons installed from the list that hold
+/// a folder it installs, each by the name `catalog` gives it (or the one its
+/// folders record, when the catalog dropped it) with every folder of it and
+/// the addons that need one of those folders the download doesn't bring
+/// back, and the folders in its way that were not installed from the list.
+/// The entry's own earlier install doesn't count: it is replaced regardless.
+fn conflicts(
+    entry: &Entry,
+    download: &Download,
+    snapshot: &Snapshot,
+    catalog: &Catalog,
+) -> Vec<Uninstall> {
+    let mut uninstall: Vec<Uninstall> = Vec::new();
+    let mut seen = Vec::new();
+    let groups = snapshot.groups();
+
+    for folder in &download.folders {
+        let Some(addon) = snapshot
+            .addons
+            .iter()
+            .find(|addon| addon.name.eq_ignore_ascii_case(&folder.name))
+        else {
+            continue;
+        };
+
+        if entry.installed(addon) {
+            continue;
+        }
+
+        // An addon from the list is all the folders with its marker; one
+        // put there by hand is its folder alone.
+        let (name, folders): (String, Vec<String>) = match &addon.marker {
+            Some(marker) => {
+                if seen.contains(&marker) {
+                    continue;
+                }
+                seen.push(marker);
+
+                (
+                    catalog
+                        .entries
+                        .iter()
+                        .find(|other| other.installed(addon))
+                        .map_or_else(|| marker.entry.clone(), |other| other.name.clone()),
+                    snapshot
+                        .addons
+                        .iter()
+                        .filter(|other| other.marker.as_ref() == Some(marker))
+                        .map(|other| other.name.clone())
+                        .collect(),
+                )
+            }
+            None => (addon.title().to_owned(), vec![addon.name.clone()]),
+        };
+        // The folders the download installs stay there, under it.
+        let gone: Vec<&str> = folders
+            .iter()
+            .map(String::as_str)
+            .filter(|folder| {
+                !download
+                    .folders
+                    .iter()
+                    .any(|installed| installed.name.eq_ignore_ascii_case(folder))
+            })
+            .collect();
+        let required_by = groups
+            .iter()
+            .filter(|group| {
+                !group.addons.iter().any(|other| {
+                    folders
+                        .iter()
+                        .any(|folder| folder.eq_ignore_ascii_case(&other.name))
+                }) && group
+                    .addons
+                    .iter()
+                    .filter_map(|other| other.toc.as_ref())
+                    .flat_map(|toc| &toc.dependencies)
+                    .any(|dependency| {
+                        gone.iter()
+                            .any(|folder| folder.eq_ignore_ascii_case(dependency))
+                    })
+            })
+            .map(|group| group.title().to_owned())
+            .collect();
+
+        uninstall.push(Uninstall {
+            name,
+            folders,
+            required_by,
+        });
+    }
+
+    uninstall
 }
 
 /// Installs `download`, from the source named `source`, into

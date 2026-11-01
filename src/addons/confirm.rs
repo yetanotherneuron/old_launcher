@@ -1,4 +1,5 @@
-//! Deletions the addons screen asks about before going ahead.
+//! What the addons screen asks about before going ahead: deletions, and
+//! installs that take folders away from other addons.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -6,7 +7,7 @@ use std::path::{Path, PathBuf};
 use iced::widget::{button, checkbox, column, container, row, scrollable, space, text};
 use iced::{Fill, Fit, Widget};
 
-use super::Message;
+use super::{Key, Message};
 use crate::core::saved_variables::Scope;
 use crate::core::{Error, Installation};
 use crate::{counted, game, style};
@@ -245,39 +246,174 @@ impl Confirm {
         };
         let blocked = playing && matches!(self, Self::Clean { .. });
 
-        container(
-            column![
-                style::heading(title, 20.0),
-                text(explanation).style(text::secondary),
-                warnings,
-                container(
-                    scrollable(
-                        column(items.into_iter().map(|item| text(item).size(13))).spacing(2)
-                    )
+        frame(
+            title,
+            explanation.to_owned(),
+            warnings,
+            items,
+            action.to_owned(),
+            blocked,
+        )
+    }
+}
+
+/// An install over folders that other addons hold, waiting for the user's
+/// say: the install goes ahead only once they agree to what it takes away,
+/// and not at all while it would break an addon that needs what goes.
+#[derive(Debug, Clone)]
+pub struct Conflict {
+    /// The entry to install.
+    pub key: Key,
+    /// What the user knows the entry as.
+    pub name: String,
+    /// The addons that hold a folder the entry installs, whether installed
+    /// from the list or by hand. They are uninstalled first, keeping their
+    /// saved settings.
+    pub uninstall: Vec<Uninstall>,
+}
+
+/// An addon that an install takes a folder from, so that it is uninstalled
+/// first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Uninstall {
+    /// What the user knows it as.
+    pub name: String,
+    /// Every folder of it, as named on disk.
+    pub folders: Vec<String>,
+    /// Installed addons that will not load without a folder of it that the
+    /// install doesn't bring back.
+    pub required_by: Vec<String>,
+}
+
+impl Conflict {
+    /// The folders removed before the entry's own go in.
+    pub fn replacing(&self) -> Vec<String> {
+        self.uninstall
+            .iter()
+            .flat_map(|addon| addon.folders.iter().cloned())
+            .collect()
+    }
+
+    /// The names of the addons uninstalled first.
+    fn uninstalled(&self) -> Vec<String> {
+        self.uninstall
+            .iter()
+            .map(|addon| addon.name.clone())
+            .collect()
+    }
+
+    /// Whether the install can't go ahead: an addon that stays needs one
+    /// that goes.
+    pub fn blocked(&self) -> bool {
+        self.uninstall
+            .iter()
+            .any(|addon| !addon.required_by.is_empty())
+    }
+
+    /// What the install takes away, for the log.
+    pub fn describe(&self) -> String {
+        format!(
+            "Installing {}: uninstalling {} first",
+            self.name,
+            names(&self.uninstalled())
+        )
+    }
+
+    /// The dialog asking whether to go ahead.
+    pub fn view(&self) -> impl Widget<Message> + '_ {
+        let addons = self.uninstalled();
+        let owners = if addons.len() == 1 { "addon" } else { "addons" };
+        let question = text(format!(
+            "Do you want to uninstall {} first, and then install \"{}\"?",
+            quoted(&addons),
+            self.name
+        ));
+        let required = self
+            .uninstall
+            .iter()
+            .filter(|addon| !addon.required_by.is_empty())
+            .map(|addon| {
+                let (verb, them) = if addon.required_by.len() == 1 {
+                    ("requires", "it")
+                } else {
+                    ("require", "them")
+                };
+
+                text(format!(
+                    "{} {verb} \"{}\", so this replacement would break {them}. Uninstall {} first.",
+                    quoted(&addon.required_by),
+                    addon.name,
+                    quoted(&addon.required_by),
+                ))
+                .style(text::warning)
+            });
+        let items = self
+            .uninstall
+            .iter()
+            .flat_map(|addon| {
+                addon
+                    .folders
+                    .iter()
+                    .map(move |folder| format!("Interface/AddOns/{folder} — {}", addon.name))
+            })
+            .collect();
+
+        frame(
+            format!("Install {}?", self.name),
+            format!(
+                "Some folders of \"{}\" already exist in Interface/AddOns, owned by {owners} {}.",
+                self.name,
+                quoted(&addons)
+            ),
+            column(std::iter::once(question).chain(required)).spacing(6),
+            items,
+            format!("Replace {}", names(&addons)),
+            self.blocked(),
+        )
+    }
+}
+
+/// A dialog: its `title`, an `explanation` under it, `warnings` where there
+/// are any, the `items` it is about in a list, and the button `action` that
+/// goes ahead beside Cancel, disabled while `blocked`.
+fn frame<'a>(
+    title: String,
+    explanation: String,
+    warnings: impl Widget<Message> + 'a,
+    items: Vec<String>,
+    action: String,
+    blocked: bool,
+) -> impl Widget<Message> + 'a {
+    container(
+        column![
+            style::heading(title, 20.0),
+            text(explanation).style(text::secondary),
+            warnings,
+            container(
+                scrollable(column(items.into_iter().map(|item| text(item).size(13))).spacing(2))
                     .height(Fit.max(240))
                     .style(style::scroll)
                     .width(Fill)
-                )
-                .padding(10)
-                .width(Fill)
-                .style(style::inset),
-                row![
-                    space::horizontal(),
-                    button("Cancel")
-                        .style(style::quiet)
-                        .on_press(Message::Cancel),
-                    button(action)
-                        .style(style::danger)
-                        .on_press_maybe((!blocked).then_some(Message::Confirm)),
-                ]
-                .spacing(8),
+            )
+            .padding(10)
+            .width(Fill)
+            .style(style::inset),
+            row![
+                space::horizontal(),
+                button("Cancel")
+                    .style(style::quiet)
+                    .on_press(Message::Cancel),
+                button(text(action))
+                    .style(style::danger)
+                    .on_press_maybe((!blocked).then_some(Message::Confirm)),
             ]
-            .spacing(14),
-        )
-        .padding(24)
-        .width(Fill.max(560))
-        .style(style::card)
-    }
+            .spacing(8),
+        ]
+        .spacing(14),
+    )
+    .padding(24)
+    .width(Fill.max(560))
+    .style(style::card)
 }
 
 /// Names as a sentence: `A`, `A and B`, `A, B and C`.
@@ -287,6 +423,16 @@ pub fn names(names: &[String]) -> String {
         [one] => one.clone(),
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
+}
+
+/// [`names`] with each in quotes: `"A" and "B"`.
+fn quoted(list: &[String]) -> String {
+    names(
+        &list
+            .iter()
+            .map(|name| format!("\"{name}\""))
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// What "Clean data" would delete, in one sentence: how many files, and
