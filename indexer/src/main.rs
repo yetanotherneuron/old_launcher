@@ -223,7 +223,7 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
     let downloads = Arc::new(Semaphore::new(arguments.jobs.max(1)));
     let mut inspections = JoinSet::new();
 
-    for (priority, source, listing, pinned) in listings {
+    for (position, (priority, source, listing, pinned)) in listings.into_iter().enumerate() {
         let client = client.clone();
         let downloads = Arc::clone(&downloads);
         let asset = uploads.id(&listing.download);
@@ -260,7 +260,7 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
             }
             .await;
 
-            (priority, source, listing, to_split, inspection)
+            (position, priority, source, listing, to_split, inspection)
         });
     }
 
@@ -275,7 +275,7 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
     let mut done = 0;
 
     while let Some(inspection) = inspections.join_next().await {
-        let (priority, source, listing, to_split, inspection) = inspection?;
+        let (position, priority, source, listing, to_split, inspection) = inspection?;
         done += 1;
         let note = if let Ok((_, true)) = &inspection {
             reused_count += 1;
@@ -322,83 +322,11 @@ async fn addons(client: &reqwest::Client, arguments: &Arguments) -> anyhow::Resu
                     item.contents.folders.len()
                 );
             }
-            inspected.push(item);
+            inspected.push((position, item));
         }
     }
 
-    // Listings that install the same folders are the same addon, whichever
-    // source lists them.
-    let mut addons: BTreeMap<Vec<String>, Vec<Inspected>> = BTreeMap::new();
-
-    for item in inspected {
-        let mut folders: Vec<String> = item
-            .contents
-            .folders
-            .iter()
-            .map(|folder| folder.name.to_lowercase())
-            .collect();
-        folders.sort();
-
-        addons.entry(folders).or_default().push(item);
-    }
-
-    let merged = addons
-        .values()
-        .filter(|listings| listings.len() > 1)
-        .count();
-
-    let entries: Vec<catalog::Entry> = addons
-        .into_values()
-        .map(|mut listings| {
-            // Sources are listed in order of preference, and the preferred
-            // one describes the addon.
-            listings.sort_by_key(|item| item.priority);
-
-            let name = listings[0].name.clone();
-            let description = description(&listings);
-            let image = listings.iter().find_map(|item| item.listing.image.clone());
-
-            let mut urls = HashSet::new();
-            let downloads = order(listings)
-                .into_iter()
-                .filter(|item| urls.insert(item.listing.download.clone()))
-                .map(|item| catalog::Download {
-                    source: item.source,
-                    name: item.listing.name,
-                    url: item.listing.download,
-                    updated: item.updated,
-                    page: item.listing.page,
-                    changes: item.listing.changes,
-                    links: item
-                        .listing
-                        .links
-                        .into_iter()
-                        .filter(|link| {
-                            let host = link
-                                .url
-                                .split_once("://")
-                                .and_then(|(_, rest)| rest.split('/').next())
-                                .unwrap_or_default()
-                                .to_ascii_lowercase();
-
-                            !DEAD_LINK_HOSTS
-                                .iter()
-                                .any(|dead| host == *dead || host.ends_with(&format!(".{dead}")))
-                        })
-                        .collect(),
-                    folders: item.contents.folders,
-                })
-                .collect();
-
-            catalog::Entry {
-                name,
-                description,
-                image,
-                downloads,
-                preferred: None,
-            }
-        })
-        .collect();
+    let (entries, merged) = merge(inspected);
 
     if entries.is_empty() {
         bail!(
@@ -533,6 +461,93 @@ fn known_archives(path: &Path) -> BTreeMap<String, Archive> {
         println!("Not reusing {}: {error}", path.display());
         BTreeMap::new()
     })
+}
+
+/// The catalog's entries for the listings `inspected`, each given with its
+/// place among all the listings: by its source's place in the order of
+/// preference, then by its own in the source's list. Listings that install
+/// the same folders are the same addon, whichever source lists them. Also
+/// how many entries are made of more than one listing.
+fn merge(mut inspected: Vec<(usize, Inspected)>) -> (Vec<catalog::Entry>, usize) {
+    // Inspections end in no set order: what they found goes back in the
+    // order of the listings, so that what ties below goes the same way
+    // every run.
+    inspected.sort_by_key(|&(position, _)| position);
+
+    let mut addons: BTreeMap<Vec<String>, Vec<Inspected>> = BTreeMap::new();
+
+    for (_, item) in inspected {
+        let mut folders: Vec<String> = item
+            .contents
+            .folders
+            .iter()
+            .map(|folder| folder.name.to_lowercase())
+            .collect();
+        folders.sort();
+
+        addons.entry(folders).or_default().push(item);
+    }
+
+    let merged = addons
+        .values()
+        .filter(|listings| listings.len() > 1)
+        .count();
+
+    let entries = addons
+        .into_values()
+        .map(|mut listings| {
+            // Sources are listed in order of preference, and the preferred
+            // one describes the addon: of its listings, the one it lists
+            // first.
+            listings.sort_by_key(|item| item.priority);
+
+            let name = listings[0].name.clone();
+            let description = description(&listings);
+            let image = listings.iter().find_map(|item| item.listing.image.clone());
+
+            let mut urls = HashSet::new();
+            let downloads = order(listings)
+                .into_iter()
+                .filter(|item| urls.insert(item.listing.download.clone()))
+                .map(|item| catalog::Download {
+                    source: item.source,
+                    name: item.listing.name,
+                    url: item.listing.download,
+                    updated: item.updated,
+                    page: item.listing.page,
+                    changes: item.listing.changes,
+                    links: item
+                        .listing
+                        .links
+                        .into_iter()
+                        .filter(|link| {
+                            let host = link
+                                .url
+                                .split_once("://")
+                                .and_then(|(_, rest)| rest.split('/').next())
+                                .unwrap_or_default()
+                                .to_ascii_lowercase();
+
+                            !DEAD_LINK_HOSTS
+                                .iter()
+                                .any(|dead| host == *dead || host.ends_with(&format!(".{dead}")))
+                        })
+                        .collect(),
+                    folders: item.contents.folders,
+                })
+                .collect();
+
+            catalog::Entry {
+                name,
+                description,
+                image,
+                downloads,
+                preferred: None,
+            }
+        })
+        .collect();
+
+    (entries, merged)
 }
 
 /// What an earlier run found in `listing`'s archive, if it was inspected
@@ -925,8 +940,8 @@ fn order(mut listings: Vec<Inspected>) -> Vec<Inspected> {
 
 /// Orders listings newest first: the most recently updated one, unless
 /// another's version compares with its own and is newer; then the same
-/// again among the rest. Ties go by the sources' order of preference, and
-/// undated listings come last.
+/// again among the rest. Ties go by the sources' order of preference, then
+/// by the order each lists them in, and undated listings come last.
 fn newest_first(mut listings: Vec<Inspected>) -> Vec<Inspected> {
     listings.sort_by_key(|item| {
         (
@@ -1912,5 +1927,31 @@ mod tests {
         let sources: Vec<&str> = ordered.iter().map(|item| item.source.as_str()).collect();
 
         assert_eq!(sources, ["source-2", "source-0", "source-1"]);
+    }
+
+    #[test]
+    fn listings_of_one_source_that_tie_go_by_its_order_whichever_was_inspected_first() {
+        let listed = |name: &str| {
+            let mut item = inspected(0, "1.0", Some("2026-10-20"));
+            item.name = name.to_owned();
+            item.listing.name = name.to_owned();
+            item.listing.download = format!("https://example.com/{name}.zip");
+            item
+        };
+
+        // The source lists Cell-WotLK first, whose inspection ends last.
+        let (entries, merged) = merge(vec![(1, listed("Cell")), (0, listed("Cell-WotLK"))]);
+
+        assert_eq!(merged, 1);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Cell-WotLK");
+        assert_eq!(
+            entries[0]
+                .downloads
+                .iter()
+                .map(|download| download.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Cell-WotLK", "Cell"]
+        );
     }
 }
