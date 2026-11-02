@@ -22,6 +22,10 @@ use crate::{Error, Installation};
 /// `Wow.exe`, or a mod's setup program.
 pub const PLACEHOLDER: &str = "%command%";
 
+/// What stands for the client's folder in the command line run with the
+/// game (see [`Launch::companion`]).
+pub const GAME_FOLDER: &str = "%gamefolder%";
+
 /// The command running `Wow.exe` with the system's Wine.
 const WINE_COMMAND: &str = "wine %command%";
 
@@ -247,7 +251,8 @@ pub struct Launch {
     pub command: String,
     /// A shell command line (`cmd`'s on Windows) started with the game and
     /// stopped, with whatever it started, when the game exits: a program
-    /// the game works with. Nothing when empty.
+    /// the game works with. [`GAME_FOLDER`] stands for the client's folder,
+    /// quoted. Nothing when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub companion: String,
 }
@@ -259,9 +264,32 @@ impl Launch {
         self.env.is_empty() && self.command.is_empty() && self.companion.is_empty()
     }
 
-    /// The command line started with the game, if one is set.
-    pub fn companion(&self) -> Option<&str> {
-        Some(self.companion.trim()).filter(|line| !line.is_empty())
+    /// The command line started with the game of the client at `folder`, if
+    /// one is set: with the folder, quoted, in place of [`GAME_FOLDER`].
+    pub fn companion(&self, folder: &Path) -> Result<Option<String>, Error> {
+        let line = self.companion.trim();
+
+        if line.is_empty() {
+            return Ok(None);
+        }
+        if !line.contains(GAME_FOLDER) {
+            return Ok(Some(line.to_owned()));
+        }
+
+        // `cmd` takes a path in double quotes, which no Windows path holds.
+        let folder = if cfg!(windows) {
+            folder
+                .to_str()
+                .map(|text| format!("\"{text}\"").into())
+                .ok_or_else(|| Error::Launch {
+                    setting: "client folder",
+                    problem: format!("{} can't be written in a command line.", folder.display()),
+                })?
+        } else {
+            quoted(folder)?
+        };
+
+        Ok(Some(line.replace(GAME_FOLDER, &folder)))
     }
 
     /// Why the command line started with the game can't be used, if it
@@ -1236,12 +1264,34 @@ mod tests {
             ..Launch::default()
         };
 
+        let folder = Path::new(if cfg!(windows) {
+            r"C:\Games\war mane"
+        } else {
+            "/games/war mane"
+        });
+        let quoted = if cfg!(windows) {
+            r#""C:\Games\war mane""#
+        } else {
+            "'/games/war mane'"
+        };
+
         assert!(with("").is_default());
         assert!(!with("music-bridge").is_default());
-        assert_eq!(with("  ").companion(), None, "nothing set");
+        assert_eq!(with("  ").companion(folder).unwrap(), None, "nothing set");
         assert_eq!(
-            with(" music-bridge --game 'World of Warcraft' ").companion(),
+            with(" music-bridge --game 'World of Warcraft' ")
+                .companion(folder)
+                .unwrap()
+                .as_deref(),
             Some("music-bridge --game 'World of Warcraft'")
+        );
+        assert_eq!(
+            with("music-bridge --game %gamefolder% --data %gamefolder%/Data")
+                .companion(folder)
+                .unwrap()
+                .as_deref(),
+            Some(format!("music-bridge --game {quoted} --data {quoted}/Data").as_str()),
+            "the client's folder, quoted"
         );
         assert_eq!(with("music-bridge").companion_problem(), None);
         assert_eq!(

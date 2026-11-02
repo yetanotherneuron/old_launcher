@@ -187,8 +187,9 @@ module says what differs for them. The game always runs as the child of
 the launcher's own binary started with `--run` (`src/wrapper.rs`), which
 sets up what goes with it and exits with its code: the Discord status
 (`src/discord.rs`) and the client's companion, a command line started with
-the game and stopped, with all it started, when the game exits. A game
-found running, rather than started here, gets neither.
+the game and stopped, with all it started, when the game exits, in which
+`%gamefolder%` stands for the client folder. A game found running, rather
+than started here, gets neither.
 
 ## Clients from a torrent
 

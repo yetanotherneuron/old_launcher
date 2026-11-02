@@ -113,12 +113,12 @@ impl State {
             return Task::none();
         }
 
-        match launch::command(installation, launch, natives) {
-            Ok(command) => {
-                let options = wrapper::Options {
-                    discord,
-                    with: launch.companion().map(str::to_owned),
-                };
+        let started = launch::command(installation, launch, natives)
+            .and_then(|command| Ok((command, launch.companion(&root)?)));
+
+        match started {
+            Ok((command, with)) => {
+                let options = wrapper::Options { discord, with };
                 let command = wrapper::wrapped(command, &options);
                 log::info!("Starting the game: {command:?}");
 

@@ -48,7 +48,8 @@ pub const RUN_WITH_THE_GAME: &str = "Run while the game runs";
 
 /// What the program run while the game runs is for.
 const WITH_THE_GAME: &str = "Started with the game and stopped when it closes, such as a \
-                             program the game works with.";
+                             program the game works with. %gamefolder% stands for the \
+                             client's folder.";
 
 /// The id of the field giving the client its torrent.
 pub const SOURCE: &str = "clients-source";
@@ -2008,7 +2009,7 @@ mod tests {
         }
 
         assert_eq!(
-            config.launch(root).companion(),
+            config.launch(root).companion(root).unwrap().as_deref(),
             Some("music-bridge --game 'World of")
         );
         let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
