@@ -23195,6 +23195,165 @@
     "notes": "Shut the fuck up, thanks.",
     "updated": "2024-06-04"
   },
+  "https://github.com/BannZay/.bat-Games/archive/35b8e9336275a7d0b75c70449f17946b9ed2ab29.zip": {
+    "folders": [],
+    "updated": "2016-09-09"
+  },
+  "https://github.com/BannZay/BannZayLib/archive/5b2f1b81f8959decee3df4500b5f26c47af43853.zip": {
+    "folders": [],
+    "updated": "2022-05-30"
+  },
+  "https://github.com/BannZay/CombatTracking/archive/ba04084e2a6ef8a19a961da054b16c4f69813f63.zip": {
+    "folders": [
+      {
+        "name": "CombatTracking",
+        "title": "CombatTracking",
+        "version": "v3.0",
+        "interface": 30300
+      }
+    ],
+    "notes": "Tracks combat status of your target, focus, party and arena enemies",
+    "updated": "2026-10-25"
+  },
+  "https://github.com/BannZay/GitSettings/archive/572a78a5bb424fa6475dd5cbc837b9ba1d1c8515.zip": {
+    "folders": [],
+    "updated": "2025-01-13"
+  },
+  "https://github.com/BannZay/LibEvents-1.0/archive/f7cdccd73d3ea47c23967eb12df6fab8f0172e09.zip": {
+    "folders": [],
+    "updated": "2023-10-06"
+  },
+  "https://github.com/BannZay/LibLogger-1.0/archive/999632c6177ec89401d490f53837e2f7b51401d9.zip": {
+    "folders": [],
+    "updated": "2022-06-17"
+  },
+  "https://github.com/BannZay/LoseControl/archive/0b63dcc5bbc4748762638a21f0f08b8ea5e3655d.zip": {
+    "folders": [
+      {
+        "name": "LoseControl",
+        "title": "LoseControl",
+        "version": "3.33",
+        "interface": 30300
+      }
+    ],
+    "notes": "Displays the duration of CC effects on your character",
+    "updated": "2022-02-06"
+  },
+  "https://github.com/BannZay/OmegaProfiler/archive/c47c8b2f5ce11399408a8182cdf633419629fa81.zip": {
+    "folders": [
+      {
+        "name": "!!!!!OmegaProfiler",
+        "title": "OmegaProfiler",
+        "version": "1.0",
+        "interface": 30300
+      }
+    ],
+    "notes": "Live addon CPU/memory profiler with zoomable graph, load-time profiling and UI lag detection (/omp).",
+    "updated": "2026-10-31"
+  },
+  "https://github.com/BannZay/PlateBuffs-3.3.5/archive/bc79a69f89593c820f6ae1be17166cb11d43db2b.zip": {
+    "folders": [
+      {
+        "name": "PlateBuffs",
+        "title": "Plate Buffs - WotLK",
+        "version": "1.17.2",
+        "interface": 30300
+      }
+    ],
+    "notes": "Show buffs on nameplates.",
+    "updated": "2025-03-07"
+  },
+  "https://github.com/BannZay/PlatesClasses/archive/4f65ad6f93a2f189b6b0ec09b368da1232ca7204.zip": {
+    "folders": [
+      {
+        "name": "PlatesClasses",
+        "title": "PlatesClasses",
+        "version": "v1.0",
+        "interface": 30300
+      }
+    ],
+    "notes": "Adds class icons to nameplates and enables various nameplates modifications",
+    "updated": "2026-08-11"
+  },
+  "https://github.com/BannZay/PlatesMaster/archive/2a05add9e48fc4c9f4801488a1d4529e60472173.zip": {
+    "folders": [
+      {
+        "name": "PlatesMaster",
+        "title": "PlatesMaster",
+        "version": "1.0",
+        "interface": 30300
+      },
+      {
+        "name": "PlatesMaster_of_ArenaPets",
+        "title": "PlatesMaster_of_ArenaPets",
+        "version": "1.0",
+        "interface": 30300
+      },
+      {
+        "name": "PlatesMaster_of_Purity",
+        "title": "PlatesMaster_of_Purity",
+        "version": "1.0",
+        "interface": 30300
+      },
+      {
+        "name": "PlatesMaster_of_Totems",
+        "title": "PlatesMaster_of_Totems",
+        "version": "1.0",
+        "interface": 30300
+      }
+    ],
+    "updated": "2021-11-18"
+  },
+  "https://github.com/BannZay/SWDEZ/archive/07e9d4aa79c6e20871e2316389c93604c8408b39.zip": {
+    "folders": [
+      {
+        "name": "SWDEZ",
+        "title": "SWDEZ",
+        "interface": 30300
+      }
+    ],
+    "notes": "Notifies you when to use shadow word death",
+    "updated": "2022-05-30"
+  },
+  "https://github.com/BannZay/TremorWatch-classic/archive/18fdd701bf473957d3f5600e1c1a15bfbaabfd9f.zip": {
+    "folders": [
+      {
+        "name": "TremorWatch",
+        "title": "Tremor Watch (Classic)",
+        "version": "1.0.2",
+        "interface": 30402
+      }
+    ],
+    "notes": "Draws the pulses of ally/hostile tremor totems",
+    "updated": "2023-07-30"
+  },
+  "https://github.com/BannZay/TremorWatch/archive/5233a83ad14abd86eb5dc32634a5de658d22925e.zip": {
+    "folders": [
+      {
+        "name": "TremorWatch",
+        "title": "Tremor Watch",
+        "version": "2.0",
+        "interface": 30300
+      }
+    ],
+    "notes": "Shows enemy and allied Tremor Totems with a pulse countdown, swirl and sounds. Options: /tw",
+    "updated": "2026-11-01"
+  },
+  "https://github.com/BannZay/TrinketAlerter/archive/a7033db188d3e8bc4762ec814ae1e02366a3f5fa.zip": {
+    "folders": [
+      {
+        "name": "TrinketAlerter",
+        "title": "TrinketAlerter",
+        "interface": 30300
+      }
+    ],
+    "notes": "Notifies you about trinket usage",
+    "updated": "2025-09-14"
+  },
+  "https://github.com/BannZay/WowConfigMaker/archive/911a97cfc6e4c9b579d157fbf981549387e66db6.zip": {
+    "folders": [],
+    "updated": "2021-03-12"
+  },
   "https://github.com/Bunny67/Aurora/archive/7928066113700c03a0d9fc039c101d9935e905cf.zip": {
     "folders": [
       {

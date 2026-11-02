@@ -7,6 +7,11 @@
       "homepage": "https://www.curseforge.com/wow"
     },
     {
+      "id": "github-bannzay",
+      "name": "BannZay on GitHub",
+      "homepage": "https://github.com/BannZay"
+    },
+    {
       "id": "github-bkader",
       "name": "bkader on GitHub",
       "homepage": "https://github.com/bkader"
@@ -9157,29 +9162,6 @@
       ]
     },
     {
-      "name": "Combat Tracking",
-      "description": "tracks combat status of your target, focus, partymembers, arenatargets",
-      "image": "https://media.forgecdn.net/attachments/2105/6/names-png.png",
-      "downloads": [
-        {
-          "source": "curseforge",
-          "name": "Combat Tracking",
-          "url": "https://edge.forgecdn.net/files/9324/936/CombatTracking-v3.0.zip",
-          "updated": "2026-10-25",
-          "page": "https://www.curseforge.com/wow/addons/combat-tracking",
-          "changes": "https://www.curseforge.com/wow/addons/combat-tracking/files",
-          "folders": [
-            {
-              "name": "CombatTracking",
-              "title": "CombatTracking",
-              "version": "v3.0",
-              "interface": 30300
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "CombatGraph for 3.3",
       "description": "I took CombatGraph files, and just actualize them for 3.3 version of World of Warcraft. I changed Recount for Skada, Skada hadn't any Graph function so I ned one. It's a really simple addon, wich show your DPS (or heal) progression during any outside/instance encounter for example.",
       "image": "https://cdn-wow.mmoui.com/preview/pvw37381.jpg",
@@ -9277,6 +9259,45 @@
               "name": "CombatTimer",
               "title": "Combat Timer",
               "version": "1.0.61df8b5",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CombatTracking",
+      "description": "WoW addon that shows whether your target, focus, party and arena enemies are in combat, with a timer for when each one can leave it.",
+      "image": "https://media.forgecdn.net/attachments/2105/6/names-png.png",
+      "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "CombatTracking",
+          "url": "https://github.com/BannZay/CombatTracking/archive/ba04084e2a6ef8a19a961da054b16c4f69813f63.zip",
+          "updated": "2026-10-25",
+          "page": "https://github.com/BannZay/CombatTracking",
+          "changes": "https://github.com/BannZay/CombatTracking/commits/3.3.5",
+          "folders": [
+            {
+              "name": "CombatTracking",
+              "title": "CombatTracking",
+              "version": "v3.0",
+              "interface": 30300
+            }
+          ]
+        },
+        {
+          "source": "curseforge",
+          "name": "Combat Tracking",
+          "url": "https://edge.forgecdn.net/files/9324/936/CombatTracking-v3.0.zip",
+          "updated": "2026-10-25",
+          "page": "https://www.curseforge.com/wow/addons/combat-tracking",
+          "changes": "https://www.curseforge.com/wow/addons/combat-tracking/files",
+          "folders": [
+            {
+              "name": "CombatTracking",
+              "title": "CombatTracking",
+              "version": "v3.0",
               "interface": 30300
             }
           ]
@@ -24116,6 +24137,22 @@
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/LoseControl.jpg",
       "downloads": [
         {
+          "source": "github-bannzay",
+          "name": "LoseControl",
+          "url": "https://github.com/BannZay/LoseControl/archive/0b63dcc5bbc4748762638a21f0f08b8ea5e3655d.zip",
+          "updated": "2022-02-06",
+          "page": "https://github.com/BannZay/LoseControl",
+          "changes": "https://github.com/BannZay/LoseControl/commits/master",
+          "folders": [
+            {
+              "name": "LoseControl",
+              "title": "LoseControl",
+              "version": "3.33",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "nom0re",
           "name": "LoseControl",
           "url": "https://github.com/NoM0Re/WoW-3.3.5a-Addons/raw/bbed863145f0c0cd9a16794b41405ef541e6dbf2/src/Addons/LoseControl.zip",
@@ -27668,6 +27705,22 @@
               "interface": 30300
             }
           ]
+        },
+        {
+          "source": "github-bannzay",
+          "name": "OmegaProfiler",
+          "url": "https://github.com/BannZay/OmegaProfiler/archive/c47c8b2f5ce11399408a8182cdf633419629fa81.zip",
+          "updated": "2026-10-31",
+          "page": "https://github.com/BannZay/OmegaProfiler",
+          "changes": "https://github.com/BannZay/OmegaProfiler/commits/master",
+          "folders": [
+            {
+              "name": "!!!!!OmegaProfiler",
+              "title": "OmegaProfiler",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
         }
       ]
     },
@@ -30976,6 +31029,22 @@
           ]
         },
         {
+          "source": "github-bannzay",
+          "name": "PlateBuffs-3.3.5",
+          "url": "https://github.com/BannZay/PlateBuffs-3.3.5/archive/bc79a69f89593c820f6ae1be17166cb11d43db2b.zip",
+          "updated": "2025-03-07",
+          "page": "https://github.com/BannZay/PlateBuffs-3.3.5",
+          "changes": "https://github.com/BannZay/PlateBuffs-3.3.5/commits/master",
+          "folders": [
+            {
+              "name": "PlateBuffs",
+              "title": "Plate Buffs - WotLK",
+              "version": "1.17.2",
+              "interface": 30300
+            }
+          ]
+        },
+        {
           "source": "rising-gods",
           "name": "PlateBuffs",
           "url": "https://addons.rising-gods.de/sites/default/files/addons/PlateBuffs-1.5.4beta.zip",
@@ -30994,9 +31063,25 @@
     },
     {
       "name": "PlatesClasses",
-      "description": "Adds class icon to nameplates.",
+      "description": "Wotlk addon that adds class icon to nameplates",
       "image": "https://media.forgecdn.net/attachments/739/465/platesclassesoptions2.png",
       "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "PlatesClasses",
+          "url": "https://github.com/BannZay/PlatesClasses/archive/4f65ad6f93a2f189b6b0ec09b368da1232ca7204.zip",
+          "updated": "2026-08-11",
+          "page": "https://github.com/BannZay/PlatesClasses",
+          "changes": "https://github.com/BannZay/PlatesClasses/commits/master",
+          "folders": [
+            {
+              "name": "PlatesClasses",
+              "title": "PlatesClasses",
+              "version": "v1.0",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "curseforge",
           "name": "PlatesClasses",
@@ -31009,6 +31094,46 @@
               "name": "PlatesClasses",
               "title": "PlatesClasses",
               "version": "v1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PlatesMaster",
+      "description": "World of Warcraft nameplates addon",
+      "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "PlatesMaster",
+          "url": "https://github.com/BannZay/PlatesMaster/archive/2a05add9e48fc4c9f4801488a1d4529e60472173.zip",
+          "updated": "2021-11-18",
+          "page": "https://github.com/BannZay/PlatesMaster",
+          "changes": "https://github.com/BannZay/PlatesMaster/commits/master",
+          "folders": [
+            {
+              "name": "PlatesMaster",
+              "title": "PlatesMaster",
+              "version": "1.0",
+              "interface": 30300
+            },
+            {
+              "name": "PlatesMaster_of_ArenaPets",
+              "title": "PlatesMaster_of_ArenaPets",
+              "version": "1.0",
+              "interface": 30300
+            },
+            {
+              "name": "PlatesMaster_of_Purity",
+              "title": "PlatesMaster_of_Purity",
+              "version": "1.0",
+              "interface": 30300
+            },
+            {
+              "name": "PlatesMaster_of_Totems",
+              "title": "PlatesMaster_of_Totems",
+              "version": "1.0",
               "interface": 30300
             }
           ]
@@ -34294,7 +34419,7 @@
     {
       "name": "Rewatch",
       "description": "Track your HOTS like a BOSS",
-      "image": "https://media.forgecdn.net/attachments/364/257/group.jpg",
+      "image": "https://media.forgecdn.net/attachments/330/360/logo.png",
       "downloads": [
         {
           "source": "curseforge",
@@ -38279,6 +38404,27 @@
       ]
     },
     {
+      "name": "SWDEZ",
+      "description": "World of Warcraft addon",
+      "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "SWDEZ",
+          "url": "https://github.com/BannZay/SWDEZ/archive/07e9d4aa79c6e20871e2316389c93604c8408b39.zip",
+          "updated": "2022-05-30",
+          "page": "https://github.com/BannZay/SWDEZ",
+          "changes": "https://github.com/BannZay/SWDEZ/commits/master",
+          "folders": [
+            {
+              "name": "SWDEZ",
+              "title": "SWDEZ",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "SyncFriends",
       "description": "Synchronise friends among your characters",
       "downloads": [
@@ -40694,9 +40840,25 @@
     },
     {
       "name": "TremorWatch",
-      "description": "Allows you to see if enemy tremor totem exists somewhere around and delay before its next pulse",
-      "image": "https://media.forgecdn.net/attachments/286/299/pvw72719.jpg",
+      "description": "Tremor Totem pulse tracker for WoW 3.3.5a: icon, countdown and sound alerts for enemy and allied totems.",
+      "image": "https://media.forgecdn.net/attachments/286/296/pvw72722.png",
       "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "TremorWatch",
+          "url": "https://github.com/BannZay/TremorWatch/archive/5233a83ad14abd86eb5dc32634a5de658d22925e.zip",
+          "updated": "2026-11-01",
+          "page": "https://github.com/BannZay/TremorWatch",
+          "changes": "https://github.com/BannZay/TremorWatch/commits/3.3.5",
+          "folders": [
+            {
+              "name": "TremorWatch",
+              "title": "Tremor Watch",
+              "version": "2.0",
+              "interface": 30300
+            }
+          ]
+        },
         {
           "source": "curseforge",
           "name": "TremorWatch",
@@ -40730,6 +40892,27 @@
               "name": "TTHelper",
               "title": "TricksHelper",
               "version": "1.1",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TrinketAlerter",
+      "description": "World of Warcraft addon",
+      "downloads": [
+        {
+          "source": "github-bannzay",
+          "name": "TrinketAlerter",
+          "url": "https://github.com/BannZay/TrinketAlerter/archive/a7033db188d3e8bc4762ec814ae1e02366a3f5fa.zip",
+          "updated": "2025-09-14",
+          "page": "https://github.com/BannZay/TrinketAlerter",
+          "changes": "https://github.com/BannZay/TrinketAlerter/commits/master",
+          "folders": [
+            {
+              "name": "TrinketAlerter",
+              "title": "TrinketAlerter",
               "interface": 30300
             }
           ]
