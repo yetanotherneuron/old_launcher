@@ -8,7 +8,7 @@ use iced::{Function, Subscription, Task};
 
 use crate::core::{Installation, Launch, launch};
 use crate::errors::Errors;
-use crate::{blocking, describe, discord};
+use crate::{blocking, describe, wrapper};
 
 /// The games started from the launcher or found running, by client folder,
 /// until over.
@@ -21,6 +21,9 @@ pub struct State {
 /// set up (Proton downloaded, a prefix made, …) until its `Wow.exe` shows
 /// up, and over when that is gone.
 struct Game {
+    /// Whether the launcher started it, under its wrapper (see
+    /// [`wrapper`]), rather than found it running.
+    ours: bool,
     /// Whether its `Wow.exe` was seen, so it is past the setting up.
     started: bool,
     /// Whether the command that started it is still running.
@@ -56,6 +59,10 @@ pub const KEEPS_CONFIG: &str = "Close the game first: it rewrites Config.wtf whe
 /// Why `Wow.exe` can't change while the client's game runs.
 pub const KEEPS_EXE: &str = "Close the game first: Wow.exe can't change while it runs.";
 
+/// What a game found running, rather than started here, goes without.
+pub const STARTED_ELSEWHERE: &str = "The game wasn't started from here, so nothing was set up \
+                                     for it: neither Discord nor a program to run with it.";
+
 /// What happens to the games.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -80,9 +87,16 @@ impl State {
         })
     }
 
+    /// Whether the game of the client at `root` was found running rather
+    /// than started here, so nothing was set up for it.
+    pub fn started_elsewhere(&self, root: &Path) -> bool {
+        self.games.get(root).is_some_and(|game| !game.ours)
+    }
+
     /// Starts `installation`'s game as `launch` says, with Wine told to load
     /// the `natives` mods put beside `Wow.exe` (see [`launch::command`]),
-    /// unless it is running already, for Discord to show while it runs when
+    /// unless it is running already: under the launcher's [`wrapper`], with
+    /// `launch`'s companion, for Discord to show while it runs when
     /// `discord`. A prefix left in the client folder is moved out first (see
     /// [`launch::move_old_prefix`]). What fails goes to `errors`.
     pub fn play(
@@ -101,16 +115,17 @@ impl State {
 
         match launch::command(installation, launch, natives) {
             Ok(command) => {
-                let command = if discord {
-                    discord::wrapped(command)
-                } else {
-                    command
+                let options = wrapper::Options {
+                    discord,
+                    with: launch.companion().map(str::to_owned),
                 };
+                let command = wrapper::wrapped(command, &options);
                 log::info!("Starting the game: {command:?}");
 
                 let _ = self.games.insert(
                     root.clone(),
                     Game {
+                        ours: true,
                         // On Windows the command is Wow.exe itself: nothing
                         // to set up, and the game ends when it exits.
                         started: cfg!(windows),
@@ -208,6 +223,7 @@ impl State {
                         log::info!("Found the game of {} running", root.display());
 
                         Game {
+                            ours: false,
                             started: true,
                             command: false,
                             patience: 0,
@@ -391,10 +407,21 @@ mod tests {
         let _ = state.update(Message::Watched(Ok(vec![root.clone()])), &mut errors);
         assert_eq!(state.phase(&root), Some(Phase::Running));
         assert!(state.subscription().units() > 0, "followed every second");
+        assert!(
+            state.started_elsewhere(&root),
+            "not under the wrapper: nothing set up"
+        );
 
         let _ = state.update(Message::Watched(Ok(Vec::new())), &mut errors);
         assert_eq!(state.phase(&root), None);
         assert_eq!(state.subscription().units(), 0);
+        assert!(!state.started_elsewhere(&root), "no game at all");
+
+        // Started here, then seen: still the launcher's.
+        let _ = started(&mut state, &installation);
+        let _ = state.update(Message::Watched(Ok(vec![root.clone()])), &mut errors);
+        assert_eq!(state.phase(&root), Some(Phase::Running));
+        assert!(!state.started_elsewhere(&root));
     }
 
     #[cfg(unix)]

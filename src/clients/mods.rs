@@ -3700,6 +3700,7 @@ mod tests {
             command: "echo $WHO %command%; echo '  map    0 Azeroth  '; \
                       echo 0034:fixme:keyboard:klid >&2"
                 .to_owned(),
+            ..Launch::default()
         };
         let (mut progress, stages) = Sender::channel(16);
         set_up(&installation, &echoing, &release, &mut progress)
@@ -3732,10 +3733,10 @@ mod tests {
         );
 
         let failing = Launch {
-            env: String::new(),
             command: "echo 0034:fixme:keyboard:klid >&2; echo out of memory >&2; echo working; \
                       false %command%"
                 .to_owned(),
+            ..Launch::default()
         };
         let (mut progress, _) = Sender::channel(16);
         assert_eq!(

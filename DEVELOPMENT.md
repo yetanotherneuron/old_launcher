@@ -183,9 +183,12 @@ prefix of the client's own in the user's data folder, never in the client
 folder: `Wow.exe` goes through every file there as it starts and quits
 (`core/src/launch.rs`). Mods' setups run
 through the same command, which is why it must have `%command%`; the
-module says what differs for them. With the Discord setting on, the game
-runs as a child of the launcher's own binary started with `--discord`
-(`src/discord.rs`).
+module says what differs for them. The game always runs as the child of
+the launcher's own binary started with `--run` (`src/wrapper.rs`), which
+sets up what goes with it and exits with its code: the Discord status
+(`src/discord.rs`) and the client's companion, a command line started with
+the game and stopped, with all it started, when the game exits. A game
+found running, rather than started here, gets neither.
 
 ## Clients from a torrent
 

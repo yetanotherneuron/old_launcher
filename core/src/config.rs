@@ -30,8 +30,8 @@ pub struct Config {
     /// file while off.
     #[serde(default, skip_serializing_if = "is_false")]
     pub discord: bool,
-    /// How clients start outside Windows, by client folder. Clients missing
-    /// here start with the defaults.
+    /// How clients start, and what runs beside them, by client folder.
+    /// Clients missing here start with the defaults, with nothing beside.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub launch: BTreeMap<PathBuf, Launch>,
     /// The source the user picked for an addon, by the addon's key (see
@@ -305,6 +305,7 @@ mod tests {
             Launch {
                 env: "WINEPREFIX=\"$HOME/wine prefix\"".into(),
                 command: "umu-run %command%".into(),
+                companion: "music-bridge --game '/games/war mane'".into(),
             },
         );
         config.set_source("acp", Some("locus313".into()));
@@ -379,8 +380,8 @@ mod tests {
             downloads: Vec::new(),
         };
         let custom = Launch {
-            env: String::new(),
             command: "umu-run %command%".into(),
+            ..Launch::default()
         };
         config.set_launch(Path::new("/games/wotlk"), custom.clone());
         config.set_launch(Path::new("/games/warmane"), custom);

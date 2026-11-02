@@ -229,8 +229,10 @@ fn installed(program: &str, path: &OsStr) -> bool {
     })
 }
 
-/// How a client is started outside Windows: Steam's launch options, with the
-/// environment variables in a field of their own.
+/// How a client is started, and what runs beside it: outside Windows,
+/// Steam's launch options, with the environment variables in a field of
+/// their own; everywhere, a program started with the game and stopped when
+/// it exits.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Launch {
     /// Environment variables, `NAME=value` separated by spaces and quoted as
@@ -243,13 +245,30 @@ pub struct Launch {
     /// runner. [`default_command`] when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
+    /// A shell command line (`cmd`'s on Windows) started with the game and
+    /// stopped, with whatever it started, when the game exits: a program
+    /// the game works with. Nothing when empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub companion: String,
 }
 
 impl Launch {
     /// Whether nothing is set, so the client starts as the launcher's
-    /// [`Defaults`] say.
+    /// [`Defaults`] say, with nothing beside it.
     pub fn is_default(&self) -> bool {
-        self.env.is_empty() && self.command.is_empty()
+        self.env.is_empty() && self.command.is_empty() && self.companion.is_empty()
+    }
+
+    /// The command line started with the game, if one is set.
+    pub fn companion(&self) -> Option<&str> {
+        Some(self.companion.trim()).filter(|line| !line.is_empty())
+    }
+
+    /// Why the command line started with the game can't be used, if it
+    /// can't: a quote never closed. `cmd` closes one itself on Windows.
+    pub fn companion_problem(&self) -> Option<String> {
+        (!cfg!(windows) && shlex::split(&self.companion).is_none())
+            .then(|| "A quote is never closed.".to_owned())
     }
 
     /// Why the environment variables can't be used, if they can't.
@@ -787,6 +806,7 @@ mod tests {
         Launch {
             env: env.into(),
             command: command.into(),
+            ..Launch::default()
         }
     }
 
@@ -1206,6 +1226,33 @@ mod tests {
         assert_eq!(
             launch("A='open", "").env_problem().as_deref(),
             Some("A quote is never closed.")
+        );
+    }
+
+    #[test]
+    fn a_program_run_with_the_game_is_a_line_or_nothing() {
+        let with = |line: &str| Launch {
+            companion: line.into(),
+            ..Launch::default()
+        };
+
+        assert!(with("").is_default());
+        assert!(!with("music-bridge").is_default());
+        assert_eq!(with("  ").companion(), None, "nothing set");
+        assert_eq!(
+            with(" music-bridge --game 'World of Warcraft' ").companion(),
+            Some("music-bridge --game 'World of Warcraft'")
+        );
+        assert_eq!(with("music-bridge").companion_problem(), None);
+        assert_eq!(
+            with("music-bridge 'World of")
+                .companion_problem()
+                .as_deref(),
+            if cfg!(windows) {
+                None
+            } else {
+                Some("A quote is never closed.")
+            }
         );
     }
 

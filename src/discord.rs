@@ -1,9 +1,8 @@
 //! Showing on Discord that the game is played. With the setting on, the
-//! game's command runs as the child of the launcher's own binary, started
-//! with [`FLAG`]: that wrapper holds a connection to the Discord desktop
-//! app while its child runs, and exits with the child's exit code. Discord
-//! clears the status when the connection closes, so it goes with the game,
-//! whether the launcher is still open or not.
+//! wrapper the game runs under (see [`crate::wrapper`]) holds a connection
+//! to the Discord desktop app while the game runs. Discord clears the
+//! status when the connection closes, so it goes with the game, whether the
+//! launcher is still open or not.
 //!
 //! Discord listens on a local socket (a named pipe on Windows). Each frame
 //! on it is an opcode and the payload's length, both u32 little-endian,
@@ -11,21 +10,14 @@
 //! `SET_ACTIVITY`.
 
 use std::convert::Infallible;
-use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, ExitStatus};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::process::Child;
 
 use crate::describe;
-
-/// What the launcher is started with to run a game as the wrapper, before
-/// the game's command.
-pub const FLAG: &str = "--discord";
 
 /// The Discord application the status names: "Old Launcher", with its
 /// image.
@@ -51,141 +43,9 @@ const CLOSE: u32 = 2;
 const PING: u32 = 3;
 const PONG: u32 = 4;
 
-/// `command`, run by the launcher's own binary so that Discord shows the
-/// game while it runs; `command` itself when the binary is gone (replaced
-/// by an upgrade, say).
-pub fn wrapped(command: Command) -> Command {
-    wrapped_by(std::env::current_exe(), command)
-}
-
-/// `command`, run by `launcher` as the wrapper, in the same folder and with
-/// the same environment.
-fn wrapped_by(launcher: io::Result<PathBuf>, command: Command) -> Command {
-    let launcher = match launcher {
-        Ok(launcher) if launcher.is_file() => launcher,
-        Ok(launcher) => {
-            log::warn!(
-                "Discord can't show the game: {} is gone",
-                launcher.display()
-            );
-            return command;
-        }
-        Err(error) => {
-            log::warn!("Discord can't show the game: {}", describe(&error));
-            return command;
-        }
-    };
-
-    let mut wrapper = Command::new(launcher);
-    wrapper
-        .arg(FLAG)
-        .arg(command.get_program())
-        .args(command.get_args());
-
-    if let Some(folder) = command.get_current_dir() {
-        wrapper.current_dir(folder);
-    }
-    for (name, value) in command.get_envs() {
-        match value {
-            Some(value) => wrapper.env(name, value),
-            None => wrapper.env_remove(name),
-        };
-    }
-
-    wrapper
-}
-
-/// When `arguments`, the launcher's own, are [`FLAG`] and a command, runs
-/// that command as the wrapper: its exit code, once it has exited. Nothing
-/// otherwise.
-pub fn wrapper(arguments: impl IntoIterator<Item = OsString>) -> Option<i32> {
-    let mut arguments = arguments.into_iter().skip(1);
-    if arguments.next()? != FLAG {
-        return None;
-    }
-    let program = arguments.next()?;
-    let arguments: Vec<OsString> = arguments.collect();
-
-    let mut command = tokio::process::Command::new(&program);
-    command.args(&arguments);
-
-    match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => Some(runtime.block_on(play(command, &sockets()))),
-        // The game runs all the same, unseen by Discord.
-        Err(error) => {
-            log::warn!("Discord can't show the game: {}", describe(&error));
-            Some(exit_code(Command::new(program).args(arguments).status()))
-        }
-    }
-}
-
-/// Runs `command`, showing on Discord, through the first of `sockets` it
-/// listens on, that the game is played while it runs: its exit code once
-/// it exits. As a shell says: 127 when it can't be found, 126 when it can't
-/// be run, 128 plus the signal that killed it.
-async fn play(mut command: tokio::process::Command, sockets: &[PathBuf]) -> i32 {
-    match command.spawn() {
-        Ok(child) => follow(child, sockets).await,
-        Err(error) => {
-            log::error!(
-                "Could not start {}: {}",
-                command.as_std().get_program().to_string_lossy(),
-                describe(&error)
-            );
-
-            if error.kind() == io::ErrorKind::NotFound {
-                127
-            } else {
-                126
-            }
-        }
-    }
-}
-
-/// Shows on Discord that the game is played until `child` exits: its exit
-/// code. The connection closes with this, and the status goes with it.
-async fn follow(mut child: Child, sockets: &[PathBuf]) -> i32 {
-    let activity = activity(SystemTime::now());
-    // The game's own process on Windows, where it is `Wow.exe`.
-    let pid = child.id().unwrap_or_else(process::id);
-
-    tokio::select! {
-        status = child.wait() => exit_code(status),
-        never = show(pid, &activity, sockets) => match never {},
-    }
-}
-
-/// The exit code of a command that ended with `status`.
-fn exit_code(status: io::Result<ExitStatus>) -> i32 {
-    match status {
-        Ok(status) => status.code().or_else(|| killed_by(status)).unwrap_or(1),
-        Err(error) => {
-            log::error!("Could not wait for the game: {}", describe(&error));
-            1
-        }
-    }
-}
-
-/// 128 plus the signal that killed a command, as a shell says.
-#[cfg(unix)]
-fn killed_by(status: ExitStatus) -> Option<i32> {
-    use std::os::unix::process::ExitStatusExt;
-
-    status.signal().map(|signal| 128 + signal)
-}
-
-/// Commands exit with a code on Windows, killed or not.
-#[cfg(not(unix))]
-fn killed_by(_status: ExitStatus) -> Option<i32> {
-    None
-}
-
 /// What the status shows, for a game that started at `start`: the
 /// application's name and image, [`DETAILS`] and the time played.
-fn activity(start: SystemTime) -> Value {
+pub(crate) fn activity(start: SystemTime) -> Value {
     let start = start
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -202,7 +62,7 @@ fn activity(start: SystemTime) -> Value {
 /// Shows `activity` on Discord for the process `pid`, through the first of
 /// `sockets` it listens on, for as long as this runs. When Discord isn't
 /// running, or quits, looks for it again every [`RETRY`].
-async fn show(pid: u32, activity: &Value, sockets: &[PathBuf]) -> Infallible {
+pub(crate) async fn show(pid: u32, activity: &Value, sockets: &[PathBuf]) -> Infallible {
     loop {
         match connect(sockets).await {
             Some((path, socket)) => {
@@ -245,7 +105,7 @@ async fn connect(sockets: &[PathBuf]) -> Option<(&Path, Socket)> {
 
 /// Where Discord may listen: named pipes on Windows.
 #[cfg(windows)]
-fn sockets() -> Vec<PathBuf> {
+pub(crate) fn sockets() -> Vec<PathBuf> {
     (0..10)
         .map(|number| PathBuf::from(format!(r"\\.\pipe\discord-ipc-{number}")))
         .collect()
@@ -254,7 +114,7 @@ fn sockets() -> Vec<PathBuf> {
 /// Where Discord may listen: in the first of `XDG_RUNTIME_DIR`, `TMPDIR`,
 /// `TMP` and `TEMP` that is set, or else `/tmp`, as Discord picks.
 #[cfg(unix)]
-fn sockets() -> Vec<PathBuf> {
+pub(crate) fn sockets() -> Vec<PathBuf> {
     let folder = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]
         .into_iter()
         .find_map(std::env::var_os)
@@ -401,7 +261,7 @@ async fn receive<S: AsyncRead + Unpin>(socket: &mut S) -> io::Result<(u32, Value
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsStr;
+    use std::process;
 
     use super::*;
 
@@ -591,66 +451,6 @@ mod tests {
         assert!(why.contains("Invalid Client ID"), "{why}");
     }
 
-    #[test]
-    fn only_the_flag_and_a_command_make_a_wrapper() {
-        let arguments = |list: &[&str]| list.iter().map(OsString::from).collect::<Vec<_>>();
-
-        assert_eq!(wrapper(arguments(&["old_launcher"])), None);
-        assert_eq!(wrapper(arguments(&["old_launcher", "--other"])), None);
-        assert_eq!(wrapper(arguments(&["old_launcher", FLAG])), None);
-
-        let [program, option] = SHELL;
-        assert_eq!(
-            wrapper(arguments(&[
-                "old_launcher",
-                FLAG,
-                program,
-                option,
-                "exit 4"
-            ])),
-            Some(4)
-        );
-    }
-
-    #[test]
-    fn the_wrapper_runs_the_command_in_its_folder() {
-        let mut command = Command::new("sh");
-        command
-            .arg("-c")
-            .arg("wine Wow.exe")
-            .current_dir("/games/wotlk");
-        command.env("A", "1");
-        let launcher = std::env::current_exe().unwrap();
-
-        let wrapper = wrapped_by(Ok(launcher.clone()), command);
-
-        assert_eq!(Path::new(wrapper.get_program()), launcher);
-        assert_eq!(
-            wrapper.get_args().collect::<Vec<_>>(),
-            [FLAG, "sh", "-c", "wine Wow.exe"]
-        );
-        assert_eq!(wrapper.get_current_dir(), Some(Path::new("/games/wotlk")));
-        assert_eq!(
-            wrapper.get_envs().collect::<Vec<_>>(),
-            [(OsStr::new("A"), Some(OsStr::new("1")))]
-        );
-    }
-
-    #[test]
-    fn without_the_launchers_binary_the_command_runs_alone() {
-        let command = || {
-            let mut command = Command::new("sh");
-            command.arg("-c").arg("wine Wow.exe");
-            command
-        };
-
-        let gone = wrapped_by(Ok(PathBuf::from("/nonexistent/old_launcher")), command());
-        assert_eq!(gone.get_program(), "sh");
-
-        let unknown = wrapped_by(Err(io::ErrorKind::NotFound.into()), command());
-        assert_eq!(unknown.get_program(), "sh");
-    }
-
     #[cfg(unix)]
     #[test]
     fn discord_is_looked_for_in_its_flatpak_and_snap_folders_too() {
@@ -725,7 +525,8 @@ mod tests {
         let mut stdin = child.stdin.take().unwrap();
         let pid = child.id().unwrap();
 
-        let played = tokio::spawn(async move { follow(child, &[socket]).await });
+        let played =
+            tokio::spawn(async move { crate::wrapper::follow(child, None, Some(&[socket])).await });
         let mut discord = discord.accept().await;
         let args = handshake(&mut discord).await;
         assert_eq!(args["pid"], pid, "the game's own process");
@@ -741,22 +542,6 @@ mod tests {
                 io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe
             ),
             "{closed}"
-        );
-    }
-
-    #[tokio::test]
-    async fn the_game_runs_without_discord_and_its_exit_code_comes_back() {
-        assert_eq!(play(shell("exit 0"), &[]).await, 0);
-        assert_eq!(play(shell("exit 3"), &[]).await, 3);
-        #[cfg(unix)]
-        assert_eq!(play(shell("kill -9 $$"), &[]).await, 128 + 9);
-        assert_eq!(
-            play(
-                tokio::process::Command::new("/nonexistent/old_launcher_game"),
-                &[]
-            )
-            .await,
-            127
         );
     }
 }

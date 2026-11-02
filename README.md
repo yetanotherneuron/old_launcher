@@ -22,6 +22,7 @@ It's a portable program: nothing to install, just run it.
 ![Every addon in one list, with the search box and the filters above it](assets/screenshots/addons.png)
 
 - **Play**: on Linux through Proton (umu-launcher), Wine or any runner, under GameMode when installed, each client in a Wine prefix of its own.
+- **Run a program while the game runs**, per client: started with the game and stopped when it closes.
 - **One list** of every addon, available and installed, to search and filter.
 - **Install** or reinstall with one click, from the freshest source or the one you pick; it asks before replacing another addon's folders, and refuses when that would break an addon that needs them.
 - **Install an addon from outside the list**, from a folder or an archive.

@@ -12,8 +12,8 @@ pub fn main() -> iced::Result {
     )
     .init();
 
-    // Started by the launcher to run a game while Discord shows it.
-    if let Some(code) = old_launcher::discord::wrapper(std::env::args_os()) {
+    // Started by the launcher to run a game, with what goes with it.
+    if let Some(code) = old_launcher::wrapper::run(std::env::args_os()) {
         std::process::exit(code);
     }
 

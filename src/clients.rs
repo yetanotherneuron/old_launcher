@@ -40,6 +40,16 @@ pub const ENV: &str = "clients-env";
 /// The id of the command field.
 pub const COMMAND: &str = "clients-command";
 
+/// The id of the field for the program run while the game runs.
+pub const COMPANION: &str = "clients-companion";
+
+/// The label of the field for the program run while the game runs.
+pub const RUN_WITH_THE_GAME: &str = "Run while the game runs";
+
+/// What the program run while the game runs is for.
+const WITH_THE_GAME: &str = "Started with the game and stopped when it closes, such as a \
+                             program the game works with.";
+
 /// The id of the field giving the client its torrent.
 pub const SOURCE: &str = "clients-source";
 
@@ -113,6 +123,8 @@ pub enum Message {
     Env(String),
     /// The command was edited.
     Command(String),
+    /// The program run while the game runs was edited.
+    Companion(String),
     /// "Check" was pressed beside the file integrity (a client without a
     /// torrent has its patches checked).
     Check,
@@ -483,6 +495,15 @@ impl State {
                 }
                 Action::none()
             }
+            Message::Companion(companion) => {
+                if let Some(root) = current {
+                    let mut launch = config.launch(root);
+                    launch.companion = companion;
+                    config.set_launch(root, launch);
+                    self.edited = true;
+                }
+                Action::none()
+            }
             Message::Check => match current {
                 Some(root) => Action::instruction(Instruction::Check(root.to_path_buf())),
                 None => Action::none(),
@@ -789,17 +810,9 @@ impl State {
             .style(style::inset)
         });
 
-        // Windows starts Wow.exe itself.
-        let launch = current.filter(|_| !cfg!(windows)).map(|root| {
+        let launch = current.map(|root| {
             let launch = config.launch.get(root);
-            let env = launch.map_or("", |launch| launch.env.as_str());
-            let command = launch.map_or("", |launch| launch.command.as_str());
-            // Left empty, the fields hold what the launcher sets instead.
-            let defaults = launch::Defaults {
-                natives: self.mods.natives(root),
-                ..launch::Defaults::of(root)
-            };
-            let set = defaults.env().unwrap_or_default();
+            let companion = launch.map_or("", |launch| launch.companion.as_str());
 
             // What the launcher sets, written out whole: a long path doesn't
             // fit in the field.
@@ -810,37 +823,67 @@ impl State {
                     .wrapping(text::Wrapping::WordOrGlyph)
                     .boxed()
             };
-            let added = column(
-                std::iter::once(line(
-                    "Automatically added environment variables (define again to override):"
-                        .to_owned(),
-                ))
-                .chain(set.iter().map(|variable| line(format!("- {variable}")))),
-            )
-            .spacing(2);
+
+            // Windows starts Wow.exe itself.
+            let runner = (!cfg!(windows)).then(|| {
+                let env = launch.map_or("", |launch| launch.env.as_str());
+                let command = launch.map_or("", |launch| launch.command.as_str());
+                // Left empty, the fields hold what the launcher sets instead.
+                let defaults = launch::Defaults {
+                    natives: self.mods.natives(root),
+                    ..launch::Defaults::of(root)
+                };
+                let set = defaults.env().unwrap_or_default();
+
+                let added = column(
+                    std::iter::once(line(
+                        "Automatically added environment variables (define again to override):"
+                            .to_owned(),
+                    ))
+                    .chain(set.iter().map(|variable| line(format!("- {variable}")))),
+                )
+                .spacing(2);
+
+                column![
+                    column![
+                        field(
+                            "Environment variables",
+                            text_input(set.join(" "), env)
+                                .id(ENV)
+                                .style(style::field)
+                                .on_input(Message::Env),
+                            launch.and_then(|launch| launch.env_problem()),
+                        ),
+                        added,
+                    ]
+                    .spacing(6),
+                    field(
+                        "Command",
+                        text_input(defaults.command, command)
+                            .id(COMMAND)
+                            .style(style::field)
+                            .on_input(Message::Command),
+                        launch.and_then(|launch| launch.command_problem()),
+                    ),
+                ]
+                .spacing(10)
+            });
 
             column![
                 style::heading("Starting the game", 16.0),
+                runner,
                 column![
                     field(
-                        "Environment variables",
-                        text_input(set.join(" "), env)
-                            .id(ENV)
+                        RUN_WITH_THE_GAME,
+                        text_input("", companion)
+                            .id(COMPANION)
                             .style(style::field)
-                            .on_input(Message::Env),
-                        launch.and_then(|launch| launch.env_problem()),
+                            .on_input(Message::Companion),
+                        launch.and_then(|launch| launch.companion_problem()),
                     ),
-                    added,
+                    line(WITH_THE_GAME.to_owned()),
                 ]
                 .spacing(6),
-                field(
-                    "Command",
-                    text_input(defaults.command, command)
-                        .id(COMMAND)
-                        .style(style::field)
-                        .on_input(Message::Command),
-                    launch.and_then(|launch| launch.command_problem()),
-                ),
             ]
             .spacing(10)
         });
@@ -1945,6 +1988,37 @@ mod tests {
         }
     }
 
+    /// Windows starts `Wow.exe` itself, but a program may run beside it
+    /// there too.
+    #[test]
+    fn a_program_to_run_with_the_game_is_typed_in_on_every_system() {
+        let (mut state, mut config) = opened(None);
+        let root = Path::new(WOTLK);
+
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
+        assert!(ui.find("Starting the game").is_ok());
+        assert!(ui.find(WITH_THE_GAME).is_ok());
+        assert_eq!(ui.find(selector::id(COMMAND)).is_ok(), !cfg!(windows));
+        let _ = ui.click(selector::id(COMPANION)).unwrap();
+        let _ = ui.typewrite("music-bridge --game 'World of");
+        let messages: Vec<Message> = ui.into_messages().collect();
+
+        for message in messages {
+            let _ = update(&mut state, &mut config, message);
+        }
+
+        assert_eq!(
+            config.launch(root).companion(),
+            Some("music-bridge --game 'World of")
+        );
+        let mut ui = simulator(state.view(&config, Some(root), None, false, false, None));
+        assert_eq!(
+            ui.find("A quote is never closed.").is_ok(),
+            !cfg!(windows),
+            "cmd closes it itself"
+        );
+    }
+
     #[cfg(not(windows))]
     #[test]
     fn how_each_client_starts_is_typed_in() {
@@ -1962,6 +2036,8 @@ mod tests {
         let _ = ui.typewrite("WINEPREFIX=~/wow umu-run");
         let _ = ui.click(selector::id(COMMAND)).unwrap();
         let _ = ui.typewrite("umu-run %command%");
+        let _ = ui.click(selector::id(COMPANION)).unwrap();
+        let _ = ui.typewrite("music-bridge");
         let messages: Vec<Message> = ui.into_messages().collect();
 
         for message in messages {
@@ -1973,6 +2049,7 @@ mod tests {
             Launch {
                 env: "WINEPREFIX=~/wow umu-run".into(),
                 command: "umu-run %command%".into(),
+                companion: "music-bridge".into(),
             }
         );
         assert_eq!(

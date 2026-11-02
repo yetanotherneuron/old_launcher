@@ -3668,6 +3668,7 @@ dependencies = [
  "env_logger",
  "iced",
  "iced_test",
+ "libc",
  "librqbit",
  "librqbit-core",
  "librqbit-peer-protocol",
@@ -3684,6 +3685,7 @@ dependencies = [
  "sipper",
  "tempfile",
  "tokio",
+ "windows-sys 0.61.2",
  "winresource",
  "zip",
 ]

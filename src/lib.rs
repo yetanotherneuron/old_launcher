@@ -13,7 +13,7 @@ mod addons;
 mod backdrop;
 mod catalog;
 mod clients;
-pub mod discord;
+mod discord;
 mod download;
 mod errors;
 mod game;
@@ -32,6 +32,7 @@ mod testing;
 mod torrent;
 mod transfer;
 mod update;
+pub mod wrapper;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -1354,6 +1355,14 @@ impl App {
             .boxed(),
         };
 
+        // A game found running, rather than started here, runs with nothing
+        // the launcher sets up.
+        let elsewhere = self
+            .selected
+            .path()
+            .filter(|root| self.game.started_elsewhere(root))
+            .map(|_| text(game::STARTED_ELSEWHERE).size(13).style(text::warning));
+
         let error = self.errors.view(Message::DismissError);
 
         let notice = self.notice.as_deref().map(|notice| {
@@ -1414,6 +1423,7 @@ impl App {
             column![
                 header,
                 client,
+                elsewhere,
                 error,
                 notice,
                 downloading,
@@ -2782,6 +2792,30 @@ mod tests {
     }
 
     #[test]
+    fn a_game_found_running_is_said_to_have_nothing_set_up() {
+        let (_root, installation) = crate::testing::client(&[]);
+        let root = installation.root().to_path_buf();
+        let mut app = opened(installation);
+        mods_looked_at(&mut app, &root);
+        let said = |app: &App| simulator(app.view()).find(game::STARTED_ELSEWHERE).is_ok();
+
+        assert!(!said(&app));
+        let _ = app.update(Message::Game(game::Message::Watched(Ok(vec![
+            root.clone(),
+        ]))));
+        assert!(!play_button(&app, "Game running"));
+        assert!(said(&app));
+
+        let _ = app.update(Message::Game(game::Message::Watched(Ok(Vec::new()))));
+        assert!(!said(&app));
+
+        // One started here has everything set up, found or not.
+        let _ = app.update(Message::Play);
+        let _ = app.update(Message::Game(game::Message::Watched(Ok(vec![root]))));
+        assert!(!said(&app));
+    }
+
+    #[test]
     fn the_game_waits_for_the_launcher_to_check_a_mod() {
         let (_root, installation) = crate::testing::client(&["CoAVolFog.dll"]);
         let root = installation.root().to_path_buf();
@@ -3185,7 +3219,7 @@ mod tests {
             &root,
             crate::core::Launch {
                 env: "umu-run".into(),
-                command: String::new(),
+                ..crate::core::Launch::default()
             },
         );
         let _ = app.update(Message::Play);

@@ -162,6 +162,7 @@ fn screenshots() {
         Launch {
             env: "WINEPREFIX=~/Games/wotlk-prefix PROTONPATH=GE-Proton".into(),
             command: "umu-run %command%".into(),
+            companion: "~/Apps/wow-music-bridge".into(),
         },
     );
     app.catalog = catalog.clone();
