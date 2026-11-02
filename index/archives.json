@@ -23135,6 +23135,18 @@
     "notes": "Automatisierter Broadcaster & Raid Organizer für Ebonhold",
     "updated": "2026-10-31"
   },
+  "https://edge.forgecdn.net/files/9391/265/OmegaProfiler-1.0.zip": {
+    "folders": [
+      {
+        "name": "!!!!!OmegaProfiler",
+        "title": "OmegaProfiler",
+        "version": "1.0",
+        "interface": 30300
+      }
+    ],
+    "notes": "Live addon CPU/memory profiler with zoomable graph, load-time profiling and UI lag detection (/omp).",
+    "updated": "2026-11-01"
+  },
   "https://github.com/5Buttons/Leatrix-Maps-3.3.5/archive/50b1cc82122f3dab2b7dac18f1656ca0bad36c3d.zip": {
     "folders": [
       {
@@ -23147,7 +23159,7 @@
     "notes": "Enhancements for your maps.",
     "updated": "2026-10-26"
   },
-  "https://github.com/Aldori15/Questie/archive/f1b5c606f582c7e588646fde8894919c68eedac5.zip": {
+  "https://github.com/Aldori15/Questie/archive/42140b2ba24fca8bae82fec1694006887a23af8c.zip": {
     "folders": [
       {
         "name": "Questie-335",
@@ -23157,7 +23169,7 @@
       }
     ],
     "notes": "A standalone Classic QuestHelper backported to 335 and sourced using AzerothCore data.",
-    "updated": "2026-10-31"
+    "updated": "2026-11-01"
   },
   "https://github.com/Arcitec/GearScoreLite_Reborn/archive/a396cdc93894bca2cab351627c97996253f86236.zip": {
     "folders": [
@@ -23590,30 +23602,30 @@
     "notes": "Displays proportional bar charts showing damage and healing done by both factions in BGs",
     "updated": "2026-08-28"
   },
-  "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/a1f531f2e19c8b4e8534584d30078471abbda02c.zip": {
+  "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/a164f202827a4a0ab45779bba2cf945a055622eb.zip": {
     "folders": [
       {
         "name": "BattleGroundHealers",
         "title": "BattleGroundHealers",
-        "version": "1.6.3",
+        "version": "1.6.4",
         "interface": 30300
       }
     ],
     "notes": "Marks BG healer nameplates with a configurable icon.",
-    "updated": "2026-09-27"
+    "updated": "2026-11-01"
   },
-  "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases/download/v1.6.3/BattleGroundHealers-v1.6.3.zip": {
+  "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases/download/v1.6.4/BattleGroundHealers-v1.6.4.zip": {
     "folders": [
       {
         "name": "BattleGroundHealers",
         "title": "BattleGroundHealers",
-        "version": "1.6.3",
+        "version": "1.6.4",
         "interface": 30300
       }
     ],
     "notes": "Marks BG healer nameplates with a configurable icon.",
-    "updated": "2026-09-27",
-    "asset": 594452553
+    "updated": "2026-11-01",
+    "asset": 700082285
   },
   "https://github.com/KhalGH/BattlegroundTargets-WotLK/archive/9a1360c03c9773730cf5a09bd516a4c962cf6559.zip": {
     "folders": [
@@ -23651,17 +23663,17 @@
     "notes": "Displays ilvl and border color. Allows you to choose between original and transmog icons.",
     "updated": "2025-06-27"
   },
-  "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/d0f87173004c0046b3ba2d6e06e243292e6e708e.zip": {
+  "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/fb22aa7f708fe3c809d46c30a679dacdc857cd94.zip": {
     "folders": [
       {
         "name": "PlateBuffs",
         "title": "PlateBuffs",
-        "version": "1.19.5 (r238)",
+        "version": "1.19.6 (r239)",
         "interface": 30300
       }
     ],
     "notes": "Show buffs and debuffs on nameplates",
-    "updated": "2026-10-31"
+    "updated": "2026-11-01"
   },
   "https://github.com/KhalGH/RefinedBlizzPlates-WotLK/archive/d9026d9aa8c0c97aa007744a701e43721f22b8dc.zip": {
     "folders": [
@@ -23722,7 +23734,7 @@
     "notes": "Arena unit frames",
     "updated": "2026-07-04"
   },
-  "https://github.com/NeticSoul/DragonUI/archive/f154bd5cf4982359619896c354904da1e212ebd3.zip": {
+  "https://github.com/NeticSoul/DragonUI/archive/0198b0eb768aa47773d2e381b2ee27a13ec41006.zip": {
     "folders": [
       {
         "name": "DragonUI",
@@ -23738,7 +23750,7 @@
       }
     ],
     "notes": "Retail-inspired modular UI addon for WoW 3.3.5a (WotLK).",
-    "updated": "2026-10-31"
+    "updated": "2026-11-01"
   },
   "https://github.com/NoM0Re/AC-PvP-Dailys-Script/archive/e73d1fc0ad780d86efee43551d8b132935fd4fec.zip": {
     "folders": [],

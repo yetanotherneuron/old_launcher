@@ -4748,8 +4748,8 @@
         {
           "source": "nom0re",
           "name": "BattleGroundHealers",
-          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases/download/v1.6.3/BattleGroundHealers-v1.6.3.zip",
-          "updated": "2026-09-27",
+          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases/download/v1.6.4/BattleGroundHealers-v1.6.4.zip",
+          "updated": "2026-11-01",
           "changes": "https://github.com/KhalGH/BattleGroundHealers-WotLK/releases",
           "links": [
             {
@@ -4761,7 +4761,7 @@
             {
               "name": "BattleGroundHealers",
               "title": "BattleGroundHealers",
-              "version": "1.6.3",
+              "version": "1.6.4",
               "interface": 30300
             }
           ]
@@ -4769,15 +4769,15 @@
         {
           "source": "github-khalgh",
           "name": "BattleGroundHealers-WotLK",
-          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/a1f531f2e19c8b4e8534584d30078471abbda02c.zip",
-          "updated": "2026-09-27",
+          "url": "https://github.com/KhalGH/BattleGroundHealers-WotLK/archive/a164f202827a4a0ab45779bba2cf945a055622eb.zip",
+          "updated": "2026-11-01",
           "page": "https://github.com/KhalGH/BattleGroundHealers-WotLK",
           "changes": "https://github.com/KhalGH/BattleGroundHealers-WotLK/commits/main",
           "folders": [
             {
               "name": "BattleGroundHealers",
               "title": "BattleGroundHealers",
-              "version": "1.6.3",
+              "version": "1.6.4",
               "interface": 30300
             }
           ]
@@ -13000,8 +13000,8 @@
         {
           "source": "nom0re",
           "name": "DragonUI",
-          "url": "https://github.com/NeticSoul/DragonUI/archive/f154bd5cf4982359619896c354904da1e212ebd3.zip",
-          "updated": "2026-10-31",
+          "url": "https://github.com/NeticSoul/DragonUI/archive/0198b0eb768aa47773d2e381b2ee27a13ec41006.zip",
+          "updated": "2026-11-01",
           "changes": "https://github.com/NeticSoul/DragonUI/commits/main",
           "links": [
             {
@@ -27649,6 +27649,29 @@
       ]
     },
     {
+      "name": "OmegaProfiler",
+      "description": "See which addons slow your game: a live per-addon CPU graph, load-time profiling and lag spike detection with likely causes.",
+      "image": "https://media.forgecdn.net/attachments/2133/414/graph-png.png",
+      "downloads": [
+        {
+          "source": "curseforge",
+          "name": "OmegaProfiler",
+          "url": "https://edge.forgecdn.net/files/9391/265/OmegaProfiler-1.0.zip",
+          "updated": "2026-11-01",
+          "page": "https://www.curseforge.com/wow/addons/omegaprofiler",
+          "changes": "https://www.curseforge.com/wow/addons/omegaprofiler/files",
+          "folders": [
+            {
+              "name": "!!!!!OmegaProfiler",
+              "title": "OmegaProfiler",
+              "version": "1.0",
+              "interface": 30300
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Omen Threat Meter",
       "description": "Omen displays threat levels so you can see which players are most likely to draw enemy attacks.",
       "image": "https://raw.githubusercontent.com/NoM0Re/WoW-3.3.5a-Addons/main/src/Pictures/Omen.jpg",
@@ -30918,8 +30941,8 @@
         {
           "source": "nom0re",
           "name": "PlateBuffs",
-          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/d0f87173004c0046b3ba2d6e06e243292e6e708e.zip",
-          "updated": "2026-10-31",
+          "url": "https://github.com/KhalGH/PlateBuffs-WoTLK/archive/fb22aa7f708fe3c809d46c30a679dacdc857cd94.zip",
+          "updated": "2026-11-01",
           "changes": "https://github.com/KhalGH/PlateBuffs-WoTLK/commits/main",
           "links": [
             {
@@ -30931,7 +30954,7 @@
             {
               "name": "PlateBuffs",
               "title": "PlateBuffs",
-              "version": "1.19.5 (r238)",
+              "version": "1.19.6 (r239)",
               "interface": 30300
             }
           ]
@@ -32092,8 +32115,8 @@
         {
           "source": "nom0re",
           "name": "Questie",
-          "url": "https://github.com/Aldori15/Questie/archive/f1b5c606f582c7e588646fde8894919c68eedac5.zip",
-          "updated": "2026-10-31",
+          "url": "https://github.com/Aldori15/Questie/archive/42140b2ba24fca8bae82fec1694006887a23af8c.zip",
+          "updated": "2026-11-01",
           "changes": "https://github.com/Aldori15/Questie/commits/335",
           "links": [
             {
