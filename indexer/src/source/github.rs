@@ -30,6 +30,7 @@ pub const MAINTAINERS: &[&str] = &[
     "Sattva-108",
     "Xurkon",
     "Wrath-AddOns",
+    "BannZay",
 ];
 
 /// Forks listed like the maintainer's own repositories: most forks are
@@ -40,8 +41,13 @@ const FORKS: &[&str] = &[
     "Wrath-AddOns/Tale-WotLK",
 ];
 
-/// Collections of addons, which are read through their own index instead.
-const EXCLUDED: &[&str] = &["NoM0Re/WoW-3.3.5a-Addons", "NoM0Re/WoW-3.3.5a-Addons2"];
+/// Collections of addons, which are read through their own index instead,
+/// and a template for writing addons, which is no addon.
+const EXCLUDED: &[&str] = &[
+    "NoM0Re/WoW-3.3.5a-Addons",
+    "NoM0Re/WoW-3.3.5a-Addons2",
+    "BannZay/LibPrototype-1.0",
+];
 
 /// Repositories whose releases attach each addon as a zip of its own:
 /// Trimitor's, made for his Dungeon Maps.
